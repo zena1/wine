@@ -220,6 +220,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
     {"GL_EXT_packed_depth_stencil",         EXT_PACKED_DEPTH_STENCIL      },
     {"GL_EXT_packed_float",                 EXT_PACKED_FLOAT              },
     {"GL_EXT_point_parameters",             EXT_POINT_PARAMETERS          },
+    {"GL_EXT_polygon_offset_clamp",         EXT_POLYGON_OFFSET_CLAMP      },
     {"GL_EXT_provoking_vertex",             EXT_PROVOKING_VERTEX          },
     {"GL_EXT_secondary_color",              EXT_SECONDARY_COLOR           },
     {"GL_EXT_stencil_two_side",             EXT_STENCIL_TWO_SIDE          },
@@ -260,6 +261,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
     {"GL_NV_vertex_program2",               NV_VERTEX_PROGRAM2            },
     {"GL_NV_vertex_program2_option",        NV_VERTEX_PROGRAM2_OPTION     },
     {"GL_NV_vertex_program3",               NV_VERTEX_PROGRAM3            },
+    {"GL_NVX_gpu_memory_info",              NVX_GPU_MEMORY_INFO           },
 };
 
 static const struct wined3d_extension_map wgl_extension_map[] =
@@ -1573,6 +1575,15 @@ static const struct gpu_description *query_gpu_description(const struct wined3d_
         TRACE("Card reports vendor PCI ID 0x%04x, device PCI ID 0x%04x, 0x%s bytes of video memory.\n",
                 vendor, device, wine_dbgstr_longlong(*vram_bytes));
     }
+    else if (gl_info->supported[NVX_GPU_MEMORY_INFO])
+    {
+        GLint vram_kb;
+        gl_info->gl_ops.gl.p_glGetIntegerv(GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX, &vram_kb);
+
+        *vram_bytes = (UINT64)vram_kb * 1024;
+        TRACE("Got 0x%s as video memory from NVX_GPU_MEMORY_INFO extension.\n",
+                wine_dbgstr_longlong(*vram_bytes));
+    }
 
     if (wined3d_settings.pci_vendor_id != PCI_VENDOR_NONE)
     {
@@ -1785,6 +1796,7 @@ static enum wined3d_gl_vendor wined3d_guess_gl_vendor(const struct wined3d_gl_in
         return GL_VENDOR_FGLRX;
 
     if (strstr(gl_vendor_string, "Mesa")
+            || strstr(gl_vendor_string, "Brian Paul")
             || strstr(gl_vendor_string, "X.Org")
             || strstr(gl_vendor_string, "Advanced Micro Devices, Inc.")
             || strstr(gl_vendor_string, "DRI R300 Project")
@@ -3103,6 +3115,8 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
     /* GL_EXT_point_parameters */
     USE_GL_FUNC(glPointParameterfEXT)
     USE_GL_FUNC(glPointParameterfvEXT)
+    /* GL_EXT_polygon_offset_clamp */
+    USE_GL_FUNC(glPolygonOffsetClampEXT)
     /* GL_EXT_provoking_vertex */
     USE_GL_FUNC(glProvokingVertexEXT)
     /* GL_EXT_secondary_color */
@@ -3514,6 +3528,12 @@ static void wined3d_adapter_init_limits(struct wined3d_gl_info *gl_info)
         gl_info->gl_ops.gl.p_glGetIntegerv(GL_MAX_DRAW_BUFFERS_ARB, &gl_max);
         gl_info->limits.buffers = min(MAX_RENDER_TARGET_VIEWS, gl_max);
         TRACE("Max draw buffers: %u.\n", gl_max);
+    }
+    if (gl_info->supported[ARB_BLEND_FUNC_EXTENDED])
+    {
+        gl_info->gl_ops.gl.p_glGetIntegerv(GL_MAX_DUAL_SOURCE_DRAW_BUFFERS, &gl_max);
+        gl_info->limits.dual_buffers = gl_max;
+        TRACE("Max dual source draw buffers: %u.\n", gl_max);
     }
     if (gl_info->supported[ARB_MULTITEXTURE])
     {
@@ -4313,6 +4333,10 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
     d3d_info->valid_rt_mask = 0;
     for (i = 0; i < gl_info->limits.buffers; ++i)
         d3d_info->valid_rt_mask |= (1u << i);
+
+    d3d_info->valid_dual_rt_mask = 0;
+    for (i = 0; i < gl_info->limits.dual_buffers; ++i)
+        d3d_info->valid_dual_rt_mask |= (1u << i);
 
     if (!d3d_info->shader_color_key)
     {
@@ -5999,7 +6023,10 @@ HRESULT CDECL wined3d_get_device_caps(const struct wined3d *wined3d, UINT adapte
     caps->MaxUserClipPlanes                = vertex_caps.max_user_clip_planes;
     caps->MaxActiveLights                  = vertex_caps.max_active_lights;
     caps->MaxVertexBlendMatrices           = vertex_caps.max_vertex_blend_matrices;
-    caps->MaxVertexBlendMatrixIndex        = vertex_caps.max_vertex_blend_matrix_index;
+    if (device_type == WINED3D_DEVICE_TYPE_HAL)
+        caps->MaxVertexBlendMatrixIndex    = vertex_caps.max_vertex_blend_matrix_index;
+    else
+        caps->MaxVertexBlendMatrixIndex    = 255;
     caps->VertexProcessingCaps             = vertex_caps.vertex_processing_caps;
     caps->FVFCaps                          = vertex_caps.fvf_caps;
     caps->RasterCaps                      |= vertex_caps.raster_caps;
