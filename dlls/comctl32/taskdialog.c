@@ -316,8 +316,8 @@ static void taskdialog_get_radio_button_size(struct taskdialog_info *dialog_info
     hfont = (HFONT)SendMessageW(hwnd, WM_GETFONT, 0, 0);
     old_hfont = SelectObject(hdc, hfont);
 
-    radio_box_width = 12 * GetDeviceCaps(hdc, LOGPIXELSX) / 96 + 1;
-    radio_box_height = 12 * GetDeviceCaps(hdc, LOGPIXELSY) / 96 + 1;
+    radio_box_width = 12 * GetDpiForWindow(hwnd) / 96 + 1;
+    radio_box_height = 12 * GetDpiForWindow(hwnd) / 96 + 1;
     GetCharWidthW(hdc, '0', '0', &text_offset);
     text_offset /= 2;
 
@@ -429,7 +429,7 @@ static HWND taskdialog_create_label(struct taskdialog_info *dialog_info, const W
     if (syslink) style |= WS_TABSTOP;
     textW = taskdialog_gettext(dialog_info, TRUE, text);
     hwnd = CreateWindowW(class, textW, style, 0, 0, 0, 0, dialog_info->hwnd, NULL, 0, NULL);
-    if (textW) Free(textW);
+    Free(textW);
 
     SendMessageW(hwnd, WM_SETFONT, (WPARAM)font, 0);
     return hwnd;
@@ -825,9 +825,9 @@ static void taskdialog_destroy(struct taskdialog_info *dialog_info)
     if (dialog_info->taskconfig->dwFlags & TDF_CALLBACK_TIMER) KillTimer(dialog_info->hwnd, ID_TIMER);
     if (dialog_info->font) DeleteObject(dialog_info->font);
     if (dialog_info->main_instruction_font) DeleteObject(dialog_info->main_instruction_font);
-    if (dialog_info->buttons) Free(dialog_info->buttons);
-    if (dialog_info->radio_buttons) Free(dialog_info->radio_buttons);
-    if (dialog_info->command_links) Free(dialog_info->command_links);
+    Free(dialog_info->buttons);
+    Free(dialog_info->radio_buttons);
+    Free(dialog_info->command_links);
 }
 
 static INT_PTR CALLBACK taskdialog_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)

@@ -1125,16 +1125,6 @@ struct close_handle_reply
 };
 
 
-struct socket_cleanup_request
-{
-    struct request_header __header;
-    char __pad_12[4];
-};
-struct socket_cleanup_reply
-{
-    struct reply_header __header;
-};
-
 
 struct set_handle_info_request
 {
@@ -1692,18 +1682,6 @@ struct accept_into_socket_request
     char __pad_20[4];
 };
 struct accept_into_socket_reply
-{
-    struct reply_header __header;
-};
-
-
-
-struct reuse_socket_request
-{
-    struct request_header __header;
-    obj_handle_t handle;
-};
-struct reuse_socket_reply
 {
     struct reply_header __header;
 };
@@ -5886,6 +5864,81 @@ struct resume_process_reply
 };
 
 
+struct create_esync_request
+{
+    struct request_header __header;
+    unsigned int access;
+    int          initval;
+    int          flags;
+    int          type;
+    /* VARARG(objattr,object_attributes); */
+    char __pad_28[4];
+};
+struct create_esync_reply
+{
+    struct reply_header __header;
+    obj_handle_t handle;
+    int          type;
+    unsigned int shm_idx;
+    char __pad_20[4];
+};
+
+
+struct open_esync_request
+{
+    struct request_header __header;
+    unsigned int access;
+    unsigned int attributes;
+    obj_handle_t rootdir;
+    int          type;
+    /* VARARG(name,unicode_str); */
+    char __pad_28[4];
+};
+struct open_esync_reply
+{
+    struct reply_header __header;
+    obj_handle_t handle;
+    int          type;
+    unsigned int shm_idx;
+    char __pad_20[4];
+};
+
+
+struct get_esync_fd_request
+{
+    struct request_header __header;
+    obj_handle_t handle;
+};
+struct get_esync_fd_reply
+{
+    struct reply_header __header;
+    int          type;
+    unsigned int shm_idx;
+};
+
+
+struct get_esync_apc_fd_request
+{
+    struct request_header __header;
+    char __pad_12[4];
+};
+struct get_esync_apc_fd_reply
+{
+    struct reply_header __header;
+};
+
+enum esync_type
+{
+    ESYNC_SEMAPHORE = 1,
+    ESYNC_AUTO_EVENT,
+    ESYNC_MANUAL_EVENT,
+    ESYNC_MUTEX,
+    ESYNC_AUTO_SERVER,
+    ESYNC_MANUAL_SERVER,
+    ESYNC_QUEUE,
+};
+
+
 enum request
 {
     REQ_new_process,
@@ -5910,7 +5963,6 @@ enum request
     REQ_queue_apc,
     REQ_get_apc_result,
     REQ_close_handle,
-    REQ_socket_cleanup,
     REQ_set_handle_info,
     REQ_dup_handle,
     REQ_open_process,
@@ -5945,7 +5997,6 @@ enum request
     REQ_create_socket,
     REQ_accept_socket,
     REQ_accept_into_socket,
-    REQ_reuse_socket,
     REQ_set_socket_event,
     REQ_get_socket_event,
     REQ_get_socket_info,
@@ -6191,6 +6242,10 @@ enum request
     REQ_set_job_limits,
     REQ_set_job_completion_port,
     REQ_terminate_job,
+    REQ_create_esync,
+    REQ_open_esync,
+    REQ_get_esync_fd,
+    REQ_get_esync_apc_fd,
     REQ_get_system_info,
     REQ_suspend_process,
     REQ_resume_process,
@@ -6223,7 +6278,6 @@ union generic_request
     struct queue_apc_request queue_apc_request;
     struct get_apc_result_request get_apc_result_request;
     struct close_handle_request close_handle_request;
-    struct socket_cleanup_request socket_cleanup_request;
     struct set_handle_info_request set_handle_info_request;
     struct dup_handle_request dup_handle_request;
     struct open_process_request open_process_request;
@@ -6258,7 +6312,6 @@ union generic_request
     struct create_socket_request create_socket_request;
     struct accept_socket_request accept_socket_request;
     struct accept_into_socket_request accept_into_socket_request;
-    struct reuse_socket_request reuse_socket_request;
     struct set_socket_event_request set_socket_event_request;
     struct get_socket_event_request get_socket_event_request;
     struct get_socket_info_request get_socket_info_request;
@@ -6504,6 +6557,10 @@ union generic_request
     struct set_job_limits_request set_job_limits_request;
     struct set_job_completion_port_request set_job_completion_port_request;
     struct terminate_job_request terminate_job_request;
+    struct create_esync_request create_esync_request;
+    struct open_esync_request open_esync_request;
+    struct get_esync_fd_request get_esync_fd_request;
+    struct get_esync_apc_fd_request get_esync_apc_fd_request;
     struct get_system_info_request get_system_info_request;
     struct suspend_process_request suspend_process_request;
     struct resume_process_request resume_process_request;
@@ -6534,7 +6591,6 @@ union generic_reply
     struct queue_apc_reply queue_apc_reply;
     struct get_apc_result_reply get_apc_result_reply;
     struct close_handle_reply close_handle_reply;
-    struct socket_cleanup_reply socket_cleanup_reply;
     struct set_handle_info_reply set_handle_info_reply;
     struct dup_handle_reply dup_handle_reply;
     struct open_process_reply open_process_reply;
@@ -6569,7 +6625,6 @@ union generic_reply
     struct create_socket_reply create_socket_reply;
     struct accept_socket_reply accept_socket_reply;
     struct accept_into_socket_reply accept_into_socket_reply;
-    struct reuse_socket_reply reuse_socket_reply;
     struct set_socket_event_reply set_socket_event_reply;
     struct get_socket_event_reply get_socket_event_reply;
     struct get_socket_info_reply get_socket_info_reply;
@@ -6815,11 +6870,15 @@ union generic_reply
     struct set_job_limits_reply set_job_limits_reply;
     struct set_job_completion_port_reply set_job_completion_port_reply;
     struct terminate_job_reply terminate_job_reply;
+    struct create_esync_reply create_esync_reply;
+    struct open_esync_reply open_esync_reply;
+    struct get_esync_fd_reply get_esync_fd_reply;
+    struct get_esync_apc_fd_reply get_esync_apc_fd_reply;
     struct get_system_info_reply get_system_info_reply;
     struct suspend_process_reply suspend_process_reply;
     struct resume_process_reply resume_process_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 556
+#define SERVER_PROTOCOL_VERSION 564
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

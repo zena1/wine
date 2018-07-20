@@ -60,6 +60,7 @@ int use_precise_scrolling = TRUE;
 int gl_surface_mode = GL_SURFACE_IN_FRONT_OPAQUE;
 int retina_enabled = FALSE;
 HMODULE macdrv_module = 0;
+int enable_app_nap = FALSE;
 
 CFDictionaryRef localized_strings;
 
@@ -197,6 +198,9 @@ static void setup_options(void)
             gl_surface_mode = GL_SURFACE_IN_FRONT_OPAQUE;
     }
 
+    if (!get_config_key(hkey, appkey, "EnableAppNap", buffer, sizeof(buffer)))
+        enable_app_nap = IS_OPTION_TRUE(buffer[0]);
+
     /* Don't use appkey.  The DPI and monitor sizes should be consistent for all
        processes in the prefix. */
     if (!get_config_key(hkey, NULL, "RetinaMode", buffer, sizeof(buffer)))
@@ -305,6 +309,7 @@ void CDECL macdrv_ThreadDetach(void)
     }
 }
 
+extern void __wine_esync_set_queue_fd( int fd );
 
 /***********************************************************************
  *              set_queue_display_fd
@@ -315,6 +320,8 @@ static void set_queue_display_fd(int fd)
 {
     HANDLE handle;
     int ret;
+
+    __wine_esync_set_queue_fd(fd);
 
     if (wine_server_fd_to_handle(fd, GENERIC_READ | SYNCHRONIZE, 0, &handle))
     {

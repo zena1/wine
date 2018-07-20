@@ -26,6 +26,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <signal.h>
 #ifdef HAVE_SYS_TIME_H
 # include <sys/time.h>
@@ -35,6 +36,9 @@
 #endif
 #ifdef HAVE_SYS_POLL_H
 # include <sys/poll.h>
+#endif
+#ifdef HAVE_SYS_SYSCALL_H
+#include <sys/syscall.h>
 #endif
 #ifdef HAVE_UNISTD_H
 # include <unistd.h>
@@ -55,11 +59,49 @@
 #include "winternl.h"
 #include "wine/server.h"
 #include "wine/debug.h"
+
 #include "ntdll_misc.h"
+#include "esync.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(ntdll);
 
 HANDLE keyed_event = NULL;
+
+#define TICKSPERSEC        10000000
+
+#ifdef __linux__
+
+static int wait_op = 128; /*FUTEX_WAIT|FUTEX_PRIVATE_FLAG*/
+static int wake_op = 129; /*FUTEX_WAKE|FUTEX_PRIVATE_FLAG*/
+
+static inline int futex_wait( int *addr, int val, struct timespec *timeout )
+{
+    return syscall( __NR_futex, addr, wait_op, val, timeout, 0, 0 );
+}
+
+static inline int futex_wake( int *addr, int val )
+{
+    return syscall( __NR_futex, addr, wake_op, val, NULL, 0, 0 );
+}
+
+static inline int use_futexes(void)
+{
+    static int supported = -1;
+
+    if (supported == -1)
+    {
+        futex_wait( &supported, 10, NULL );
+        if (errno == ENOSYS)
+        {
+            wait_op = 0; /*FUTEX_WAIT*/
+            wake_op = 1; /*FUTEX_WAKE*/
+            futex_wait( &supported, 10, NULL );
+        }
+        supported = (errno != ENOSYS);
+    }
+    return supported;
+}
+#endif
 
 static inline int interlocked_dec_if_nonzero( int *dest )
 {
@@ -186,6 +228,9 @@ NTSTATUS WINAPI NtCreateSemaphore( OUT PHANDLE SemaphoreHandle,
     if (MaximumCount <= 0 || InitialCount < 0 || InitialCount > MaximumCount)
         return STATUS_INVALID_PARAMETER;
 
+    if (do_esync())
+        return esync_create_semaphore( SemaphoreHandle, access, attr, InitialCount, MaximumCount );
+
     if ((ret = alloc_object_attributes( attr, &objattr, &len ))) return ret;
 
     SERVER_START_REQ( create_semaphore )
@@ -212,6 +257,9 @@ NTSTATUS WINAPI NtOpenSemaphore( HANDLE *handle, ACCESS_MASK access, const OBJEC
 
     if ((ret = validate_open_object_attributes( attr ))) return ret;
 
+    if (do_esync())
+        return esync_open_semaphore( handle, access, attr );
+
     SERVER_START_REQ( open_semaphore )
     {
         req->access     = access;
@@ -234,6 +282,9 @@ NTSTATUS WINAPI NtQuerySemaphore( HANDLE handle, SEMAPHORE_INFORMATION_CLASS cla
 {
     NTSTATUS ret;
     SEMAPHORE_BASIC_INFORMATION *out = info;
+
+    if (do_esync())
+        return esync_query_semaphore( handle, class, info, len, ret_len );
 
     TRACE("(%p, %u, %p, %u, %p)\n", handle, class, info, len, ret_len);
 
@@ -266,6 +317,10 @@ NTSTATUS WINAPI NtQuerySemaphore( HANDLE handle, SEMAPHORE_INFORMATION_CLASS cla
 NTSTATUS WINAPI NtReleaseSemaphore( HANDLE handle, ULONG count, PULONG previous )
 {
     NTSTATUS ret;
+
+    if (do_esync())
+        return esync_release_semaphore( handle, count, previous );
+
     SERVER_START_REQ( release_semaphore )
     {
         req->handle = wine_server_obj_handle( handle );
@@ -294,6 +349,9 @@ NTSTATUS WINAPI NtCreateEvent( PHANDLE EventHandle, ACCESS_MASK DesiredAccess,
     data_size_t len;
     struct object_attributes *objattr;
 
+    if (do_esync())
+        return esync_create_event( EventHandle, DesiredAccess, attr, type, InitialState );
+
     if ((ret = alloc_object_attributes( attr, &objattr, &len ))) return ret;
 
     SERVER_START_REQ( create_event )
@@ -321,6 +379,9 @@ NTSTATUS WINAPI NtOpenEvent( HANDLE *handle, ACCESS_MASK access, const OBJECT_AT
 
     if ((ret = validate_open_object_attributes( attr ))) return ret;
 
+    if (do_esync())
+        return esync_open_event( handle, access, attr );
+
     SERVER_START_REQ( open_event )
     {
         req->access     = access;
@@ -344,6 +405,9 @@ NTSTATUS WINAPI NtSetEvent( HANDLE handle, PULONG NumberOfThreadsReleased )
 {
     NTSTATUS ret;
 
+    if (do_esync())
+        return esync_set_event( handle );
+
     /* FIXME: set NumberOfThreadsReleased */
 
     SERVER_START_REQ( event_op )
@@ -362,6 +426,9 @@ NTSTATUS WINAPI NtSetEvent( HANDLE handle, PULONG NumberOfThreadsReleased )
 NTSTATUS WINAPI NtResetEvent( HANDLE handle, PULONG NumberOfThreadsReleased )
 {
     NTSTATUS ret;
+
+    if (do_esync())
+        return esync_reset_event( handle );
 
     /* resetting an event can't release any thread... */
     if (NumberOfThreadsReleased) *NumberOfThreadsReleased = 0;
@@ -397,6 +464,9 @@ NTSTATUS WINAPI NtPulseEvent( HANDLE handle, PULONG PulseCount )
 {
     NTSTATUS ret;
 
+    if (do_esync())
+        return esync_pulse_event( handle );
+
     if (PulseCount)
       FIXME("(%p,%d)\n", handle, *PulseCount);
 
@@ -418,6 +488,9 @@ NTSTATUS WINAPI NtQueryEvent( HANDLE handle, EVENT_INFORMATION_CLASS class,
 {
     NTSTATUS ret;
     EVENT_BASIC_INFORMATION *out = info;
+
+    if (do_esync())
+        return esync_query_event( handle, class, info, len, ret_len );
 
     TRACE("(%p, %u, %p, %u, %p)\n", handle, class, info, len, ret_len);
 
@@ -462,6 +535,9 @@ NTSTATUS WINAPI NtCreateMutant(OUT HANDLE* MutantHandle,
     data_size_t len;
     struct object_attributes *objattr;
 
+    if (do_esync())
+        return esync_create_mutex( MutantHandle, access, attr, InitialOwner );
+
     if ((status = alloc_object_attributes( attr, &objattr, &len ))) return status;
 
     SERVER_START_REQ( create_mutex )
@@ -488,6 +564,9 @@ NTSTATUS WINAPI NtOpenMutant( HANDLE *handle, ACCESS_MASK access, const OBJECT_A
 
     if ((status = validate_open_object_attributes( attr ))) return status;
 
+    if (do_esync())
+        return esync_open_mutex( handle, access, attr );
+
     SERVER_START_REQ( open_mutex )
     {
         req->access  = access;
@@ -510,6 +589,9 @@ NTSTATUS WINAPI NtReleaseMutant( IN HANDLE handle, OUT PLONG prev_count OPTIONAL
 {
     NTSTATUS    status;
 
+    if (do_esync())
+        return esync_release_mutex( handle, prev_count );
+
     SERVER_START_REQ( release_mutex )
     {
         req->handle = wine_server_obj_handle( handle );
@@ -529,6 +611,9 @@ NTSTATUS WINAPI NtQueryMutant( HANDLE handle, MUTANT_INFORMATION_CLASS class,
 {
     NTSTATUS ret;
     MUTANT_BASIC_INFORMATION *out = info;
+
+    if (do_esync())
+        return esync_query_mutex( handle, class, info, len, ret_len );
 
     TRACE("(%p, %u, %p, %u, %p)\n", handle, class, info, len, ret_len);
 
@@ -1025,6 +1110,13 @@ static NTSTATUS wait_objects( DWORD count, const HANDLE *handles,
 
     if (!count || count > MAXIMUM_WAIT_OBJECTS) return STATUS_INVALID_PARAMETER_1;
 
+    if (do_esync())
+    {
+        NTSTATUS ret = esync_wait_objects( count, handles, wait_any, alertable, timeout );
+        if (ret != STATUS_NOT_IMPLEMENTED)
+            return ret;
+    }
+
     if (alertable) flags |= SELECT_ALERTABLE;
     select_op.wait.op = wait_any ? SELECT_WAIT : SELECT_WAIT_ALL;
     for (i = 0; i < count; i++) select_op.wait.handles[i] = wine_server_obj_handle( handles[i] );
@@ -1060,6 +1152,9 @@ NTSTATUS WINAPI NtSignalAndWaitForSingleObject( HANDLE hSignalObject, HANDLE hWa
 {
     select_op_t select_op;
     UINT flags = SELECT_INTERRUPTIBLE;
+
+    if (do_esync())
+        return esync_signal_and_wait( hSignalObject, hWaitObject, alertable, timeout );
 
     if (!hSignalObject) return STATUS_INVALID_HANDLE;
 
@@ -1813,6 +1908,13 @@ void WINAPI RtlInitializeConditionVariable( RTL_CONDITION_VARIABLE *variable )
  */
 void WINAPI RtlWakeConditionVariable( RTL_CONDITION_VARIABLE *variable )
 {
+    if (use_futexes())
+    {
+        *(int *)&variable->Ptr = 1;
+        futex_wake( (int *)&variable->Ptr, 1 );
+        return;
+    }
+
     if (interlocked_dec_if_nonzero( (int *)&variable->Ptr ))
         NtReleaseKeyedEvent( keyed_event, &variable->Ptr, FALSE, NULL );
 }
@@ -1824,9 +1926,55 @@ void WINAPI RtlWakeConditionVariable( RTL_CONDITION_VARIABLE *variable )
  */
 void WINAPI RtlWakeAllConditionVariable( RTL_CONDITION_VARIABLE *variable )
 {
-    int val = interlocked_xchg( (int *)&variable->Ptr, 0 );
+    int val;
+
+    if (use_futexes())
+    {
+        *(int *)&variable->Ptr = 1;
+        futex_wake( (int *)&variable->Ptr, INT_MAX );
+        return;
+    }
+
+    val = interlocked_xchg( (int *)&variable->Ptr, 0 );
     while (val-- > 0)
         NtReleaseKeyedEvent( keyed_event, &variable->Ptr, FALSE, NULL );
+}
+
+static NTSTATUS fast_wait( RTL_CONDITION_VARIABLE *variable, const LARGE_INTEGER *timeout )
+{
+    int ret;
+
+    if (interlocked_cmpxchg((int *)&variable->Ptr, 0, 1))
+        return STATUS_SUCCESS;
+
+    if (timeout && timeout->QuadPart != TIMEOUT_INFINITE)
+    {
+        struct timespec tmo_p;
+        LONGLONG timeleft;
+
+        if (timeout->QuadPart > 0)
+        {
+            LARGE_INTEGER now;
+            NtQuerySystemTime( &now );
+            timeleft = timeout->QuadPart - now.QuadPart;
+        }
+        else
+            timeleft = -timeout->QuadPart;
+
+        tmo_p.tv_sec = timeleft / (ULONGLONG)TICKSPERSEC;
+        tmo_p.tv_nsec = (timeleft % TICKSPERSEC) * 100;
+        ret = futex_wait( (int *)&variable->Ptr, 0, &tmo_p );
+    }
+    else
+        ret = futex_wait( (int *)&variable->Ptr, 0, NULL );
+
+    if (ret == -1)
+    {
+        if (errno == ETIMEDOUT) return STATUS_TIMEOUT;
+        if (errno == EAGAIN) return STATUS_SUCCESS; // fixme
+        else return FILE_GetNtStatus();
+    }
+    return STATUS_SUCCESS;
 }
 
 /***********************************************************************
@@ -1848,6 +1996,15 @@ NTSTATUS WINAPI RtlSleepConditionVariableCS( RTL_CONDITION_VARIABLE *variable, R
                                              const LARGE_INTEGER *timeout )
 {
     NTSTATUS status;
+
+    if (use_futexes())
+    {
+        RtlLeaveCriticalSection( crit );
+        status = fast_wait( variable, timeout );
+        RtlEnterCriticalSection( crit );
+        return status;
+    }
+
     interlocked_xchg_add( (int *)&variable->Ptr, 1 );
     RtlLeaveCriticalSection( crit );
 
@@ -1885,6 +2042,23 @@ NTSTATUS WINAPI RtlSleepConditionVariableSRW( RTL_CONDITION_VARIABLE *variable, 
                                               const LARGE_INTEGER *timeout, ULONG flags )
 {
     NTSTATUS status;
+
+    if (use_futexes())
+    {
+        if (flags & RTL_CONDITION_VARIABLE_LOCKMODE_SHARED)
+            RtlReleaseSRWLockShared( lock );
+        else
+            RtlReleaseSRWLockExclusive( lock );
+
+        status = fast_wait( variable, timeout );
+
+        if (flags & RTL_CONDITION_VARIABLE_LOCKMODE_SHARED)
+            RtlAcquireSRWLockShared( lock );
+        else
+            RtlAcquireSRWLockExclusive( lock );
+        return status;
+    }
+
     interlocked_xchg_add( (int *)&variable->Ptr, 1 );
 
     if (flags & RTL_CONDITION_VARIABLE_LOCKMODE_SHARED)

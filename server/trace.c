@@ -1508,10 +1508,6 @@ static void dump_close_handle_request( const struct close_handle_request *req )
     fprintf( stderr, " handle=%04x", req->handle );
 }
 
-static void dump_socket_cleanup_request( const struct socket_cleanup_request *req )
-{
-}
-
 static void dump_set_handle_info_request( const struct set_handle_info_request *req )
 {
     fprintf( stderr, " handle=%04x", req->handle );
@@ -1912,11 +1908,6 @@ static void dump_accept_into_socket_request( const struct accept_into_socket_req
 {
     fprintf( stderr, " lhandle=%04x", req->lhandle );
     fprintf( stderr, ", ahandle=%04x", req->ahandle );
-}
-
-static void dump_reuse_socket_request( const struct reuse_socket_request *req )
-{
-    fprintf( stderr, " handle=%04x", req->handle );
 }
 
 static void dump_set_socket_event_request( const struct set_socket_event_request *req )
@@ -4678,6 +4669,53 @@ static void dump_resume_process_request( const struct resume_process_request *re
     fprintf( stderr, " handle=%04x", req->handle );
 }
 
+static void dump_create_esync_request( const struct create_esync_request *req )
+{
+    fprintf( stderr, " access=%08x", req->access );
+    fprintf( stderr, ", initval=%d", req->initval );
+    fprintf( stderr, ", flags=%d", req->flags );
+    fprintf( stderr, ", type=%d", req->type );
+    dump_varargs_object_attributes( ", objattr=", cur_size );
+}
+
+static void dump_create_esync_reply( const struct create_esync_reply *req )
+{
+    fprintf( stderr, " handle=%04x", req->handle );
+    fprintf( stderr, ", type=%d", req->type );
+    fprintf( stderr, ", shm_idx=%08x", req->shm_idx );
+}
+
+static void dump_open_esync_request( const struct open_esync_request *req )
+{
+    fprintf( stderr, " access=%08x", req->access );
+    fprintf( stderr, ", attributes=%08x", req->attributes );
+    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    fprintf( stderr, ", type=%d", req->type );
+    dump_varargs_unicode_str( ", name=", cur_size );
+}
+
+static void dump_open_esync_reply( const struct open_esync_reply *req )
+{
+    fprintf( stderr, " handle=%04x", req->handle );
+    fprintf( stderr, ", type=%d", req->type );
+    fprintf( stderr, ", shm_idx=%08x", req->shm_idx );
+}
+
+static void dump_get_esync_fd_request( const struct get_esync_fd_request *req )
+{
+    fprintf( stderr, " handle=%04x", req->handle );
+}
+
+static void dump_get_esync_fd_reply( const struct get_esync_fd_reply *req )
+{
+    fprintf( stderr, " type=%d", req->type );
+    fprintf( stderr, ", shm_idx=%08x", req->shm_idx );
+}
+
+static void dump_get_esync_apc_fd_request( const struct get_esync_apc_fd_request *req )
+{
+}
+
 static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_new_process_request,
     (dump_func)dump_get_new_process_info_request,
@@ -4701,7 +4739,6 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_queue_apc_request,
     (dump_func)dump_get_apc_result_request,
     (dump_func)dump_close_handle_request,
-    (dump_func)dump_socket_cleanup_request,
     (dump_func)dump_set_handle_info_request,
     (dump_func)dump_dup_handle_request,
     (dump_func)dump_open_process_request,
@@ -4736,7 +4773,6 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_create_socket_request,
     (dump_func)dump_accept_socket_request,
     (dump_func)dump_accept_into_socket_request,
-    (dump_func)dump_reuse_socket_request,
     (dump_func)dump_set_socket_event_request,
     (dump_func)dump_get_socket_event_request,
     (dump_func)dump_get_socket_info_request,
@@ -4982,6 +5018,10 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_set_job_limits_request,
     (dump_func)dump_set_job_completion_port_request,
     (dump_func)dump_terminate_job_request,
+    (dump_func)dump_create_esync_request,
+    (dump_func)dump_open_esync_request,
+    (dump_func)dump_get_esync_fd_request,
+    (dump_func)dump_get_esync_apc_fd_request,
     (dump_func)dump_get_system_info_request,
     (dump_func)dump_suspend_process_request,
     (dump_func)dump_resume_process_request,
@@ -5009,7 +5049,6 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     NULL,
     (dump_func)dump_queue_apc_reply,
     (dump_func)dump_get_apc_result_reply,
-    NULL,
     NULL,
     (dump_func)dump_set_handle_info_reply,
     (dump_func)dump_dup_handle_reply,
@@ -5044,7 +5083,6 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     NULL,
     (dump_func)dump_create_socket_reply,
     (dump_func)dump_accept_socket_reply,
-    NULL,
     NULL,
     NULL,
     (dump_func)dump_get_socket_event_reply,
@@ -5294,6 +5332,10 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_get_system_info_reply,
     NULL,
     NULL,
+    (dump_func)dump_create_esync_reply,
+    (dump_func)dump_open_esync_reply,
+    (dump_func)dump_get_esync_fd_reply,
+    NULL,
 };
 
 static const char * const req_names[REQ_NB_REQUESTS] = {
@@ -5319,7 +5361,6 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "queue_apc",
     "get_apc_result",
     "close_handle",
-    "socket_cleanup",
     "set_handle_info",
     "dup_handle",
     "open_process",
@@ -5354,7 +5395,6 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "create_socket",
     "accept_socket",
     "accept_into_socket",
-    "reuse_socket",
     "set_socket_event",
     "get_socket_event",
     "get_socket_info",
@@ -5600,6 +5640,10 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "set_job_limits",
     "set_job_completion_port",
     "terminate_job",
+    "create_esync",
+    "open_esync",
+    "get_esync_fd",
+    "get_esync_apc_fd",
     "get_system_info",
     "suspend_process",
     "resume_process",

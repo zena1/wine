@@ -1263,10 +1263,11 @@ BOOL WINAPI IsDialogMessageW( HWND hwndDlg, LPMSG msg )
         case VK_RETURN:
             {
                 DWORD dw;
-                if ((GetFocus() == msg->hwnd) &&
-                    (SendMessageW (msg->hwnd, WM_GETDLGCODE, 0, 0) & DLGC_DEFPUSHBUTTON))
+                HWND hwndFocus = GetFocus();
+                if (IsChild( hwndDlg, hwndFocus ) &&
+                    (SendMessageW( hwndFocus, WM_GETDLGCODE, 0, 0 ) & DLGC_DEFPUSHBUTTON))
                 {
-                    SendMessageW (hwndDlg, WM_COMMAND, MAKEWPARAM (GetDlgCtrlID(msg->hwnd),BN_CLICKED), (LPARAM)msg->hwnd); 
+                    SendMessageW( hwndDlg, WM_COMMAND, MAKEWPARAM( GetDlgCtrlID( hwndFocus ), BN_CLICKED ), (LPARAM)hwndFocus );
                 }
                 else if (DC_HASDEFID == HIWORD(dw = SendMessageW (hwndDlg, DM_GETDEFID, 0, 0)))
                 {
@@ -1277,7 +1278,6 @@ BOOL WINAPI IsDialogMessageW( HWND hwndDlg, LPMSG msg )
                 else
                 {
                     SendMessageW( hwndDlg, WM_COMMAND, IDOK, (LPARAM)GetDlgItem( hwndDlg, IDOK ) );
-
                 }
             }
             return TRUE;

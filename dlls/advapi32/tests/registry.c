@@ -3652,35 +3652,20 @@ static void test_RegNotifyChangeKeyValue(void)
     CloseHandle(event);
 }
 
-static const char *dbgstr_longlong(ULONGLONG ll)
-{
-    static char buf[16][64];
-    static int idx;
-
-    idx &= 0x0f;
-
-    if (sizeof(ll) > sizeof(unsigned long) && ll >> 32)
-        sprintf(buf[idx], "0x%lx%08lx", (unsigned long)(ll >> 32), (unsigned long)ll);
-    else
-        sprintf(buf[idx], "0x%08lx", (unsigned long)ll);
-
-    return buf[idx++];
-}
-
 #define cmp_li(a, b, c) cmp_li_real(a, b, c, __LINE__)
 static void cmp_li_real(LARGE_INTEGER *l1, LARGE_INTEGER *l2, LONGLONG slack, int line)
 {
     LONGLONG diff = l2->QuadPart - l1->QuadPart;
     if (diff < 0) diff = -diff;
     ok_(__FILE__, line)(diff <= slack, "values don't match: %s/%s\n",
-        dbgstr_longlong(l1->QuadPart), dbgstr_longlong(l2->QuadPart));
+                        wine_dbgstr_longlong(l1->QuadPart), wine_dbgstr_longlong(l2->QuadPart));
 }
 
 static void test_RegQueryValueExPerformanceData(void)
 {
     static const WCHAR globalW[] = { 'G','l','o','b','a','l',0 };
     static const WCHAR dummyW[5] = { 'd','u','m','m','y' };
-    static const char * const names[] = { NULL, "", "Global", "2" "invalid counter name" };
+    static const char * const names[] = { NULL, "", "Global", "2", "invalid counter name" };
     DWORD cbData, len, i, type;
     BYTE *value;
     DWORD dwret;
@@ -3734,7 +3719,7 @@ static void test_RegQueryValueExPerformanceData(void)
 
     HeapFree(GetProcessHeap(), 0, value);
 
-    for (i = 0; i < sizeof(names)/sizeof(names[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(names); i++)
     {
         cbData = 0xdeadbeef;
         dwret = RegQueryValueExA(HKEY_PERFORMANCE_DATA, names[i], NULL, NULL, NULL, &cbData);
@@ -3817,7 +3802,7 @@ todo_wine
             cmp_li(&pdb->PerfFreq, &freq, 0);
         cmp_li(&pdb->PerfTime100nSec, &ftime, 200000); /* TestBot needs huge slack value */
         ok(pdb->SystemNameLength == (sysname_len + 1) * sizeof(WCHAR), "expected %u, got %u\n",
-           (sysname_len + 1) * sizeof(WCHAR), pdb->SystemNameLength);
+           (sysname_len + 1) * 2 /*sizeof(WCHAR)*/, pdb->SystemNameLength);
         ok(pdb->SystemNameOffset == sizeof(*pdb), "got %u\n", pdb->SystemNameOffset);
         ok(!lstrcmpW(sysname, (LPCWSTR)(pdb + 1)), "%s != %s\n",
            wine_dbgstr_w(sysname), wine_dbgstr_w((LPCWSTR)(pdb + 1)));

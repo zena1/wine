@@ -1486,7 +1486,6 @@
 
 # Server interface
 @ cdecl -norelay wine_server_call(ptr)
-@ cdecl wine_server_close_fds_by_type(long)
 @ cdecl wine_server_fd_to_handle(long long long ptr)
 @ cdecl wine_server_handle_to_fd(long long ptr ptr)
 @ cdecl wine_server_release_fd(long long)
@@ -1514,6 +1513,8 @@
 # Filesystem
 @ cdecl wine_nt_to_unix_file_name(ptr ptr long long)
 @ cdecl wine_unix_to_nt_file_name(ptr ptr)
+
+@ cdecl __wine_esync_set_queue_fd(long)
 
 # User shared data
 @ cdecl __wine_user_shared_data()

@@ -5,7 +5,7 @@ msgstr ""
 "Project-Id-Version: Wine\n"
 "Report-Msgid-Bugs-To: https://bugs.winehq.org\n"
 "POT-Creation-Date: N/A\n"
-"PO-Revision-Date: 2018-07-06 09:17+0300\n"
+"PO-Revision-Date: 2018-07-12 16:25+0300\n"
 "Last-Translator: Nikolay Sivov <nsivov@codeweavers.com>\n"
 "Language-Team: Russian\n"
 "Language: ru\n"
@@ -3442,18 +3442,30 @@ msgid "Connections"
 msgstr "Подключения"
 
 #: inetcpl.rc:125
-msgid "Proxy server"
-msgstr "Прокси-сервер"
+msgid "Automatic configuration"
+msgstr "Автонастройка"
 
 #: inetcpl.rc:126
-msgid "Use a proxy server"
-msgstr "Использовать прокси-сервер"
+msgid "Use Web Proxy Auto-Discovery (WPAD)"
+msgstr "Использовать WPAD"
 
 #: inetcpl.rc:127
+msgid "Use Proxy Auto-Config (PAC) script"
+msgstr "Использовать PAC-скрипт"
+
+#: inetcpl.rc:128 inetcpl.rc:132
 msgid "Address:"
 msgstr "Адрес:"
 
-#: inetcpl.rc:129
+#: inetcpl.rc:130
+msgid "Proxy server"
+msgstr "Прокси-сервер"
+
+#: inetcpl.rc:131
+msgid "Use a proxy server"
+msgstr "Использовать прокси-сервер"
+
+#: inetcpl.rc:134
 msgid "Port:"
 msgstr "Порт:"
 

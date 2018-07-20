@@ -134,7 +134,6 @@ DECL_HANDLER(unload_dll);
 DECL_HANDLER(queue_apc);
 DECL_HANDLER(get_apc_result);
 DECL_HANDLER(close_handle);
-DECL_HANDLER(socket_cleanup);
 DECL_HANDLER(set_handle_info);
 DECL_HANDLER(dup_handle);
 DECL_HANDLER(open_process);
@@ -169,7 +168,6 @@ DECL_HANDLER(unlock_file);
 DECL_HANDLER(create_socket);
 DECL_HANDLER(accept_socket);
 DECL_HANDLER(accept_into_socket);
-DECL_HANDLER(reuse_socket);
 DECL_HANDLER(set_socket_event);
 DECL_HANDLER(get_socket_event);
 DECL_HANDLER(get_socket_info);
@@ -415,6 +413,10 @@ DECL_HANDLER(process_in_job);
 DECL_HANDLER(set_job_limits);
 DECL_HANDLER(set_job_completion_port);
 DECL_HANDLER(terminate_job);
+DECL_HANDLER(create_esync);
+DECL_HANDLER(open_esync);
+DECL_HANDLER(get_esync_fd);
+DECL_HANDLER(get_esync_apc_fd);
 DECL_HANDLER(get_system_info);
 DECL_HANDLER(suspend_process);
 DECL_HANDLER(resume_process);
@@ -446,7 +448,6 @@ static const req_handler req_handlers[REQ_NB_REQUESTS] =
     (req_handler)req_queue_apc,
     (req_handler)req_get_apc_result,
     (req_handler)req_close_handle,
-    (req_handler)req_socket_cleanup,
     (req_handler)req_set_handle_info,
     (req_handler)req_dup_handle,
     (req_handler)req_open_process,
@@ -481,7 +482,6 @@ static const req_handler req_handlers[REQ_NB_REQUESTS] =
     (req_handler)req_create_socket,
     (req_handler)req_accept_socket,
     (req_handler)req_accept_into_socket,
-    (req_handler)req_reuse_socket,
     (req_handler)req_set_socket_event,
     (req_handler)req_get_socket_event,
     (req_handler)req_get_socket_info,
@@ -727,6 +727,10 @@ static const req_handler req_handlers[REQ_NB_REQUESTS] =
     (req_handler)req_set_job_limits,
     (req_handler)req_set_job_completion_port,
     (req_handler)req_terminate_job,
+    (req_handler)req_create_esync,
+    (req_handler)req_open_esync,
+    (req_handler)req_get_esync_fd,
+    (req_handler)req_get_esync_apc_fd,
     (req_handler)req_get_system_info,
     (req_handler)req_suspend_process,
     (req_handler)req_resume_process,
@@ -921,7 +925,6 @@ C_ASSERT( FIELD_OFFSET(struct get_apc_result_reply, result) == 8 );
 C_ASSERT( sizeof(struct get_apc_result_reply) == 48 );
 C_ASSERT( FIELD_OFFSET(struct close_handle_request, handle) == 12 );
 C_ASSERT( sizeof(struct close_handle_request) == 16 );
-C_ASSERT( sizeof(struct socket_cleanup_request) == 16 );
 C_ASSERT( FIELD_OFFSET(struct set_handle_info_request, handle) == 12 );
 C_ASSERT( FIELD_OFFSET(struct set_handle_info_request, flags) == 16 );
 C_ASSERT( FIELD_OFFSET(struct set_handle_info_request, mask) == 20 );
@@ -1115,8 +1118,6 @@ C_ASSERT( sizeof(struct accept_socket_reply) == 16 );
 C_ASSERT( FIELD_OFFSET(struct accept_into_socket_request, lhandle) == 12 );
 C_ASSERT( FIELD_OFFSET(struct accept_into_socket_request, ahandle) == 16 );
 C_ASSERT( sizeof(struct accept_into_socket_request) == 24 );
-C_ASSERT( FIELD_OFFSET(struct reuse_socket_request, handle) == 12 );
-C_ASSERT( sizeof(struct reuse_socket_request) == 16 );
 C_ASSERT( FIELD_OFFSET(struct set_socket_event_request, handle) == 12 );
 C_ASSERT( FIELD_OFFSET(struct set_socket_event_request, mask) == 16 );
 C_ASSERT( FIELD_OFFSET(struct set_socket_event_request, event) == 20 );
@@ -2492,6 +2493,31 @@ C_ASSERT( sizeof(struct set_job_completion_port_request) == 32 );
 C_ASSERT( FIELD_OFFSET(struct terminate_job_request, handle) == 12 );
 C_ASSERT( FIELD_OFFSET(struct terminate_job_request, status) == 16 );
 C_ASSERT( sizeof(struct terminate_job_request) == 24 );
+C_ASSERT( FIELD_OFFSET(struct create_esync_request, access) == 12 );
+C_ASSERT( FIELD_OFFSET(struct create_esync_request, initval) == 16 );
+C_ASSERT( FIELD_OFFSET(struct create_esync_request, flags) == 20 );
+C_ASSERT( FIELD_OFFSET(struct create_esync_request, type) == 24 );
+C_ASSERT( sizeof(struct create_esync_request) == 32 );
+C_ASSERT( FIELD_OFFSET(struct create_esync_reply, handle) == 8 );
+C_ASSERT( FIELD_OFFSET(struct create_esync_reply, type) == 12 );
+C_ASSERT( FIELD_OFFSET(struct create_esync_reply, shm_idx) == 16 );
+C_ASSERT( sizeof(struct create_esync_reply) == 24 );
+C_ASSERT( FIELD_OFFSET(struct open_esync_request, access) == 12 );
+C_ASSERT( FIELD_OFFSET(struct open_esync_request, attributes) == 16 );
+C_ASSERT( FIELD_OFFSET(struct open_esync_request, rootdir) == 20 );
+C_ASSERT( FIELD_OFFSET(struct open_esync_request, type) == 24 );
+C_ASSERT( sizeof(struct open_esync_request) == 32 );
+C_ASSERT( FIELD_OFFSET(struct open_esync_reply, handle) == 8 );
+C_ASSERT( FIELD_OFFSET(struct open_esync_reply, type) == 12 );
+C_ASSERT( FIELD_OFFSET(struct open_esync_reply, shm_idx) == 16 );
+C_ASSERT( sizeof(struct open_esync_reply) == 24 );
+C_ASSERT( FIELD_OFFSET(struct get_esync_fd_request, handle) == 12 );
+C_ASSERT( sizeof(struct get_esync_fd_request) == 16 );
+C_ASSERT( FIELD_OFFSET(struct get_esync_fd_reply, type) == 8 );
+C_ASSERT( FIELD_OFFSET(struct get_esync_fd_reply, shm_idx) == 12 );
+C_ASSERT( sizeof(struct get_esync_fd_reply) == 16 );
+C_ASSERT( sizeof(struct get_esync_apc_fd_request) == 16 );
+C_ASSERT( sizeof(struct get_esync_apc_fd_reply) == 8 );
 C_ASSERT( sizeof(struct get_system_info_request) == 16 );
 C_ASSERT( FIELD_OFFSET(struct get_system_info_reply, processes) == 8 );
 C_ASSERT( FIELD_OFFSET(struct get_system_info_reply, threads) == 12 );

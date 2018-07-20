@@ -179,7 +179,6 @@ static INT_PTR CALLBACK dialog_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         case WM_INITDIALOG:
         {
             struct create_params *params = (struct create_params *)lParam;
-            LONG_PTR style;
 
             /* Note: until we set the hEvent, the object is protected by
              * the critical section held by StartProgress */
@@ -195,10 +194,6 @@ static INT_PTR CALLBACK dialog_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
                 set_progress_marquee(This);
             if (This->dwFlags & PROGDLG_NOMINIMIZE)
                 SetWindowLongW(hwnd, GWL_STYLE, GetWindowLongW(hwnd, GWL_STYLE) & (~WS_MINIMIZEBOX));
-
-            style = GetWindowLongPtrW(GetDlgItem(hwnd, IDC_ANIMATION), GWL_STYLE);
-            style |= ACS_AUTOPLAY | ACS_TRANSPARENT;
-            SetWindowLongPtrW(GetDlgItem(hwnd, IDC_ANIMATION), GWL_STYLE, style);
 
             update_dialog(This, 0xffffffff);
             This->dwUpdate = 0;
@@ -416,13 +411,13 @@ static HRESULT WINAPI ProgressDialog_SetAnimation(IProgressDialog *iface, HINSTA
 {
     ProgressDialog *This = impl_from_IProgressDialog(iface);
 
-    TRACE("(%p, %p, %d)\n", iface, hInstance, uiResourceId);
+    TRACE("(%p, %p, %u)\n", iface, hInstance, uiResourceId);
 
-    if (uiResourceId & ~0xFFFF)
-        return S_OK;
-
-    if (!SendDlgItemMessageW(This->hwnd, IDC_ANIMATION, ACM_OPENW, (WPARAM)hInstance, uiResourceId))
-        WARN("Failed to load animation\n");
+    if (IS_INTRESOURCE(uiResourceId))
+    {
+        if (!SendDlgItemMessageW(This->hwnd, IDC_ANIMATION, ACM_OPENW, (WPARAM)hInstance, uiResourceId))
+            WARN("Failed to load animation\n");
+    }
 
     return S_OK;
 }

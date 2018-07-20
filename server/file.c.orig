@@ -105,7 +105,6 @@ static const struct object_ops file_ops =
     no_link_name,                 /* link_name */
     NULL,                         /* unlink_name */
     file_open_file,               /* open_file */
-    no_alloc_handle,              /* alloc_handle */
     fd_close_handle,              /* close_handle */
     file_destroy                  /* destroy */
 };
@@ -452,8 +451,7 @@ static void file_dump( struct object *obj, int verbose )
 
 static struct object_type *file_get_type( struct object *obj )
 {
-    static const WCHAR name[] = {'F','i','l','e'};
-    static const struct unicode_str str = { name, sizeof(name) };
+    static const struct unicode_str str = { type_File, sizeof(type_File) };
     return get_object_type( &str );
 }
 

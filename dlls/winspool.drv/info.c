@@ -8705,7 +8705,7 @@ DWORD WINAPI PerfClose(void)
  */
 DWORD WINAPI PerfCollect(LPWSTR query, LPVOID *data, LPDWORD size, LPDWORD obj_count)
 {
-    FIXME("%s,%p,%p,%p: stub\n", debugstr_w(query), data, size, obj_count);
+    FIXME("%s, %p, %p, %p: stub\n", debugstr_w(query), data, size, obj_count);
     *size = 0;
     *obj_count = 0;
     return ERROR_SUCCESS;

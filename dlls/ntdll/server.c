@@ -81,6 +81,7 @@
 #include "wine/server.h"
 #include "wine/debug.h"
 #include "ntdll_misc.h"
+#include "esync.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(server);
 WINE_DECLARE_DEBUG_CHANNEL(winediag);
@@ -120,14 +121,14 @@ sigset_t server_block_set;  /* signals to block during server calls */
 static int fd_socket = -1;  /* socket to exchange file descriptors with the server */
 static pid_t server_pid;
 
-static RTL_CRITICAL_SECTION fd_cache_section;
+RTL_CRITICAL_SECTION fd_cache_section;
 static RTL_CRITICAL_SECTION_DEBUG critsect_debug =
 {
     0, 0, &fd_cache_section,
     { &critsect_debug.ProcessLocksList, &critsect_debug.ProcessLocksList },
       0, 0, { (DWORD_PTR)(__FILE__ ": fd_cache_section") }
 };
-static RTL_CRITICAL_SECTION fd_cache_section = { &critsect_debug, -1, 0, 0, 0, 0 };
+RTL_CRITICAL_SECTION fd_cache_section = { &critsect_debug, -1, 0, 0, 0, 0 };
 
 /* atomically exchange a 64-bit value */
 static inline LONG64 interlocked_xchg64( LONG64 *dest, LONG64 val )
@@ -773,7 +774,7 @@ void CDECL wine_server_send_fd( int fd )
  *
  * Receive a file descriptor passed from the server.
  */
-static int receive_fd( obj_handle_t *handle )
+int receive_fd( obj_handle_t *handle )
 {
     struct iovec vec;
     struct msghdr msghdr;
@@ -940,30 +941,6 @@ int server_remove_fd_from_cache( HANDLE handle )
     }
 
     return fd;
-}
-
-
-/***********************************************************************
- *           wine_server_close_fds_by_type
- *
- * Needed for a proper implementation of WSACleanup.
- */
-void CDECL wine_server_close_fds_by_type( enum server_fd_type type )
-{
-    union fd_cache_entry cache;
-    unsigned int entry, idx;
-
-    for (entry = 0; entry < FD_CACHE_ENTRIES; entry++)
-    {
-        if (!fd_cache[entry]) continue;
-        for (idx = 0; idx < FD_CACHE_BLOCK_SIZE; idx++)
-        {
-            cache.data = interlocked_cmpxchg64( &fd_cache[entry][idx].data, 0, 0 );
-            if (cache.s.type != type || cache.s.fd == 0) continue;
-            if (interlocked_cmpxchg64( &fd_cache[entry][idx].data, 0, cache.data ) != cache.data) continue;
-            close( cache.s.fd - 1 );
-        }
-    }
 }
 
 

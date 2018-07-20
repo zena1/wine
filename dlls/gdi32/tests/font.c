@@ -4968,6 +4968,8 @@ static void test_GetCharacterPlacement(void)
     size = GetCharacterPlacementA(hdc, "Wine Test", 9, 1024, &result, GCP_REORDER);
     ok(size, "GetCharacterPlacementA failed!\n");
     ok(size == size2, "GetCharacterPlacementA returned different result: %u vs %u\n", size2, size);
+
+    DeleteDC(hdc);
 }
 
 static void test_CreateFontIndirect(void)

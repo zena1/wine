@@ -98,6 +98,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
     /* ARB */
     {"GL_ARB_base_instance",                ARB_BASE_INSTANCE             },
     {"GL_ARB_blend_func_extended",          ARB_BLEND_FUNC_EXTENDED       },
+    {"GL_ARB_buffer_storage",               ARB_BUFFER_STORAGE            },
     {"GL_ARB_clear_buffer_object",          ARB_CLEAR_BUFFER_OBJECT       },
     {"GL_ARB_clear_texture",                ARB_CLEAR_TEXTURE             },
     {"GL_ARB_clip_control",                 ARB_CLIP_CONTROL              },
@@ -135,6 +136,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
     {"GL_ARB_internalformat_query2",        ARB_INTERNALFORMAT_QUERY2     },
     {"GL_ARB_map_buffer_alignment",         ARB_MAP_BUFFER_ALIGNMENT      },
     {"GL_ARB_map_buffer_range",             ARB_MAP_BUFFER_RANGE          },
+    {"GL_ARB_multi_bind",                   ARB_MULTI_BIND                },
     {"GL_ARB_multisample",                  ARB_MULTISAMPLE               },
     {"GL_ARB_multitexture",                 ARB_MULTITEXTURE              },
     {"GL_ARB_occlusion_query",              ARB_OCCLUSION_QUERY           },
@@ -935,6 +937,13 @@ static BOOL match_broken_viewport_subpixel_bits(const struct wined3d_gl_info *gl
     return !wined3d_caps_gl_ctx_test_viewport_subpixel_bits(ctx);
 }
 
+static BOOL match_mesa(const struct wined3d_gl_info *gl_info, struct wined3d_caps_gl_ctx *ctx,
+        const char *gl_renderer, enum wined3d_gl_vendor gl_vendor,
+        enum wined3d_pci_vendor card_vendor, enum wined3d_pci_device device)
+{
+    return gl_vendor == GL_VENDOR_MESA;
+}
+
 static void quirk_apple_glsl_constants(struct wined3d_gl_info *gl_info)
 {
     /* MacOS needs uniforms for relative addressing offsets. This can accumulate to quite a few uniforms.
@@ -1072,6 +1081,13 @@ static void quirk_broken_viewport_subpixel_bits(struct wined3d_gl_info *gl_info)
     }
 }
 
+static void quirk_use_client_storage_bit(struct wined3d_gl_info *gl_info)
+{
+    // Using ARB_buffer_storage on Mesa requires the GL_CLIENT_STORAGE_BIT to be
+    // set to use GTT for immutable buffers on radeon (see PIPE_USAGE_STREAM).
+    gl_info->quirks |= WINED3D_QUIRK_USE_CLIENT_STORAGE_BIT;
+}
+
 struct driver_quirk
 {
     BOOL (*match)(const struct wined3d_gl_info *gl_info, struct wined3d_caps_gl_ctx *ctx,
@@ -1167,6 +1183,11 @@ static const struct driver_quirk quirk_table[] =
         match_broken_viewport_subpixel_bits,
         quirk_broken_viewport_subpixel_bits,
         "Nvidia viewport subpixel bits bug"
+    },
+    {
+        match_mesa,
+        quirk_use_client_storage_bit,
+        "Use GL_CLIENT_STORAGE_BIT for persistent buffers on mesa",
     },
 };
 
@@ -1856,18 +1877,32 @@ static enum wined3d_pci_vendor wined3d_guess_card_vendor(const char *gl_vendor_s
     return HW_VENDOR_NVIDIA;
 }
 
-static enum wined3d_feature_level feature_level_from_caps(const struct shader_caps *shader_caps,
-        const struct fragment_caps *fragment_caps)
+static enum wined3d_feature_level feature_level_from_caps(const struct wined3d_gl_info *gl_info,
+        const struct shader_caps *shader_caps, const struct fragment_caps *fragment_caps)
 {
-    if (shader_caps->vs_version >= 5)
-        return WINED3D_FEATURE_LEVEL_11;
-    if (shader_caps->vs_version == 4)
-        return WINED3D_FEATURE_LEVEL_10;
-    if (shader_caps->vs_version == 3)
+    unsigned int shader_model;
+
+    shader_model = min(shader_caps->vs_version, shader_caps->ps_version);
+    shader_model = min(shader_model, max(shader_caps->gs_version, 3));
+    shader_model = min(shader_model, max(shader_caps->hs_version, 4));
+    shader_model = min(shader_model, max(shader_caps->ds_version, 4));
+
+    if (gl_info->supported[WINED3D_GL_VERSION_3_2] && gl_info->supported[ARB_SAMPLER_OBJECTS])
+    {
+        if (shader_model >= 5
+                && gl_info->supported[ARB_DRAW_INDIRECT]
+                && gl_info->supported[ARB_TEXTURE_COMPRESSION_BPTC])
+            return WINED3D_FEATURE_LEVEL_11;
+
+        if (shader_model == 4)
+            return WINED3D_FEATURE_LEVEL_10;
+    }
+
+    if (shader_model == 3)
         return WINED3D_FEATURE_LEVEL_9_SM3;
-    if (shader_caps->vs_version == 2)
+    if (shader_model == 2)
         return WINED3D_FEATURE_LEVEL_9_SM2;
-    if (shader_caps->vs_version == 1)
+    if (shader_model == 1)
         return WINED3D_FEATURE_LEVEL_8;
 
     if (fragment_caps->TextureOpCaps & WINED3DTEXOPCAPS_DOTPRODUCT3)
@@ -2705,6 +2740,8 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
     /* GL_ARB_blend_func_extended */
     USE_GL_FUNC(glBindFragDataLocationIndexed)
     USE_GL_FUNC(glGetFragDataIndex)
+    /* GL_ARB_buffer_storage */
+    USE_GL_FUNC(glBufferStorage)
     /* GL_ARB_clear_buffer_object */
     USE_GL_FUNC(glClearBufferData)
     USE_GL_FUNC(glClearBufferSubData)
@@ -2784,6 +2821,8 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
     /* GL_ARB_map_buffer_range */
     USE_GL_FUNC(glFlushMappedBufferRange)
     USE_GL_FUNC(glMapBufferRange)
+    /* GL_ARB_multi_bind */
+    USE_GL_FUNC(glBindBuffersRange)
     /* GL_ARB_multisample */
     USE_GL_FUNC(glSampleCoverageARB)
     /* GL_ARB_multitexture */
@@ -3949,6 +3988,7 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
         {ARB_TEXTURE_VIEW,                 MAKEDWORD_VERSION(4, 3)},
 
         {ARB_CLEAR_TEXTURE,                MAKEDWORD_VERSION(4, 4)},
+        {ARB_MULTI_BIND,                   MAKEDWORD_VERSION(4, 4)},
 
         {ARB_CLIP_CONTROL,                 MAKEDWORD_VERSION(4, 5)},
         {ARB_CULL_DISTANCE,                MAKEDWORD_VERSION(4, 5)},
@@ -4326,7 +4366,7 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
     d3d_info->limits.ffp_textures = fragment_caps.MaxSimultaneousTextures;
     d3d_info->shader_color_key = fragment_caps.wined3d_caps & WINED3D_FRAGMENT_CAP_COLOR_KEY;
     d3d_info->wined3d_creation_flags = wined3d_creation_flags;
-    d3d_info->feature_level = feature_level_from_caps(&shader_caps, &fragment_caps);
+    d3d_info->feature_level = feature_level_from_caps(gl_info, &shader_caps, &fragment_caps);
 
     TRACE("Max texture stages: %u.\n", d3d_info->limits.ffp_blend_stages);
 

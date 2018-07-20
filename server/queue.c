@@ -43,6 +43,7 @@
 #include "process.h"
 #include "request.h"
 #include "user.h"
+#include "esync.h"
 
 #define WM_NCMOUSEFIRST WM_NCMOUSEMOVE
 #define WM_NCMOUSELAST  (WM_NCMOUSEFIRST+(WM_MOUSELAST-WM_MOUSEFIRST))
@@ -147,6 +148,7 @@ struct msg_queue
     struct hook_table     *hooks;           /* hook table */
     timeout_t              last_get_msg;    /* time of last get message call */
     unsigned int           ignore_post_msg; /* ignore post messages newer than this unique id */
+    int                    esync_fd;        /* esync file descriptor (signalled on message) */
 };
 
 struct hotkey
@@ -163,6 +165,7 @@ static void msg_queue_dump( struct object *obj, int verbose );
 static int msg_queue_add_queue( struct object *obj, struct wait_queue_entry *entry );
 static void msg_queue_remove_queue( struct object *obj, struct wait_queue_entry *entry );
 static int msg_queue_signaled( struct object *obj, struct wait_queue_entry *entry );
+static int msg_queue_get_esync_fd( struct object *obj, enum esync_type *type );
 static void msg_queue_satisfied( struct object *obj, struct wait_queue_entry *entry );
 static void msg_queue_destroy( struct object *obj );
 static void msg_queue_poll_event( struct fd *fd, int event );
@@ -178,6 +181,7 @@ static const struct object_ops msg_queue_ops =
     msg_queue_add_queue,       /* add_queue */
     msg_queue_remove_queue,    /* remove_queue */
     msg_queue_signaled,        /* signaled */
+    msg_queue_get_esync_fd,    /* get_esync_fd */
     msg_queue_satisfied,       /* satisfied */
     no_signal,                 /* signal */
     no_get_fd,                 /* get_fd */
@@ -188,7 +192,6 @@ static const struct object_ops msg_queue_ops =
     no_link_name,              /* link_name */
     NULL,                      /* unlink_name */
     no_open_file,              /* open_file */
-    no_alloc_handle,           /* alloc_handle */
     no_close_handle,           /* close_handle */
     msg_queue_destroy          /* destroy */
 };
@@ -214,6 +217,7 @@ static const struct object_ops thread_input_ops =
     no_add_queue,                 /* add_queue */
     NULL,                         /* remove_queue */
     NULL,                         /* signaled */
+    NULL,                         /* get_esync_fd */
     NULL,                         /* satisfied */
     no_signal,                    /* signal */
     no_get_fd,                    /* get_fd */
@@ -224,7 +228,6 @@ static const struct object_ops thread_input_ops =
     no_link_name,                 /* link_name */
     NULL,                         /* unlink_name */
     no_open_file,                 /* open_file */
-    no_alloc_handle,              /* alloc_handle */
     no_close_handle,              /* close_handle */
     thread_input_destroy          /* destroy */
 };
@@ -333,11 +336,15 @@ static struct msg_queue *create_msg_queue( struct thread *thread, struct thread_
         queue->hooks           = NULL;
         queue->last_get_msg    = current_time;
         queue->ignore_post_msg = 0;
+        queue->esync_fd        = -1;
         list_init( &queue->send_result );
         list_init( &queue->callback_result );
         list_init( &queue->pending_timers );
         list_init( &queue->expired_timers );
         for (i = 0; i < NB_MSG_KINDS; i++) list_init( &queue->msg_list[i] );
+
+        if (do_esync())
+            queue->esync_fd = esync_create_fd( 0, 0 );
 
         thread->queue = queue;
     }
@@ -505,6 +512,9 @@ static inline void clear_queue_bits( struct msg_queue *queue, unsigned int bits 
     queue->wake_bits &= ~bits;
     queue->changed_bits &= ~bits;
     update_shm_queue_bits( queue );
+
+    if (do_esync() && !is_signaled( queue ))
+        esync_clear( queue->esync_fd );
 }
 
 /* check whether msg is a keyboard message */
@@ -953,17 +963,7 @@ static void cleanup_results( struct msg_queue *queue )
 /* check if the thread owning the queue is hung (not checking for messages) */
 static int is_queue_hung( struct msg_queue *queue )
 {
-    struct wait_queue_entry *entry;
-
-    if (current_time - queue->last_get_msg <= 5 * TICKS_PER_SEC)
-        return 0;  /* less than 5 seconds since last get message -> not hung */
-
-    LIST_FOR_EACH_ENTRY( entry, &queue->obj.wait_queue, struct wait_queue_entry, entry )
-    {
-        if (get_wait_queue_thread(entry)->queue == queue)
-            return 0;  /* thread is waiting on queue -> not hung */
-    }
-    return 1;
+    return (current_time - queue->last_get_msg > 5 * TICKS_PER_SEC);
 }
 
 static int msg_queue_add_queue( struct object *obj, struct wait_queue_entry *entry )
@@ -978,6 +978,12 @@ static int msg_queue_add_queue( struct object *obj, struct wait_queue_entry *ent
         return 0;
     }
     if (process->idle_event && !(queue->wake_mask & QS_SMRESULT)) set_event( process->idle_event );
+
+    /* On Windows, we are considered hung iff we have not somehow processed
+     * messages OR done a MsgWait call in the last 5 seconds. Note that in the
+     * latter case repeatedly waiting for 0 seconds is not hung, but waiting
+     * forever is hung, so this is correct. */
+    queue->last_get_msg = current_time;
 
     if (queue->fd && list_empty( &obj->wait_queue ))  /* first on the queue */
         set_fd_events( queue->fd, POLLIN );
@@ -1016,6 +1022,13 @@ static int msg_queue_signaled( struct object *obj, struct wait_queue_entry *entr
             set_fd_events( queue->fd, POLLIN );
     }
     return ret || is_signaled( queue );
+}
+
+static int msg_queue_get_esync_fd( struct object *obj, enum esync_type *type )
+{
+    struct msg_queue *queue = (struct msg_queue *)obj;
+    *type = ESYNC_QUEUE;
+    return queue->esync_fd;
 }
 
 static void msg_queue_satisfied( struct object *obj, struct wait_queue_entry *entry )
@@ -1063,6 +1076,9 @@ static void msg_queue_destroy( struct object *obj )
     release_object( queue->input );
     if (queue->hooks) release_object( queue->hooks );
     if (queue->fd) release_object( queue->fd );
+
+    if (do_esync())
+        close( queue->esync_fd );
 }
 
 static void msg_queue_poll_event( struct fd *fd, int event )
@@ -1673,7 +1689,6 @@ static int send_hook_ll_message( struct desktop *desktop, struct message *hardwa
 
     if (!(hook_thread = get_first_global_hook( id ))) return 0;
     if (!(queue = hook_thread->queue)) return 0;
-    if (is_queue_hung( queue )) return 0;
 
     if (!(msg = mem_alloc( sizeof(*msg) ))) return 0;
 
@@ -2403,6 +2418,9 @@ DECL_HANDLER(get_queue_status)
         reply->wake_bits    = queue->wake_bits;
         reply->changed_bits = queue->changed_bits;
         queue->changed_bits &= ~req->clear_bits;
+
+        if (do_esync() && !is_signaled( queue ))
+            esync_clear( queue->esync_fd );
     }
     else reply->wake_bits = reply->changed_bits = 0;
 }

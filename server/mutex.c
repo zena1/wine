@@ -61,6 +61,7 @@ static const struct object_ops mutex_ops =
     add_queue,                 /* add_queue */
     remove_queue,              /* remove_queue */
     mutex_signaled,            /* signaled */
+    NULL,                      /* get_esync_fd */
     mutex_satisfied,           /* satisfied */
     mutex_signal,              /* signal */
     no_get_fd,                 /* get_fd */
@@ -71,7 +72,6 @@ static const struct object_ops mutex_ops =
     directory_link_name,       /* link_name */
     default_unlink_name,       /* unlink_name */
     no_open_file,              /* open_file */
-    no_alloc_handle,           /* alloc_handle */
     no_close_handle,           /* close_handle */
     mutex_destroy              /* destroy */
 };

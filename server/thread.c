@@ -51,6 +51,7 @@
 #include "request.h"
 #include "user.h"
 #include "security.h"
+#include "esync.h"
 
 
 #ifdef __i386__
@@ -110,6 +111,7 @@ static const struct object_ops thread_apc_ops =
     add_queue,                  /* add_queue */
     remove_queue,               /* remove_queue */
     thread_apc_signaled,        /* signaled */
+    NULL,                       /* get_esync_fd */
     no_satisfied,               /* satisfied */
     no_signal,                  /* signal */
     no_get_fd,                  /* get_fd */
@@ -120,7 +122,6 @@ static const struct object_ops thread_apc_ops =
     no_link_name,               /* link_name */
     NULL,                       /* unlink_name */
     no_open_file,               /* open_file */
-    no_alloc_handle,            /* alloc_handle */
     no_close_handle,            /* close_handle */
     thread_apc_destroy          /* destroy */
 };
@@ -131,6 +132,7 @@ static const struct object_ops thread_apc_ops =
 static void dump_thread( struct object *obj, int verbose );
 static struct object_type *thread_get_type( struct object *obj );
 static int thread_signaled( struct object *obj, struct wait_queue_entry *entry );
+static int thread_get_esync_fd( struct object *obj, enum esync_type *type );
 static unsigned int thread_map_access( struct object *obj, unsigned int access );
 static void thread_poll_event( struct fd *fd, int event );
 static void destroy_thread( struct object *obj );
@@ -143,6 +145,7 @@ static const struct object_ops thread_ops =
     add_queue,                  /* add_queue */
     remove_queue,               /* remove_queue */
     thread_signaled,            /* signaled */
+    thread_get_esync_fd,        /* get_esync_fd */
     no_satisfied,               /* satisfied */
     no_signal,                  /* signal */
     no_get_fd,                  /* get_fd */
@@ -153,7 +156,6 @@ static const struct object_ops thread_ops =
     no_link_name,               /* link_name */
     NULL,                       /* unlink_name */
     no_open_file,               /* open_file */
-    no_alloc_handle,            /* alloc_handle */
     no_close_handle,            /* close_handle */
     destroy_thread              /* destroy */
 };
@@ -202,6 +204,8 @@ static inline void init_thread_structure( struct thread *thread )
     thread->suspend         = 0;
     thread->desktop_users   = 0;
     thread->token           = NULL;
+    thread->esync_fd        = -1;
+    thread->esync_apc_fd    = -1;
     thread->exit_poll       = NULL;
     thread->shm_fd          = -1;
     thread->shm             = NULL;
@@ -260,6 +264,12 @@ struct thread *create_thread( int fd, struct process *process )
     {
         release_object( thread );
         return NULL;
+    }
+
+    if (do_esync())
+    {
+        thread->esync_fd = esync_create_fd( 0, 0 );
+        thread->esync_apc_fd = esync_create_fd( 0, 0 );
     }
 
     set_fd_events( thread->request_fd, POLLIN );  /* start listening to events */
@@ -334,6 +344,9 @@ static void destroy_thread( struct object *obj )
     if (thread->exit_poll) remove_timeout_user( thread->exit_poll );
     if (thread->id) free_ptid( thread->id );
     if (thread->token) release_object( thread->token );
+
+    if (do_esync())
+        close( thread->esync_fd );
 }
 
 /* dump a thread on stdout for debugging purposes */
@@ -356,6 +369,13 @@ static int thread_signaled( struct object *obj, struct wait_queue_entry *entry )
 {
     struct thread *mythread = (struct thread *)obj;
     return (mythread->state == TERMINATED && !mythread->exit_poll);
+}
+
+static int thread_get_esync_fd( struct object *obj, enum esync_type *type )
+{
+    struct thread *thread = (struct thread *)obj;
+    *type = ESYNC_MANUAL_SERVER;
+    return thread->esync_fd;
 }
 
 static unsigned int thread_map_access( struct object *obj, unsigned int access )
@@ -911,6 +931,9 @@ void wake_up( struct object *obj, int max )
     struct list *ptr;
     int ret;
 
+    if (do_esync())
+        esync_wake_up( obj );
+
     LIST_FOR_EACH( ptr, &obj->wait_queue )
     {
         struct wait_queue_entry *entry = LIST_ENTRY( ptr, struct wait_queue_entry, entry );
@@ -995,7 +1018,12 @@ static int queue_apc( struct process *process, struct thread *thread, struct thr
     grab_object( apc );
     list_add_tail( queue, &apc->entry );
     if (!list_prev( queue, &apc->entry ))  /* first one */
+    {
         wake_thread( thread );
+
+        if (do_esync())
+            esync_wake_fd( thread->esync_apc_fd );
+    }
 
     return 1;
 }
@@ -1043,6 +1071,10 @@ static struct thread_apc *thread_dequeue_apc( struct thread *thread, int system_
         apc = LIST_ENTRY( ptr, struct thread_apc, entry );
         list_remove( ptr );
     }
+
+    if (do_esync() && list_empty( &thread->system_apc ) && list_empty( &thread->user_apc ))
+        esync_clear( thread->esync_apc_fd );
+
     return apc;
 }
 

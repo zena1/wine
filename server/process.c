@@ -48,6 +48,7 @@
 #include "request.h"
 #include "user.h"
 #include "security.h"
+#include "esync.h"
 
 /* process structure */
 
@@ -66,6 +67,7 @@ static unsigned int process_map_access( struct object *obj, unsigned int access 
 static struct security_descriptor *process_get_sd( struct object *obj );
 static void process_poll_event( struct fd *fd, int event );
 static void process_destroy( struct object *obj );
+static int process_get_esync_fd( struct object *obj, enum esync_type *type );
 static void terminate_process( struct process *process, struct thread *skip, int exit_code );
 
 static const struct object_ops process_ops =
@@ -76,6 +78,7 @@ static const struct object_ops process_ops =
     add_queue,                   /* add_queue */
     remove_queue,                /* remove_queue */
     process_signaled,            /* signaled */
+    process_get_esync_fd,        /* get_esync_fd */
     no_satisfied,                /* satisfied */
     no_signal,                   /* signal */
     no_get_fd,                   /* get_fd */
@@ -86,7 +89,6 @@ static const struct object_ops process_ops =
     no_link_name,                /* link_name */
     NULL,                        /* unlink_name */
     no_open_file,                /* open_file */
-    no_alloc_handle,             /* alloc_handle */
     no_close_handle,             /* close_handle */
     process_destroy              /* destroy */
 };
@@ -127,6 +129,7 @@ static const struct object_ops startup_info_ops =
     add_queue,                     /* add_queue */
     remove_queue,                  /* remove_queue */
     startup_info_signaled,         /* signaled */
+    NULL,                          /* get_esync_fd */
     no_satisfied,                  /* satisfied */
     no_signal,                     /* signal */
     no_get_fd,                     /* get_fd */
@@ -137,7 +140,6 @@ static const struct object_ops startup_info_ops =
     no_link_name,                  /* link_name */
     NULL,                          /* unlink_name */
     no_open_file,                  /* open_file */
-    no_alloc_handle,               /* alloc_handle */
     no_close_handle,               /* close_handle */
     startup_info_destroy           /* destroy */
 };
@@ -171,6 +173,7 @@ static const struct object_ops job_ops =
     add_queue,                     /* add_queue */
     remove_queue,                  /* remove_queue */
     job_signaled,                  /* signaled */
+    NULL,                          /* get_esync_fd */
     no_satisfied,                  /* satisfied */
     no_signal,                     /* signal */
     no_get_fd,                     /* get_fd */
@@ -181,7 +184,6 @@ static const struct object_ops job_ops =
     directory_link_name,           /* link_name */
     default_unlink_name,           /* unlink_name */
     no_open_file,                  /* open_file */
-    no_alloc_handle,               /* alloc_handle */
     job_close_handle,              /* close_handle */
     job_destroy                    /* destroy */
 };
@@ -537,6 +539,7 @@ struct thread *create_process( int fd, struct thread *parent_thread, int inherit
     process->trace_data      = 0;
     process->rawinput_mouse  = NULL;
     process->rawinput_kbd    = NULL;
+    process->esync_fd        = -1;
     list_init( &process->thread_list );
     list_init( &process->locks );
     list_init( &process->asyncs );
@@ -574,6 +577,9 @@ struct thread *create_process( int fd, struct thread *parent_thread, int inherit
         process->affinity = parent->affinity;
     }
     if (!process->handles || !process->token) goto error;
+
+    if (do_esync())
+        process->esync_fd = esync_create_fd( 0, 0 );
 
     /* create the main thread */
     if (pipe( request_pipe ) == -1)
@@ -639,6 +645,9 @@ static void process_destroy( struct object *obj )
     if (process->id) free_ptid( process->id );
     if (process->token) release_object( process->token );
     free( process->dir_cache );
+
+    if (do_esync())
+        close( process->esync_fd );
 }
 
 /* dump a process on stdout for debugging purposes */
@@ -660,6 +669,13 @@ static int process_signaled( struct object *obj, struct wait_queue_entry *entry 
 {
     struct process *process = (struct process *)obj;
     return !process->running_threads;
+}
+
+static int process_get_esync_fd( struct object *obj, enum esync_type *type )
+{
+    struct process *process = (struct process *)obj;
+    *type = ESYNC_MANUAL_SERVER;
+    return process->esync_fd;
 }
 
 static unsigned int process_map_access( struct object *obj, unsigned int access )
@@ -890,6 +906,7 @@ static void process_killed( struct process *process )
 
     assert( list_empty( &process->thread_list ));
     process->end_time = current_time;
+    if (!process->is_system) close_process_desktop( process );
     process->winstation = 0;
     process->desktop = 0;
     close_process_handles( process );

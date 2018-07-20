@@ -69,6 +69,7 @@ static const struct object_ops async_ops =
     add_queue,                 /* add_queue */
     remove_queue,              /* remove_queue */
     async_signaled,            /* signaled */
+    NULL,                      /* get_esync_fd */
     async_satisfied,           /* satisfied */
     no_signal,                 /* signal */
     no_get_fd,                 /* get_fd */
@@ -79,7 +80,6 @@ static const struct object_ops async_ops =
     no_link_name,              /* link_name */
     NULL,                      /* unlink_name */
     no_open_file,              /* open_file */
-    no_alloc_handle,           /* alloc_handle */
     no_close_handle,           /* close_handle */
     async_destroy              /* destroy */
 };
@@ -458,6 +458,7 @@ static const struct object_ops iosb_ops =
     no_add_queue,             /* add_queue */
     NULL,                     /* remove_queue */
     NULL,                     /* signaled */
+    NULL,                     /* get_esync_fd */
     NULL,                     /* satisfied */
     no_signal,                /* signal */
     no_get_fd,                /* get_fd */
@@ -468,7 +469,6 @@ static const struct object_ops iosb_ops =
     no_link_name,             /* link_name */
     NULL,                     /* unlink_name */
     no_open_file,             /* open_file */
-    no_alloc_handle,          /* alloc_handle */
     no_close_handle,          /* close_handle */
     iosb_destroy              /* destroy */
 };

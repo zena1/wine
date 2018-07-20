@@ -1,2 +1,0 @@
-Fixes: Implement some processor group functions and SetThreadIdealProcessorEx
-Depends: api-ms-win-Stub_DLLs

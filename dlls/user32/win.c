@@ -1571,12 +1571,9 @@ HWND WIN_CreateWindowEx( CREATESTRUCTW *cs, LPCWSTR className, HINSTANCE module,
     cy = cs->cy;
     if ((cs->style & WS_THICKFRAME) || !(cs->style & (WS_POPUP | WS_CHILD)))
     {
-        POINT maxSize, maxPos, minTrack, maxTrack;
-        WINPOS_GetMinMaxInfo( hwnd, &maxSize, &maxPos, &minTrack, &maxTrack);
-        if (maxTrack.x < cx) cx = maxTrack.x;
-        if (maxTrack.y < cy) cy = maxTrack.y;
-        if (minTrack.x > cx) cx = minTrack.x;
-        if (minTrack.y > cy) cy = minTrack.y;
+        MINMAXINFO info = WINPOS_GetMinMaxInfo( hwnd );
+        cx = max( min( cx, info.ptMaxTrackSize.x ), info.ptMinTrackSize.x );
+        cy = max( min( cy, info.ptMaxTrackSize.y ), info.ptMinTrackSize.y );
     }
 
     if (cx < 0) cx = 0;
@@ -2168,9 +2165,13 @@ BOOL WINAPI EnableWindow( HWND hwnd, BOOL enable )
  */
 BOOL WINAPI IsWindowEnabled(HWND hWnd)
 {
-    return !(GetWindowLongW( hWnd, GWL_STYLE ) & WS_DISABLED);
-}
+    LONG ret;
 
+    SetLastError(NO_ERROR);
+    ret = GetWindowLongW( hWnd, GWL_STYLE );
+    if (!ret && GetLastError() != NO_ERROR) return FALSE;
+    return !(ret & WS_DISABLED);
+}
 
 /***********************************************************************
  *		IsWindowUnicode (USER32.@)
@@ -2247,11 +2248,15 @@ UINT WINAPI GetDpiForWindow( HWND hwnd )
         SetLastError( ERROR_INVALID_WINDOW_HANDLE );
         return 0;
     }
-    if (win == WND_DESKTOP) return get_monitor_dpi( GetDesktopWindow() );
+    if (win == WND_DESKTOP)
+    {
+        POINT pt = { 0, 0 };
+        return get_monitor_dpi( MonitorFromPoint( pt, MONITOR_DEFAULTTOPRIMARY ));
+    }
     if (win != WND_OTHER_PROCESS)
     {
         ret = win->dpi;
-        if (!ret) ret = get_monitor_dpi( hwnd );
+        if (!ret) ret = get_win_monitor_dpi( hwnd );
         WIN_ReleasePtr( win );
     }
     else
