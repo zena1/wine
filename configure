@@ -15604,11 +15604,11 @@ test -z "$LIBAVCODEC_LIBS" || LIBAVCODEC_LIBS=`echo " $LIBAVCODEC_LIBS" | sed 's
 
 fi
 if test "x$ac_cv_lib_avcodec_avcodec_send_packet" != xyes; then :
-  case "x$with_libavcodec" in
+  case "x$with_ffmpeg" in
   x)   as_fn_append wine_notices "|libavcodec ${notice_platform}development files not found (or too old), XAudio2 WMA conversion won't be supported." ;;
   xno) ;;
   *)   as_fn_error $? "libavcodec ${notice_platform}development files not found (or too old), XAudio2 WMA conversion won't be supported.
-This is an error since --with-libavcodec was requested." "$LINENO" 5 ;;
+This is an error since --with-ffmpeg was requested." "$LINENO" 5 ;;
 esac
 
 fi
