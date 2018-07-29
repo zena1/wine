@@ -2002,6 +2002,18 @@ static void dump_open_console_reply( const struct open_console_reply *req )
     fprintf( stderr, " handle=%04x", req->handle );
 }
 
+static void dump_attach_console_request( const struct attach_console_request *req )
+{
+    fprintf( stderr, " pid=%04x", req->pid );
+}
+
+static void dump_attach_console_reply( const struct attach_console_reply *req )
+{
+    fprintf( stderr, " std_in=%04x", req->std_in );
+    fprintf( stderr, ", std_out=%04x", req->std_out );
+    fprintf( stderr, ", std_err=%04x", req->std_err );
+}
+
 static void dump_get_console_wait_event_request( const struct get_console_wait_event_request *req )
 {
 }
@@ -4782,6 +4794,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_free_console_request,
     (dump_func)dump_get_console_renderer_events_request,
     (dump_func)dump_open_console_request,
+    (dump_func)dump_attach_console_request,
     (dump_func)dump_get_console_wait_event_request,
     (dump_func)dump_get_console_mode_request,
     (dump_func)dump_set_console_mode_request,
@@ -5093,6 +5106,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     NULL,
     (dump_func)dump_get_console_renderer_events_reply,
     (dump_func)dump_open_console_reply,
+    (dump_func)dump_attach_console_reply,
     (dump_func)dump_get_console_wait_event_reply,
     (dump_func)dump_get_console_mode_reply,
     NULL,
@@ -5404,6 +5418,7 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "free_console",
     "get_console_renderer_events",
     "open_console",
+    "attach_console",
     "get_console_wait_event",
     "get_console_mode",
     "set_console_mode",

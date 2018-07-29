@@ -1968,7 +1968,6 @@ void WINAPI RtlInitializeConditionVariable( RTL_CONDITION_VARIABLE *variable )
  */
 void WINAPI RtlWakeConditionVariable( RTL_CONDITION_VARIABLE *variable )
 {
-    FIXME("%p, prev %d\n", variable, *((int *)&variable->Ptr));
     if (interlocked_dec_if_nonzero( (int *)&variable->Ptr ))
     {
         NTSTATUS ret;
@@ -1985,7 +1984,6 @@ void WINAPI RtlWakeConditionVariable( RTL_CONDITION_VARIABLE *variable )
 void WINAPI RtlWakeAllConditionVariable( RTL_CONDITION_VARIABLE *variable )
 {
     int val = interlocked_xchg( (int *)&variable->Ptr, 0 );
-    FIXME("%p, prev %d\n", variable, val);
     if (val)
     {
         NTSTATUS ret;
@@ -2016,7 +2014,6 @@ NTSTATUS WINAPI RtlSleepConditionVariableCS( RTL_CONDITION_VARIABLE *variable, R
                                              const LARGE_INTEGER *timeout )
 {
     NTSTATUS status;
-    FIXME("%p, prev %d\n", variable, *((int *)&variable->Ptr));
     interlocked_xchg_add( (int *)&variable->Ptr, 1 );
     RtlLeaveCriticalSection( crit );
 
@@ -2031,7 +2028,6 @@ NTSTATUS WINAPI RtlSleepConditionVariableCS( RTL_CONDITION_VARIABLE *variable, R
     }
     else if (status != STATUS_SUCCESS)
         interlocked_dec_if_nonzero( (int *)&variable->Ptr );
-    FIXME("=> %#x\n", status);
 
     RtlEnterCriticalSection( crit );
     return status;
@@ -2060,7 +2056,6 @@ NTSTATUS WINAPI RtlSleepConditionVariableSRW( RTL_CONDITION_VARIABLE *variable, 
                                               const LARGE_INTEGER *timeout, ULONG flags )
 {
     NTSTATUS status;
-    FIXME("%p, prev %d\n", variable, *((int *)&variable->Ptr));
     interlocked_xchg_add( (int *)&variable->Ptr, 1 );
 
     if (flags & RTL_CONDITION_VARIABLE_LOCKMODE_SHARED)
@@ -2079,7 +2074,6 @@ NTSTATUS WINAPI RtlSleepConditionVariableSRW( RTL_CONDITION_VARIABLE *variable, 
     }
     else if (status != STATUS_SUCCESS)
         interlocked_dec_if_nonzero( (int *)&variable->Ptr );
-    FIXME("=> %#x\n", status);
 
     if (flags & RTL_CONDITION_VARIABLE_LOCKMODE_SHARED)
         RtlAcquireSRWLockShared( lock );

@@ -1873,6 +1873,22 @@ struct open_console_reply
 
 
 
+struct attach_console_request
+{
+    struct request_header __header;
+    process_id_t pid;
+};
+struct attach_console_reply
+{
+    struct reply_header __header;
+    obj_handle_t std_in;
+    obj_handle_t std_out;
+    obj_handle_t std_err;
+    char __pad_20[4];
+};
+
+
+
 struct get_console_wait_event_request
 {
     struct request_header __header;
@@ -6006,6 +6022,7 @@ enum request
     REQ_free_console,
     REQ_get_console_renderer_events,
     REQ_open_console,
+    REQ_attach_console,
     REQ_get_console_wait_event,
     REQ_get_console_mode,
     REQ_set_console_mode,
@@ -6321,6 +6338,7 @@ union generic_request
     struct free_console_request free_console_request;
     struct get_console_renderer_events_request get_console_renderer_events_request;
     struct open_console_request open_console_request;
+    struct attach_console_request attach_console_request;
     struct get_console_wait_event_request get_console_wait_event_request;
     struct get_console_mode_request get_console_mode_request;
     struct set_console_mode_request set_console_mode_request;
@@ -6634,6 +6652,7 @@ union generic_reply
     struct free_console_reply free_console_reply;
     struct get_console_renderer_events_reply get_console_renderer_events_reply;
     struct open_console_reply open_console_reply;
+    struct attach_console_reply attach_console_reply;
     struct get_console_wait_event_reply get_console_wait_event_reply;
     struct get_console_mode_reply get_console_mode_reply;
     struct set_console_mode_reply set_console_mode_reply;
