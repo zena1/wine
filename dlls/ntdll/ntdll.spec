@@ -902,6 +902,7 @@
 # @ stub RtlSetThreadPoolStartFunc
 @ stdcall RtlSetTimeZoneInformation(ptr)
 # @ stub RtlSetTimer
+@ stdcall RtlSetUnhandledExceptionFilter(ptr)
 @ stub RtlSetUnicodeCallouts
 @ stub RtlSetUserFlagsHeap
 @ stub RtlSetUserValueHeap

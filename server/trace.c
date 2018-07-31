@@ -5031,13 +5031,13 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_set_job_limits_request,
     (dump_func)dump_set_job_completion_port_request,
     (dump_func)dump_terminate_job_request,
+    (dump_func)dump_get_system_info_request,
+    (dump_func)dump_suspend_process_request,
+    (dump_func)dump_resume_process_request,
     (dump_func)dump_create_esync_request,
     (dump_func)dump_open_esync_request,
     (dump_func)dump_get_esync_fd_request,
     (dump_func)dump_get_esync_apc_fd_request,
-    (dump_func)dump_get_system_info_request,
-    (dump_func)dump_suspend_process_request,
-    (dump_func)dump_resume_process_request,
 };
 
 static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
@@ -5655,13 +5655,13 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "set_job_limits",
     "set_job_completion_port",
     "terminate_job",
+    "get_system_info",
+    "suspend_process",
+    "resume_process",
     "create_esync",
     "open_esync",
     "get_esync_fd",
     "get_esync_apc_fd",
-    "get_system_info",
-    "suspend_process",
-    "resume_process",
 };
 
 static const struct

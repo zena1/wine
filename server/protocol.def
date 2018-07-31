@@ -3975,27 +3975,6 @@ struct handle_info
     int          status;          /* process exit code */
 @END
 
-
-/* Return system information values */
-@REQ(get_system_info)
-@REPLY
-    unsigned int processes;   /* number of processes */
-    unsigned int threads;     /* number of threads */
-    unsigned int handles;     /* number of handles */
-@END
-
-
-/* Suspend a process */
-@REQ(suspend_process)
-    obj_handle_t handle;       /* process handle */
-@END
-
-
-/* Resume a process */
-@REQ(resume_process)
-    obj_handle_t handle;       /* process handle */
-@END
-
 /* Create a new eventfd-based synchronization object */
 @REQ(create_esync)
     unsigned int access;        /* wanted access rights */
@@ -4045,3 +4024,24 @@ enum esync_type
     ESYNC_MANUAL_SERVER,
     ESYNC_QUEUE,
 };
+
+
+/* Return system information values */
+@REQ(get_system_info)
+@REPLY
+    unsigned int processes;   /* number of processes */
+    unsigned int threads;     /* number of threads */
+    unsigned int handles;     /* number of handles */
+@END
+
+
+/* Suspend a process */
+@REQ(suspend_process)
+    obj_handle_t handle;       /* process handle */
+@END
+
+
+/* Resume a process */
+@REQ(resume_process)
+    obj_handle_t handle;       /* process handle */
+@END

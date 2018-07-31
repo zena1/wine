@@ -164,6 +164,60 @@ HRESULT WINAPI DirectInputCreateEx(
     return DI_OK;
 }
 
+#if DIRECTINPUT_VERSION == 0x0800
+/******************************************************************************
+ *	DirectInput8Create (DINPUT8.@)
+ */
+HRESULT WINAPI DECLSPEC_HOTPATCH DirectInput8Create(HINSTANCE hinst, DWORD dwVersion, REFIID riid, LPVOID *ppDI, LPUNKNOWN punkOuter)
+{
+    IDirectInputImpl *This;
+    HRESULT hr;
+
+    TRACE("hInst (%p), dwVersion: %d, riid (%s), punkOuter (%p)\n", hinst, dwVersion, debugstr_guid(riid), punkOuter);
+
+    if (!ppDI)
+        return E_POINTER;
+
+    if (!IsEqualGUID(&IID_IDirectInput8A, riid) &&
+        !IsEqualGUID(&IID_IDirectInput8W, riid) &&
+        !IsEqualGUID(&IID_IUnknown, riid))
+    {
+        *ppDI = NULL;
+        return DIERR_NOINTERFACE;
+    }
+
+    hr = create_directinput_instance(riid, ppDI, &This);
+
+    if (FAILED(hr)) {
+        ERR("CoCreateInstance failed with hr = 0x%08x\n", hr);
+        return hr;
+    }
+
+    /* When aggregation is used (punkOuter!=NULL) the application needs to manually call Initialize. */
+    if(punkOuter == NULL && IsEqualGUID(&IID_IDirectInput8A, riid)) {
+        hr = IDirectInput8_Initialize(&This->IDirectInput8A_iface, hinst, dwVersion);
+        if (FAILED(hr))
+        {
+            IDirectInput8_Release(&This->IDirectInput8A_iface);
+            *ppDI = NULL;
+            return hr;
+        }
+    }
+
+    if(punkOuter == NULL && IsEqualGUID(&IID_IDirectInput8W, riid)) {
+        hr = IDirectInput8_Initialize(&This->IDirectInput8W_iface, hinst, dwVersion);
+        if (FAILED(hr))
+        {
+            IDirectInput8_Release(&This->IDirectInput8W_iface);
+            *ppDI = NULL;
+            return hr;
+        }
+    }
+
+    return S_OK;
+}
+#endif
+
 /******************************************************************************
  *	DirectInputCreateA (DINPUT.@)
  */
@@ -1513,6 +1567,7 @@ static HRESULT WINAPI DICF_CreateInstance(
 	IClassFactoryImpl *This = impl_from_IClassFactory(iface);
 
 	TRACE("(%p)->(%p,%s,%p)\n",This,pOuter,debugstr_guid(riid),ppobj);
+#if DIRECTINPUT_VERSION < 0x0800
         if ( IsEqualGUID( &IID_IUnknown, riid ) ||
              IsEqualGUID( &IID_IDirectInputA, riid ) ||
 	     IsEqualGUID( &IID_IDirectInputW, riid ) ||
@@ -1522,6 +1577,13 @@ static HRESULT WINAPI DICF_CreateInstance(
 	     IsEqualGUID( &IID_IDirectInput7W, riid ) ) {
 		return create_directinput_instance(riid, ppobj, NULL);
 	}
+#else
+	if(  IsEqualGUID( &IID_IDirectInput8A, riid ) ||
+	     IsEqualGUID( &IID_IDirectInput8W, riid ) ||
+	     IsEqualGUID( &IID_IUnknown, riid )) {
+		return create_directinput_instance(riid, ppobj, NULL);
+	}
+#endif
 
 	FIXME("(%p,%p,%s,%p) Interface not found!\n",This,pOuter,debugstr_guid(riid),ppobj);	
 	return E_NOINTERFACE;
@@ -1838,3 +1900,4 @@ BOOL WINAPI DllMain( HINSTANCE inst, DWORD reason, LPVOID reserved)
     }
     return TRUE;
 }
+

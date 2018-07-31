@@ -204,11 +204,11 @@ static inline void init_thread_structure( struct thread *thread )
     thread->suspend         = 0;
     thread->desktop_users   = 0;
     thread->token           = NULL;
-    thread->esync_fd        = -1;
-    thread->esync_apc_fd    = -1;
     thread->exit_poll       = NULL;
     thread->shm_fd          = -1;
     thread->shm             = NULL;
+    thread->esync_fd        = -1;
+    thread->esync_apc_fd    = -1;
 
     thread->creation_time = current_time;
     thread->exit_time     = 0;

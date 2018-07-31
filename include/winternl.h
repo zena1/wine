@@ -1038,7 +1038,8 @@ typedef enum _MEMORY_INFORMATION_CLASS {
     MemoryBasicInformation,
     MemoryWorkingSetList,
     MemorySectionName,
-    MemoryBasicVlmInformation
+    MemoryBasicVlmInformation,
+    MemoryWorkingSetExInformation
 } MEMORY_INFORMATION_CLASS;
 
 typedef struct _MEMORY_SECTION_NAME
