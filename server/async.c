@@ -80,6 +80,7 @@ static const struct object_ops async_ops =
     no_link_name,              /* link_name */
     NULL,                      /* unlink_name */
     no_open_file,              /* open_file */
+    no_alloc_handle,           /* alloc_handle */
     no_close_handle,           /* close_handle */
     async_destroy              /* destroy */
 };
@@ -469,6 +470,7 @@ static const struct object_ops iosb_ops =
     no_link_name,             /* link_name */
     NULL,                     /* unlink_name */
     no_open_file,             /* open_file */
+    no_alloc_handle,          /* alloc_handle */
     no_close_handle,          /* close_handle */
     iosb_destroy              /* destroy */
 };

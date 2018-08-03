@@ -111,35 +111,40 @@ static inline NTSTATUS fast_wait( RTL_CONDITION_VARIABLE *variable, const LARGE_
     if (timeout && timeout->QuadPart != TIMEOUT_INFINITE)
     {
         struct timespec timespec;
-        LONGLONG duration;
+        LONGLONG end, timeleft;
+        LARGE_INTEGER now;
 
-        if (timeout->QuadPart > 0)
-        {
-            LARGE_INTEGER now;
-            NtQuerySystemTime( &now );
-            duration = timeout->QuadPart - now.QuadPart;
-        }
+        if (timeout->QuadPart >= 0)
+            end = timeout->QuadPart;
         else
-            duration = -timeout->QuadPart;
+        {
+            NtQuerySystemTime( &now );
+            end = now.QuadPart - timeout->QuadPart;
+        }
 
-        timespec.tv_sec = duration / TICKSPERSEC;
-        timespec.tv_nsec = (duration % TICKSPERSEC) * 100;
         do
+        {
             val = *((int *)&variable->Ptr);
+
+            NtQuerySystemTime( &now );
+            timeleft = end - now.QuadPart;
+            if (timeleft < 0) timeleft = 0;
+            timespec.tv_sec = timeleft / TICKSPERSEC;
+            timespec.tv_nsec = (timeleft % TICKSPERSEC) * 100;
+        }
         while (val && (ret = futex_wait( (int *)&variable->Ptr, val, &timespec )) == -1
-               && errno == EAGAIN);
+               && errno != ETIMEDOUT);
     }
     else
     {
         do
             val = *((int *)&variable->Ptr);
-        while (val && (ret = futex_wait( (int *)&variable->Ptr, val, NULL )) == -1
-               && errno == EAGAIN);
+        while (val && (ret = futex_wait( (int *)&variable->Ptr, val, NULL )) == -1);
     }
 
-    if (ret == -1 && errno == ETIMEDOUT) return STATUS_TIMEOUT;
-    else if (ret == -1) FIXME("got errno %d %s\n", errno, strerror(errno));
-
+    if (!val) return STATUS_WAIT_0;
+    else if (ret == -1 && errno == ETIMEDOUT) return STATUS_TIMEOUT;
+    else if (ret == -1) ERR("wait failed: %s\n", strerror(errno));
     return STATUS_WAIT_0;
 }
 

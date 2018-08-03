@@ -104,6 +104,9 @@ WINE_DEFAULT_DEBUG_CHANNEL(menubuilder);
 #define in_startmenu(csidl)   ((csidl)==CSIDL_STARTMENU || \
                                (csidl)==CSIDL_COMMON_STARTMENU)
 
+#define IS_OPTION_TRUE(ch) \
+    ((ch) == 'y' || (ch) == 'Y' || (ch) == 't' || (ch) == 'T' || (ch) == '1')
+
 /* On linux we create all menu item entries with an absolute path to wine,
  * in order to allow using multiple wine versions at the same time. */
 #ifdef __linux__
@@ -3628,6 +3631,23 @@ static BOOL init_xdg(void)
     return FALSE;
 }
 
+static BOOL associations_enabled(void)
+{
+    BOOL ret = TRUE;
+    HKEY hkey;
+    BYTE buf[32];
+    DWORD len;
+
+    if (!RegOpenKeyA(HKEY_CURRENT_USER, "Software\\Wine\\MIME-types", &hkey))
+    {
+        len = sizeof(buf);
+        if (!RegQueryValueExA(hkey, "EnableFileAssociations", NULL, NULL, buf, &len))
+            ret = IS_OPTION_TRUE(buf[0]);
+    }
+
+    return ret;
+}
+
 /***********************************************************************
  *
  *           wWinMain
@@ -3663,7 +3683,8 @@ int PASCAL wWinMain (HINSTANCE hInstance, HINSTANCE prev, LPWSTR cmdline, int sh
 	    break;
         if( !strcmpW( token, dash_aW ) )
         {
-            RefreshFileTypeAssociations();
+            if (associations_enabled())
+                RefreshFileTypeAssociations();
             continue;
         }
         if( !strcmpW( token, dash_rW ) )

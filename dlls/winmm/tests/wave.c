@@ -1415,6 +1415,26 @@ static void wave_out_test_device(UINT_PTR device)
     } else
         trace("waveOutOpen(%s): 32 bit float samples not supported\n",
               dev_name(device));
+
+    /* Test invalid parameters */
+
+    format.wFormatTag = WAVE_FORMAT_PCM;
+    format.nChannels = 1;
+    format.nSamplesPerSec = 11025;
+    format.nBlockAlign = 1;
+    format.nAvgBytesPerSec = 11025 * 1;
+    format.wBitsPerSample = 8;
+    format.cbSize = 0;
+
+    format.nAvgBytesPerSec = 0;
+    rc = waveOutOpen(&wout, 0, &format, 0, 0, 0);
+    ok(rc == MMSYSERR_NOERROR, "Got %d\n", rc);
+    waveOutClose(wout);
+    format.nAvgBytesPerSec = 11025 * 1;
+
+    format.nSamplesPerSec = 0;
+    rc = waveOutOpen(&wout, 0, &format, 0, 0, 0);
+    ok(rc == MMSYSERR_INVALPARAM || rc == WAVERR_BADFORMAT, "Got %d\n", rc); /* XP and lower return WAVERR_BADFORMAT */
 }
 
 static void wave_out_tests(void)

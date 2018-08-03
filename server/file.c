@@ -106,6 +106,7 @@ static const struct object_ops file_ops =
     no_link_name,                 /* link_name */
     NULL,                         /* unlink_name */
     file_open_file,               /* open_file */
+    no_alloc_handle,              /* alloc_handle */
     fd_close_handle,              /* close_handle */
     file_destroy                  /* destroy */
 };
@@ -394,6 +395,11 @@ static struct object *create_file( struct fd *root, const char *nameptr, data_si
                             access |= FILE_WRITE_ATTRIBUTES; break;
     default:                set_error( STATUS_INVALID_PARAMETER ); goto done;
     }
+
+#ifdef O_DIRECT
+    if (options & FILE_WRITE_THROUGH)
+        flags |= O_DIRECT;
+#endif
 
     /* Note: inheritance of security descriptors only occurs on creation when sd is NULL */
     if (!sd && (create == FILE_CREATE || create == FILE_OVERWRITE_IF))

@@ -1125,6 +1125,16 @@ struct close_handle_reply
 };
 
 
+struct socket_cleanup_request
+{
+    struct request_header __header;
+    char __pad_12[4];
+};
+struct socket_cleanup_reply
+{
+    struct reply_header __header;
+};
+
 
 struct set_handle_info_request
 {
@@ -1682,6 +1692,18 @@ struct accept_into_socket_request
     char __pad_20[4];
 };
 struct accept_into_socket_reply
+{
+    struct reply_header __header;
+};
+
+
+
+struct reuse_socket_request
+{
+    struct request_header __header;
+    obj_handle_t handle;
+};
+struct reuse_socket_reply
 {
     struct reply_header __header;
 };
@@ -5979,6 +6001,7 @@ enum request
     REQ_queue_apc,
     REQ_get_apc_result,
     REQ_close_handle,
+    REQ_socket_cleanup,
     REQ_set_handle_info,
     REQ_dup_handle,
     REQ_open_process,
@@ -6013,6 +6036,7 @@ enum request
     REQ_create_socket,
     REQ_accept_socket,
     REQ_accept_into_socket,
+    REQ_reuse_socket,
     REQ_set_socket_event,
     REQ_get_socket_event,
     REQ_get_socket_info,
@@ -6295,6 +6319,7 @@ union generic_request
     struct queue_apc_request queue_apc_request;
     struct get_apc_result_request get_apc_result_request;
     struct close_handle_request close_handle_request;
+    struct socket_cleanup_request socket_cleanup_request;
     struct set_handle_info_request set_handle_info_request;
     struct dup_handle_request dup_handle_request;
     struct open_process_request open_process_request;
@@ -6329,6 +6354,7 @@ union generic_request
     struct create_socket_request create_socket_request;
     struct accept_socket_request accept_socket_request;
     struct accept_into_socket_request accept_into_socket_request;
+    struct reuse_socket_request reuse_socket_request;
     struct set_socket_event_request set_socket_event_request;
     struct get_socket_event_request get_socket_event_request;
     struct get_socket_info_request get_socket_info_request;
@@ -6609,6 +6635,7 @@ union generic_reply
     struct queue_apc_reply queue_apc_reply;
     struct get_apc_result_reply get_apc_result_reply;
     struct close_handle_reply close_handle_reply;
+    struct socket_cleanup_reply socket_cleanup_reply;
     struct set_handle_info_reply set_handle_info_reply;
     struct dup_handle_reply dup_handle_reply;
     struct open_process_reply open_process_reply;
@@ -6643,6 +6670,7 @@ union generic_reply
     struct create_socket_reply create_socket_reply;
     struct accept_socket_reply accept_socket_reply;
     struct accept_into_socket_reply accept_into_socket_reply;
+    struct reuse_socket_reply reuse_socket_reply;
     struct set_socket_event_reply set_socket_event_reply;
     struct get_socket_event_reply get_socket_event_reply;
     struct get_socket_info_reply get_socket_info_reply;
@@ -6898,6 +6926,6 @@ union generic_reply
     struct get_esync_apc_fd_reply get_esync_apc_fd_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 564
+#define SERVER_PROTOCOL_VERSION 561
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */
