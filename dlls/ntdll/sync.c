@@ -157,12 +157,12 @@ static inline NTSTATUS fast_wake( RTL_CONDITION_VARIABLE *variable, int val )
 }
 
 #else
-static inline NTSTATUS fast_wait( RTL_CRITICAL_SECTION *crit, int timeout )
+static inline NTSTATUS fast_wait( RTL_CONDITION_VARIABLE *variable, const LARGE_INTEGER *timeout )
 {
     return STATUS_NOT_IMPLEMENTED;
 }
 
-static inline NTSTATUS fast_wake( RTL_CRITICAL_SECTION *crit )
+static inline NTSTATUS fast_wake( RTL_CONDITION_VARIABLE *variable, int val )
 {
     return STATUS_NOT_IMPLEMENTED;
 }

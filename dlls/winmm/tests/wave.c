@@ -1427,14 +1427,16 @@ static void wave_out_test_device(UINT_PTR device)
     format.cbSize = 0;
 
     format.nAvgBytesPerSec = 0;
-    rc = waveOutOpen(&wout, 0, &format, 0, 0, 0);
-    ok(rc == MMSYSERR_NOERROR, "Got %d\n", rc);
+    rc = waveOutOpen(&wout, device, &format, 0, 0, 0);
+    ok(rc == MMSYSERR_NOERROR,
+       "waveOutOpen(%s): returned %s\n",dev_name(device),wave_out_error(rc));
     waveOutClose(wout);
     format.nAvgBytesPerSec = 11025 * 1;
 
     format.nSamplesPerSec = 0;
-    rc = waveOutOpen(&wout, 0, &format, 0, 0, 0);
-    ok(rc == MMSYSERR_INVALPARAM || rc == WAVERR_BADFORMAT, "Got %d\n", rc); /* XP and lower return WAVERR_BADFORMAT */
+    rc = waveOutOpen(&wout, device, &format, 0, 0, 0);
+    ok(rc == MMSYSERR_INVALPARAM || rc == WAVERR_BADFORMAT, /* XP and lower return WAVERR_BADFORMAT */
+       "waveOutOpen(%s): returned %s\n",dev_name(device),wave_out_error(rc));
 }
 
 static void wave_out_tests(void)
