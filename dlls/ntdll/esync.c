@@ -30,11 +30,9 @@
 # include <sys/poll.h>
 #endif
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
-#ifdef HAVE_SYS_EVENTFD_H
-# include <sys/eventfd.h>
-#endif
 #ifdef HAVE_SYS_MMAN_H
 # include <sys/mman.h>
 #endif
@@ -50,10 +48,6 @@
 
 #include "ntdll_misc.h"
 #include "esync.h"
-
-#ifndef EFD_SEMAPHORE
-#define EFD_SEMAPHORE 1
-#endif
 
 WINE_DEFAULT_DEBUG_CHANNEL(esync);
 
@@ -114,9 +108,28 @@ static void **shm_addrs;
 static int shm_addrs_size;  /* length of the allocated shm_addrs array */
 static long pagesize;
 
+static NTSTATUS create_esync( enum esync_type type, HANDLE *handle,
+    ACCESS_MASK access, const OBJECT_ATTRIBUTES *attr, int initval );
+
 void esync_init(void)
 {
     struct stat st;
+
+    if (!do_esync())
+    {
+        /* make sure the server isn't running with WINEESYNC */
+        HANDLE handle;
+        NTSTATUS ret;
+
+        ret = create_esync( 0, &handle, 0, NULL, 0 );
+        if (ret != STATUS_NOT_IMPLEMENTED)
+        {
+            ERR("Server is running with WINEESYNC but this process is not, please enable WINEESYNC or restart wineserver.\n");
+            exit(1);
+        }
+
+        return;
+    }
 
     if (stat( wine_get_config_dir(), &st ) == -1)
         ERR("Cannot stat %s\n", wine_get_config_dir());
@@ -127,7 +140,14 @@ void esync_init(void)
         sprintf( shm_name, "/wine-%lx-esync", (unsigned long)st.st_ino );
 
     if ((shm_fd = shm_open( shm_name, O_RDWR, 0644 )) == -1)
-        ERR("Failed to initialize shared memory: %s\n", strerror( errno ));
+    {
+        /* probably the server isn't running with WINEESYNC, tell the user and bail */
+        if (errno == ENOENT)
+            ERR("Failed to open esync shared memory file; make sure no stale wineserver instances are running without WINEESYNC.\n");
+        else
+            ERR("Failed to initialize shared memory: %s\n", strerror( errno ));
+        exit(1);
+    }
 
     pagesize = sysconf( _SC_PAGESIZE );
 
@@ -194,7 +214,7 @@ static struct esync *add_to_list( HANDLE handle, enum esync_type type, int fd, v
         if (!entry) esync_list[0] = esync_list_initial_block;
         else
         {
-            void *ptr = wine_anon_mmap( NULL, ESYNC_LIST_BLOCK_SIZE * sizeof(struct esync *),
+            void *ptr = wine_anon_mmap( NULL, ESYNC_LIST_BLOCK_SIZE * sizeof(struct esync),
                                         PROT_READ | PROT_WRITE, 0 );
             if (ptr == MAP_FAILED) return FALSE;
             esync_list[entry] = ptr;
@@ -300,7 +320,7 @@ NTSTATUS esync_close( HANDLE handle )
 }
 
 static NTSTATUS create_esync( enum esync_type type, HANDLE *handle,
-    ACCESS_MASK access, const OBJECT_ATTRIBUTES *attr, int initval, int flags )
+    ACCESS_MASK access, const OBJECT_ATTRIBUTES *attr, int initval )
 {
     NTSTATUS ret;
     data_size_t len;
@@ -319,7 +339,6 @@ static NTSTATUS create_esync( enum esync_type type, HANDLE *handle,
     {
         req->access  = access;
         req->initval = initval;
-        req->flags   = flags;
         req->type    = type;
         wine_server_add_data( req, objattr, len );
         ret = wine_server_call( req );
@@ -411,7 +430,7 @@ NTSTATUS esync_create_semaphore(HANDLE *handle, ACCESS_MASK access,
      * before anyone else can open the object. */
     RtlEnterCriticalSection( &shm_init_section );
 
-    ret = create_esync( ESYNC_SEMAPHORE, handle, access, attr, initial, EFD_SEMAPHORE );
+    ret = create_esync( ESYNC_SEMAPHORE, handle, access, attr, initial );
     if (!ret)
     {
         /* Initialize the shared memory portion.
@@ -512,7 +531,7 @@ NTSTATUS esync_create_event( HANDLE *handle, ACCESS_MASK access,
 
     RtlEnterCriticalSection( &shm_init_section );
 
-    ret = create_esync( type, handle, access, attr, initial, 0 );
+    ret = create_esync( type, handle, access, attr, initial );
 
     if (!ret)
     {
@@ -709,7 +728,7 @@ NTSTATUS esync_create_mutex( HANDLE *handle, ACCESS_MASK access,
 
     RtlEnterCriticalSection( &shm_init_section );
 
-    ret = create_esync( ESYNC_MUTEX, handle, access, attr, initial ? 0 : 1, 0 );
+    ret = create_esync( ESYNC_MUTEX, handle, access, attr, initial ? 0 : 1 );
     if (!ret)
     {
         /* Initialize the shared memory portion. */

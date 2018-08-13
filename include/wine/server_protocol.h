@@ -5907,10 +5907,8 @@ struct create_esync_request
     struct request_header __header;
     unsigned int access;
     int          initval;
-    int          flags;
     int          type;
     /* VARARG(objattr,object_attributes); */
-    char __pad_28[4];
 };
 struct create_esync_reply
 {
