@@ -198,7 +198,9 @@ static ULONG DirectSoundDevice_AddRef(DirectSoundDevice * device)
 static ULONG DirectSoundDevice_Release(DirectSoundDevice * device)
 {
     HRESULT hr;
-    ULONG ref = InterlockedDecrement(&(device->ref));
+    ULONG ref;
+    Sleep(100);
+    ref = InterlockedDecrement(&(device->ref));
     TRACE("(%p) ref was %u\n", device, ref + 1);
     if (!ref) {
         int i;
