@@ -6957,12 +6957,6 @@ static void shader_glsl_setup_sm3_rasterizer_input(struct shader_glsl_priv *priv
         {
             shader_glsl_generate_clip_or_cull_distances(buffer, output, reg_maps_out->cull_distance_mask);
         }
-        else if (output->sysval_semantic == WINED3D_SV_CLIP_DISTANCE)
-        {
-            gl_info->gl_ops.gl.p_glEnable(GL_CLIP_DISTANCE0+semantic_idx);
-            shader_addline(buffer, "gl_ClipDistance[%u] = outputs[%u]%s;\n",
-                    semantic_idx, output->register_idx, reg_mask);
-        }
         else if (output->sysval_semantic)
         {
             FIXME("Unhandled sysval semantic %#x.\n", output->sysval_semantic);
