@@ -1145,7 +1145,7 @@ static void dump_varargs_filesystem_event( const char *prefix, data_size_t size 
         data_size_t len = (offsetof( struct filesystem_event, name[event->len] ) + sizeof(int)-1)
                            / sizeof(int) * sizeof(int);
         if (size < len) break;
-        if (event->action < sizeof(actions)/sizeof(actions[0]) && actions[event->action])
+        if (event->action < ARRAY_SIZE( actions ) && actions[event->action])
             fprintf( stderr, "{action=%s", actions[event->action] );
         else
             fprintf( stderr, "{action=%u", event->action );
@@ -1245,6 +1245,13 @@ static void dump_new_process_reply( const struct new_process_reply *req )
     fprintf( stderr, " info=%04x", req->info );
     fprintf( stderr, ", pid=%04x", req->pid );
     fprintf( stderr, ", handle=%04x", req->handle );
+}
+
+static void dump_exec_process_request( const struct exec_process_request *req )
+{
+    fprintf( stderr, " socket_fd=%d", req->socket_fd );
+    fprintf( stderr, ", exe_file=%04x", req->exe_file );
+    dump_cpu_type( ", cpu=", &req->cpu );
 }
 
 static void dump_get_new_process_info_request( const struct get_new_process_info_request *req )
@@ -3052,21 +3059,6 @@ static void dump_create_named_pipe_reply( const struct create_named_pipe_reply *
     fprintf( stderr, " handle=%04x", req->handle );
 }
 
-static void dump_get_named_pipe_info_request( const struct get_named_pipe_info_request *req )
-{
-    fprintf( stderr, " handle=%04x", req->handle );
-}
-
-static void dump_get_named_pipe_info_reply( const struct get_named_pipe_info_reply *req )
-{
-    fprintf( stderr, " flags=%08x", req->flags );
-    fprintf( stderr, ", sharing=%08x", req->sharing );
-    fprintf( stderr, ", maxinstances=%08x", req->maxinstances );
-    fprintf( stderr, ", instances=%08x", req->instances );
-    fprintf( stderr, ", outsize=%08x", req->outsize );
-    fprintf( stderr, ", insize=%08x", req->insize );
-}
-
 static void dump_set_named_pipe_info_request( const struct set_named_pipe_info_request *req )
 {
     fprintf( stderr, " handle=%04x", req->handle );
@@ -4495,23 +4487,13 @@ static void dump_add_fd_completion_request( const struct add_fd_completion_reque
     dump_uint64( ", cvalue=", &req->cvalue );
     dump_uint64( ", information=", &req->information );
     fprintf( stderr, ", status=%08x", req->status );
-    fprintf( stderr, ", force=%d", req->force );
+    fprintf( stderr, ", async=%d", req->async );
 }
 
-static void dump_set_fd_compl_info_request( const struct set_fd_compl_info_request *req )
+static void dump_set_fd_completion_mode_request( const struct set_fd_completion_mode_request *req )
 {
     fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", flags=%d", req->flags );
-}
-
-static void dump_get_fd_compl_info_request( const struct get_fd_compl_info_request *req )
-{
-    fprintf( stderr, " handle=%04x", req->handle );
-}
-
-static void dump_get_fd_compl_info_reply( const struct get_fd_compl_info_reply *req )
-{
-    fprintf( stderr, " flags=%d", req->flags );
+    fprintf( stderr, ", flags=%08x", req->flags );
 }
 
 static void dump_set_fd_disp_info_request( const struct set_fd_disp_info_request *req )
@@ -4740,6 +4722,7 @@ static void dump_esync_msgwait_request( const struct esync_msgwait_request *req 
 
 static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_new_process_request,
+    (dump_func)dump_exec_process_request,
     (dump_func)dump_get_new_process_info_request,
     (dump_func)dump_new_thread_request,
     (dump_func)dump_get_startup_info_request,
@@ -4900,7 +4883,6 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_ioctl_request,
     (dump_func)dump_set_irp_result_request,
     (dump_func)dump_create_named_pipe_request,
-    (dump_func)dump_get_named_pipe_info_request,
     (dump_func)dump_set_named_pipe_info_request,
     (dump_func)dump_create_window_request,
     (dump_func)dump_destroy_window_request,
@@ -5023,8 +5005,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_query_completion_request,
     (dump_func)dump_set_completion_info_request,
     (dump_func)dump_add_fd_completion_request,
-    (dump_func)dump_set_fd_compl_info_request,
-    (dump_func)dump_get_fd_compl_info_request,
+    (dump_func)dump_set_fd_completion_mode_request,
     (dump_func)dump_set_fd_disp_info_request,
     (dump_func)dump_set_fd_name_info_request,
     (dump_func)dump_set_fd_eof_info_request,
@@ -5055,6 +5036,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
 
 static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_new_process_reply,
+    NULL,
     (dump_func)dump_get_new_process_info_reply,
     (dump_func)dump_new_thread_reply,
     (dump_func)dump_get_startup_info_reply,
@@ -5215,7 +5197,6 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_ioctl_reply,
     NULL,
     (dump_func)dump_create_named_pipe_reply,
-    (dump_func)dump_get_named_pipe_info_reply,
     NULL,
     (dump_func)dump_create_window_reply,
     NULL,
@@ -5339,7 +5320,6 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     NULL,
     NULL,
     NULL,
-    (dump_func)dump_get_fd_compl_info_reply,
     NULL,
     NULL,
     NULL,
@@ -5370,6 +5350,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
 
 static const char * const req_names[REQ_NB_REQUESTS] = {
     "new_process",
+    "exec_process",
     "get_new_process_info",
     "new_thread",
     "get_startup_info",
@@ -5530,7 +5511,6 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "ioctl",
     "set_irp_result",
     "create_named_pipe",
-    "get_named_pipe_info",
     "set_named_pipe_info",
     "create_window",
     "destroy_window",
@@ -5653,8 +5633,7 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "query_completion",
     "set_completion_info",
     "add_fd_completion",
-    "set_fd_compl_info",
-    "get_fd_compl_info",
+    "set_fd_completion_mode",
     "set_fd_disp_info",
     "set_fd_name_info",
     "set_fd_eof_info",

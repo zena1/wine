@@ -106,7 +106,7 @@ static const struct fd_ops mailslot_fd_ops =
     no_fd_read,                 /* read */
     no_fd_write,                /* write */
     no_fd_flush,                /* flush */
-    no_fd_get_file_info,        /* get_file_info */
+    default_fd_get_file_info,   /* get_file_info */
     no_fd_get_volume_info,      /* get_volume_info */
     default_fd_ioctl,           /* ioctl */
     mailslot_queue_async,       /* queue_async */
@@ -163,7 +163,7 @@ static const struct fd_ops mail_writer_fd_ops =
     no_fd_read,                  /* read */
     no_fd_write,                 /* write */
     no_fd_flush,                 /* flush */
-    no_fd_get_file_info,         /* get_file_info */
+    default_fd_get_file_info,    /* get_file_info */
     no_fd_get_volume_info,       /* get_volume_info */
     default_fd_ioctl,            /* ioctl */
     default_fd_queue_async,      /* queue_async */
@@ -220,7 +220,7 @@ static const struct fd_ops mailslot_device_fd_ops =
     no_fd_read,                     /* read */
     no_fd_write,                    /* write */
     no_fd_flush,                    /* flush */
-    no_fd_get_file_info,            /* get_file_info */
+    default_fd_get_file_info,       /* get_file_info */
     no_fd_get_volume_info,          /* get_volume_info */
     default_fd_ioctl,               /* ioctl */
     default_fd_queue_async,         /* queue_async */

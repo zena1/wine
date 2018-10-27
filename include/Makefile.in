@@ -83,6 +83,7 @@ SOURCES = \
 	cvconst.h \
 	d2d1.idl \
 	d2d1_1.idl \
+	d2d1_2.idl \
 	d2dbasetypes.h \
 	d2derr.h \
 	d3d.h \
@@ -611,6 +612,7 @@ SOURCES = \
 	strsafe.h \
 	structuredquerycondition.idl \
 	svrapi.h \
+	synchapi.h \
 	t2embapi.h \
 	tapi.h \
 	taskschd.idl \

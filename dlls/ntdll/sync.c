@@ -67,6 +67,8 @@ WINE_DEFAULT_DEBUG_CHANNEL(ntdll);
 
 HANDLE keyed_event = NULL;
 
+
+static const LARGE_INTEGER zero_timeout;
 #define TICKSPERSEC        10000000
 
 #ifdef __linux__
@@ -198,6 +200,7 @@ static inline NTSTATUS fast_wake( RTL_CONDITION_VARIABLE *variable, int val )
     return STATUS_NOT_IMPLEMENTED;
 }
 #endif
+
 
 static inline int interlocked_dec_if_nonzero( int *dest )
 {
@@ -1378,6 +1381,7 @@ NTSTATUS WINAPI NtWaitForKeyedEvent( HANDLE handle, const void *key,
     select_op_t select_op;
     UINT flags = SELECT_INTERRUPTIBLE;
 
+    if (!handle) handle = keyed_event;
     if ((ULONG_PTR)key & 1) return STATUS_INVALID_PARAMETER_1;
     if (alertable) flags |= SELECT_ALERTABLE;
     select_op.keyed_event.op     = SELECT_KEYED_EVENT_WAIT;
@@ -1395,6 +1399,7 @@ NTSTATUS WINAPI NtReleaseKeyedEvent( HANDLE handle, const void *key,
     select_op_t select_op;
     UINT flags = SELECT_INTERRUPTIBLE;
 
+    if (!handle) handle = keyed_event;
     if ((ULONG_PTR)key & 1) return STATUS_INVALID_PARAMETER_1;
     if (alertable) flags |= SELECT_ALERTABLE;
     select_op.keyed_event.op     = SELECT_KEYED_EVENT_RELEASE;
@@ -1713,7 +1718,7 @@ DWORD WINAPI RtlRunOnceBeginInitialize( RTL_RUN_ONCE *once, ULONG flags, void **
             next = val & ~3;
             if (interlocked_cmpxchg_ptr( &once->Ptr, (void *)((ULONG_PTR)&next | 1),
                                          (void *)val ) == (void *)val)
-                NtWaitForKeyedEvent( keyed_event, &next, FALSE, NULL );
+                NtWaitForKeyedEvent( 0, &next, FALSE, NULL );
             break;
 
         case 2:  /* done */
@@ -1753,7 +1758,7 @@ DWORD WINAPI RtlRunOnceComplete( RTL_RUN_ONCE *once, ULONG flags, void *context 
             while (val)
             {
                 ULONG_PTR next = *(ULONG_PTR *)val;
-                NtReleaseKeyedEvent( keyed_event, (void *)val, FALSE, NULL );
+                NtReleaseKeyedEvent( 0, (void *)val, FALSE, NULL );
                 val = next;
             }
             return STATUS_SUCCESS;
@@ -1893,12 +1898,12 @@ static inline void srwlock_leave_exclusive( RTL_SRWLOCK *lock, unsigned int val 
      * exclusive access threads they are processed first, followed by
      * the shared waiters. */
     if (val & SRWLOCK_MASK_EXCLUSIVE_QUEUE)
-        NtReleaseKeyedEvent( keyed_event, srwlock_key_exclusive(lock), FALSE, NULL );
+        NtReleaseKeyedEvent( 0, srwlock_key_exclusive(lock), FALSE, NULL );
     else
     {
         val &= SRWLOCK_MASK_SHARED_QUEUE; /* remove SRWLOCK_MASK_IN_EXCLUSIVE */
         while (val--)
-            NtReleaseKeyedEvent( keyed_event, srwlock_key_shared(lock), FALSE, NULL );
+            NtReleaseKeyedEvent( 0, srwlock_key_shared(lock), FALSE, NULL );
     }
 }
 
@@ -1907,7 +1912,7 @@ static inline void srwlock_leave_shared( RTL_SRWLOCK *lock, unsigned int val )
     /* Wake up one exclusive thread as soon as the last shared access thread
      * has left. */
     if ((val & SRWLOCK_MASK_EXCLUSIVE_QUEUE) && !(val & SRWLOCK_MASK_SHARED_QUEUE))
-        NtReleaseKeyedEvent( keyed_event, srwlock_key_exclusive(lock), FALSE, NULL );
+        NtReleaseKeyedEvent( 0, srwlock_key_exclusive(lock), FALSE, NULL );
 }
 
 /***********************************************************************
@@ -1936,7 +1941,7 @@ void WINAPI RtlInitializeSRWLock( RTL_SRWLOCK *lock )
 void WINAPI RtlAcquireSRWLockExclusive( RTL_SRWLOCK *lock )
 {
     if (srwlock_lock_exclusive( (unsigned int *)&lock->Ptr, SRWLOCK_RES_EXCLUSIVE ))
-        NtWaitForKeyedEvent( keyed_event, srwlock_key_exclusive(lock), FALSE, NULL );
+        NtWaitForKeyedEvent( 0, srwlock_key_exclusive(lock), FALSE, NULL );
 }
 
 /***********************************************************************
@@ -1964,14 +1969,14 @@ void WINAPI RtlAcquireSRWLockShared( RTL_SRWLOCK *lock )
     /* Drop exclusive access again and instead requeue for shared access. */
     if ((val & SRWLOCK_MASK_EXCLUSIVE_QUEUE) && !(val & SRWLOCK_MASK_IN_EXCLUSIVE))
     {
-        NtWaitForKeyedEvent( keyed_event, srwlock_key_exclusive(lock), FALSE, NULL );
+        NtWaitForKeyedEvent( 0, srwlock_key_exclusive(lock), FALSE, NULL );
         val = srwlock_unlock_exclusive( (unsigned int *)&lock->Ptr, (SRWLOCK_RES_SHARED
                                         - SRWLOCK_RES_EXCLUSIVE) ) - SRWLOCK_RES_EXCLUSIVE;
         srwlock_leave_exclusive( lock, val );
     }
 
     if (val & SRWLOCK_MASK_EXCLUSIVE_QUEUE)
-        NtWaitForKeyedEvent( keyed_event, srwlock_key_shared(lock), FALSE, NULL );
+        NtWaitForKeyedEvent( 0, srwlock_key_shared(lock), FALSE, NULL );
 }
 
 /***********************************************************************
@@ -2165,4 +2170,51 @@ NTSTATUS WINAPI RtlSleepConditionVariableSRW( RTL_CONDITION_VARIABLE *variable, 
             RtlAcquireSRWLockExclusive( lock );
     }
     return status;
+}
+
+/***********************************************************************
+ *           RtlWaitOnAddress   (NTDLL.@)
+ */
+NTSTATUS WINAPI RtlWaitOnAddress( const void *addr, const void *cmp, SIZE_T size,
+                                  const LARGE_INTEGER *timeout )
+{
+    switch (size)
+    {
+        case 1:
+            if (*(const UCHAR *)addr != *(const UCHAR *)cmp)
+                return STATUS_SUCCESS;
+            break;
+        case 2:
+            if (*(const USHORT *)addr != *(const USHORT *)cmp)
+                return STATUS_SUCCESS;
+            break;
+        case 4:
+            if (*(const ULONG *)addr != *(const ULONG *)cmp)
+                return STATUS_SUCCESS;
+            break;
+        case 8:
+            if (*(const ULONG64 *)addr != *(const ULONG64 *)cmp)
+                return STATUS_SUCCESS;
+            break;
+        default:
+            return STATUS_INVALID_PARAMETER;
+    }
+
+    return NtWaitForKeyedEvent( 0, addr, 0, timeout );
+}
+
+/***********************************************************************
+ *           RtlWakeAddressAll    (NTDLL.@)
+ */
+void WINAPI RtlWakeAddressAll( const void *addr )
+{
+    while (NtReleaseKeyedEvent( 0, addr, 0, &zero_timeout ) == STATUS_SUCCESS) {}
+}
+
+/***********************************************************************
+ *           RtlWakeAddressSingle (NTDLL.@)
+ */
+void WINAPI RtlWakeAddressSingle( const void *addr )
+{
+    NtReleaseKeyedEvent( 0, addr, 0, &zero_timeout );
 }

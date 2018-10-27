@@ -5542,7 +5542,7 @@ int WINAPI WSAPoll(WSAPOLLFD *wfds, ULONG count, int timeout)
 
 /* helper to send completion messages for client-only i/o operation case */
 static void WS_AddCompletion( SOCKET sock, ULONG_PTR CompletionValue, NTSTATUS CompletionStatus,
-                              ULONG Information, BOOL force )
+                              ULONG Information, BOOL async )
 {
     SERVER_START_REQ( add_fd_completion )
     {
@@ -5550,7 +5550,7 @@ static void WS_AddCompletion( SOCKET sock, ULONG_PTR CompletionValue, NTSTATUS C
         req->cvalue      = CompletionValue;
         req->status      = CompletionStatus;
         req->information = Information;
-        req->force       = force;
+        req->async       = async;
         wine_server_call( req );
     }
     SERVER_END_REQ;

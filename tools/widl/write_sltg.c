@@ -1819,7 +1819,6 @@ static void save_all_changes(struct sltg_typelib *typelib)
             sprintf(typelib_id, "#%d", expr->cval);
         add_output_to_resources("TYPELIB", typelib_id);
         output_typelib_regscript(typelib->typelib);
-        flush_output_resources(typelib_name);
     }
     else flush_output_buffer(typelib_name);
 }
