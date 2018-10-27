@@ -5627,99 +5627,6 @@ BOOL WINAPI DestroyPrivateObjectSecurity( PSECURITY_DESCRIPTOR* ObjectDescriptor
     return TRUE;
 }
 
-BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessAsUserA(
-        HANDLE hToken,
-        LPCSTR lpApplicationName,
-        LPSTR lpCommandLine,
-        LPSECURITY_ATTRIBUTES lpProcessAttributes,
-        LPSECURITY_ATTRIBUTES lpThreadAttributes,
-        BOOL bInheritHandles,
-        DWORD dwCreationFlags,
-        LPVOID lpEnvironment,
-        LPCSTR lpCurrentDirectory,
-        LPSTARTUPINFOA lpStartupInfo,
-        LPPROCESS_INFORMATION lpProcessInformation )
-{
-    BOOL ret;
-    WCHAR *appW, *cmdlnW, *cwdW;
-    STARTUPINFOW sinfo;
-
-    TRACE("%p %s %s %p %p %d 0x%08x %p %s %p %p\n", hToken, debugstr_a(lpApplicationName),
-          debugstr_a(lpCommandLine), lpProcessAttributes, lpThreadAttributes, bInheritHandles,
-          dwCreationFlags, lpEnvironment, debugstr_a(lpCurrentDirectory), lpStartupInfo, lpProcessInformation);
-
-    appW = SERV_dup(lpApplicationName);
-    cmdlnW = SERV_dup(lpCommandLine);
-    cwdW = SERV_dup(lpCurrentDirectory);
-    sinfo.cb = sizeof(sinfo);
-    sinfo.lpReserved = SERV_dup(lpStartupInfo->lpReserved);
-    sinfo.lpDesktop = SERV_dup(lpStartupInfo->lpDesktop);
-    sinfo.lpTitle = SERV_dup(lpStartupInfo->lpTitle);
-    sinfo.dwX = lpStartupInfo->dwX;
-    sinfo.dwY = lpStartupInfo->dwY;
-    sinfo.dwXSize = lpStartupInfo->dwXSize;
-    sinfo.dwYSize = lpStartupInfo->dwYSize;
-    sinfo.dwXCountChars = lpStartupInfo->dwXCountChars;
-    sinfo.dwYCountChars = lpStartupInfo->dwYCountChars;
-    sinfo.dwFillAttribute = lpStartupInfo->dwFillAttribute;
-    sinfo.dwFlags = lpStartupInfo->dwFlags;
-    sinfo.wShowWindow = lpStartupInfo->wShowWindow;
-    sinfo.cbReserved2 = lpStartupInfo->cbReserved2;
-    sinfo.lpReserved2 = lpStartupInfo->lpReserved2;
-    sinfo.hStdInput = lpStartupInfo->hStdInput;
-    sinfo.hStdOutput = lpStartupInfo->hStdOutput;
-    sinfo.hStdError = lpStartupInfo->hStdError;
-    ret = CreateProcessAsUserW(hToken, appW, cmdlnW, lpProcessAttributes,
-            lpThreadAttributes, bInheritHandles, dwCreationFlags,
-            lpEnvironment, cwdW, &sinfo, lpProcessInformation);
-    heap_free(appW);
-    heap_free(cmdlnW);
-    heap_free(cwdW);
-    heap_free(sinfo.lpReserved);
-    heap_free(sinfo.lpDesktop);
-    heap_free(sinfo.lpTitle);
-
-    return ret;
-}
-
-BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessAsUserW(
-        HANDLE hToken,
-        LPCWSTR lpApplicationName,
-        LPWSTR lpCommandLine,
-        LPSECURITY_ATTRIBUTES lpProcessAttributes,
-        LPSECURITY_ATTRIBUTES lpThreadAttributes,
-        BOOL bInheritHandles,
-        DWORD dwCreationFlags,
-        LPVOID lpEnvironment,
-        LPCWSTR lpCurrentDirectory,
-        LPSTARTUPINFOW lpStartupInfo,
-        LPPROCESS_INFORMATION lpProcessInformation )
-{
-    TRACE("%p %s %s %p %p %d 0x%08x %p %s %p %p\n", hToken,
-          debugstr_w(lpApplicationName), debugstr_w(lpCommandLine), lpProcessAttributes,
-          lpThreadAttributes, bInheritHandles, dwCreationFlags, lpEnvironment, 
-          debugstr_w(lpCurrentDirectory), lpStartupInfo, lpProcessInformation);
-
-    /* We should create the process with a suspended main thread */
-    if (!CreateProcessInternalW(hToken,
-                         lpApplicationName,
-                         lpCommandLine,
-                         lpProcessAttributes,
-                         lpThreadAttributes,
-                         bInheritHandles,
-                         dwCreationFlags, /* CREATE_SUSPENDED */
-                         lpEnvironment,
-                         lpCurrentDirectory,
-                         lpStartupInfo,
-                         lpProcessInformation,
-                         NULL))
-    {
-      return FALSE;
-    }
-
-    return TRUE;
-}
-
 /******************************************************************************
  * CreateProcessWithLogonW
  */
@@ -5739,14 +5646,14 @@ BOOL WINAPI CreateProcessWithTokenW(HANDLE token, DWORD logon_flags, LPCWSTR app
         DWORD creation_flags, void *environment, LPCWSTR current_directory, STARTUPINFOW *startup_info,
         PROCESS_INFORMATION *process_information )
 {
-    TRACE("%p 0x%08x %s %s 0x%08x %p %s %p %p\n", token,
+    FIXME("%p 0x%08x %s %s 0x%08x %p %s %p %p - semi-stub\n", token,
           logon_flags, debugstr_w(application_name), debugstr_w(command_line),
           creation_flags, environment, debugstr_w(current_directory),
           startup_info, process_information);
 
     /* FIXME: check if handles should be inherited */
-    return CreateProcessInternalW( token, application_name, command_line, NULL, NULL, FALSE, creation_flags, environment,
-                                   current_directory, startup_info, process_information, NULL );
+    return CreateProcessW( application_name, command_line, NULL, NULL, FALSE, creation_flags, environment,
+                           current_directory, startup_info, process_information );
 }
 
 /******************************************************************************

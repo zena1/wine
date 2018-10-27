@@ -770,6 +770,14 @@ struct rawinput_device
 @END
 
 
+/* Execute a process, replacing the current one */
+@REQ(exec_process)
+    int          socket_fd;      /* file descriptor for process socket */
+    obj_handle_t exe_file;       /* file handle for main exe */
+    cpu_type_t   cpu;            /* CPU that the new process will use */
+@END
+
+
 /* Retrieve information about a newly started process */
 @REQ(get_new_process_info)
     obj_handle_t info;           /* info handle returned from new_process_request */
@@ -2505,18 +2513,6 @@ enum message_type
 #define NAMED_PIPE_NONBLOCKING_MODE     0x0004
 #define NAMED_PIPE_SERVER_END           0x8000
 
-/* Get named pipe information by handle */
-@REQ(get_named_pipe_info)
-    obj_handle_t   handle;
-@REPLY
-    unsigned int   flags;
-    unsigned int   sharing;
-    unsigned int   maxinstances;
-    unsigned int   instances;
-    unsigned int   outsize;
-    unsigned int   insize;
-@END
-
 /* Set named pipe information by handle */
 @REQ(set_named_pipe_info)
     obj_handle_t   handle;
@@ -3805,23 +3801,14 @@ struct handle_info
     apc_param_t    cvalue;        /* completion value */
     apc_param_t    information;   /* IO_STATUS_BLOCK Information */
     unsigned int   status;        /* completion status */
-    int            force;         /* don't check if skip-on-success is set */
+    int            async;         /* completion is an async result */
 @END
 
 
 /* set fd completion information */
-@REQ(set_fd_compl_info)
+@REQ(set_fd_completion_mode)
     obj_handle_t handle;          /* handle to a file or directory */
-    int          flags;           /* completion flags (see below) */
-@END
-#define COMPLETION_SKIP_ON_SUCCESS 0x01
-
-
-/* get fd completion information */
-@REQ(get_fd_compl_info)
-    obj_handle_t handle;          /* handle to a file or directory */
-@REPLY
-    int          flags;           /* completion flags (see below) */
+    unsigned int flags;           /* completion notification flags */
 @END
 
 

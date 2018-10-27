@@ -383,7 +383,7 @@ void async_set_result( struct object *obj, unsigned int status, apc_param_t tota
             thread_queue_apc( NULL, async->thread, NULL, &data );
         }
         else if (async->data.apc_context && (!async->direct_result ||
-                 !(async->comp_flags & COMPLETION_SKIP_ON_SUCCESS)))
+                 !(async->comp_flags & FILE_SKIP_COMPLETION_PORT_ON_SUCCESS)))
         {
             add_async_completion( async, async->data.apc_context, status, total );
         }

@@ -546,7 +546,7 @@ static inline void main_loop_epoll(void)
         if (!active_users) break;  /* last user removed by a timeout */
         if (epoll_fd == -1) break;  /* an error occurred with epoll */
 
-        ret = epoll_wait( epoll_fd, events, sizeof(events)/sizeof(events[0]), timeout );
+        ret = epoll_wait( epoll_fd, events, ARRAY_SIZE( events ), timeout );
         set_current_time();
 
         /* put the events into the pollfd array first, like poll does */
@@ -657,9 +657,9 @@ static inline void main_loop_epoll(void)
 
             ts.tv_sec = timeout / 1000;
             ts.tv_nsec = (timeout % 1000) * 1000000;
-            ret = kevent( kqueue_fd, NULL, 0, events, sizeof(events)/sizeof(events[0]), &ts );
+            ret = kevent( kqueue_fd, NULL, 0, events, ARRAY_SIZE( events ), &ts );
         }
-        else ret = kevent( kqueue_fd, NULL, 0, events, sizeof(events)/sizeof(events[0]), NULL );
+        else ret = kevent( kqueue_fd, NULL, 0, events, ARRAY_SIZE( events ), NULL );
 
         set_current_time();
 
@@ -761,9 +761,9 @@ static inline void main_loop_epoll(void)
 
             ts.tv_sec = timeout / 1000;
             ts.tv_nsec = (timeout % 1000) * 1000000;
-            ret = port_getn( port_fd, events, sizeof(events)/sizeof(events[0]), &nget, &ts );
+            ret = port_getn( port_fd, events, ARRAY_SIZE( events ), &nget, &ts );
         }
-        else ret = port_getn( port_fd, events, sizeof(events)/sizeof(events[0]), &nget, NULL );
+        else ret = port_getn( port_fd, events, ARRAY_SIZE( events ), &nget, NULL );
 
 	if (ret == -1) break;  /* an error occurred with event completion */
 
@@ -2239,9 +2239,43 @@ int no_fd_flush( struct fd *fd, struct async *async )
 }
 
 /* default get_file_info() routine */
-void no_fd_get_file_info( struct fd *fd, unsigned int info_class )
+void no_fd_get_file_info( struct fd *fd, obj_handle_t handle, unsigned int info_class )
 {
     set_error( STATUS_OBJECT_TYPE_MISMATCH );
+}
+
+/* default get_file_info() routine */
+void default_fd_get_file_info( struct fd *fd, obj_handle_t handle, unsigned int info_class )
+{
+    switch (info_class)
+    {
+    case FileAccessInformation:
+        {
+            FILE_ACCESS_INFORMATION info;
+            if (get_reply_max_size() < sizeof(info))
+            {
+                set_error( STATUS_INFO_LENGTH_MISMATCH );
+                return;
+            }
+            info.AccessFlags = get_handle_access( current->process, handle );
+            set_reply_data( &info, sizeof(info) );
+            break;
+        }
+    case FileIoCompletionNotificationInformation:
+        {
+            FILE_IO_COMPLETION_NOTIFICATION_INFORMATION info;
+            if (get_reply_max_size() < sizeof(info))
+            {
+                set_error( STATUS_INFO_LENGTH_MISMATCH );
+                return;
+            }
+            info.Flags = fd->comp_flags;
+            set_reply_data( &info, sizeof(info) );
+            break;
+        }
+    default:
+        set_error( STATUS_NOT_IMPLEMENTED );
+    }
 }
 
 /* default get_volume_info() routine */
@@ -2526,7 +2560,7 @@ DECL_HANDLER(get_file_info)
 
     if (fd)
     {
-        fd->fd_ops->get_file_info( fd, req->info_class );
+        fd->fd_ops->get_file_info( fd, req->handle, req->info_class );
         release_object( fd );
     }
 }
@@ -2735,14 +2769,14 @@ DECL_HANDLER(add_fd_completion)
     struct fd *fd = get_handle_fd_obj( current->process, req->handle, 0 );
     if (fd)
     {
-        if (fd->completion && (!(fd->comp_flags & COMPLETION_SKIP_ON_SUCCESS) || req->status || req->force))
+        if (fd->completion && (req->async || !(fd->comp_flags & FILE_SKIP_COMPLETION_PORT_ON_SUCCESS)))
             add_completion( fd->completion, fd->comp_key, req->cvalue, req->status, req->information );
         release_object( fd );
     }
 }
 
 /* set fd completion information */
-DECL_HANDLER(set_fd_compl_info)
+DECL_HANDLER(set_fd_completion_mode)
 {
     struct fd *fd = get_handle_fd_obj( current->process, req->handle, 0 );
     if (fd)
@@ -2750,21 +2784,12 @@ DECL_HANDLER(set_fd_compl_info)
         if (!(fd->options & (FILE_SYNCHRONOUS_IO_ALERT | FILE_SYNCHRONOUS_IO_NONALERT)))
         {
             /* removing COMPLETION_SKIP_ON_SUCCESS is not allowed */
-            fd->comp_flags |= req->flags;
+            fd->comp_flags |= req->flags & ( FILE_SKIP_COMPLETION_PORT_ON_SUCCESS
+                                           | FILE_SKIP_SET_EVENT_ON_HANDLE
+                                           | FILE_SKIP_SET_USER_EVENT_ON_FAST_IO );
         }
         else
             set_error( STATUS_INVALID_PARAMETER );
-        release_object( fd );
-    }
-}
-
-/* get fd completion information */
-DECL_HANDLER(get_fd_compl_info)
-{
-    struct fd *fd = get_handle_fd_obj( current->process, req->handle, 0 );
-    if (fd)
-    {
-        reply->flags = fd->comp_flags;
         release_object( fd );
     }
 }

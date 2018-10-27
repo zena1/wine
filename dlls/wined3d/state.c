@@ -607,20 +607,19 @@ static void state_blend(struct wined3d_context *context, const struct wined3d_st
         context_apply_state(context, state, STATE_TEXTURESTAGE(0, WINED3D_TSS_ALPHA_OP));
 }
 
-static void state_blendfactor_w(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
+static void state_blend_factor_w(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
 {
     WARN("Unsupported in local OpenGL implementation: glBlendColor.\n");
 }
 
-static void state_blendfactor(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
+static void state_blend_factor(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
 {
+    const struct wined3d_color *factor = &state->blend_factor;
     const struct wined3d_gl_info *gl_info = context->gl_info;
-    struct wined3d_color color;
 
-    TRACE("Setting blend factor to %#x.\n", state->render_states[WINED3D_RS_BLENDFACTOR]);
+    TRACE("Setting blend factor to %s.\n", debug_color(factor));
 
-    wined3d_color_from_d3dcolor(&color, state->render_states[WINED3D_RS_BLENDFACTOR]);
-    GL_EXTCALL(glBlendColor(color.r, color.g, color.b, color.a));
+    GL_EXTCALL(glBlendColor(factor->r, factor->g, factor->b, factor->a));
     checkGLcall("glBlendColor");
 }
 
@@ -4321,11 +4320,7 @@ static void indexbuffer(struct wined3d_context *context, const struct wined3d_st
     else
     {
         struct wined3d_buffer *ib = state->index_buffer;
-        // FIXME(acomminos): disasterous.
-        if (ib->locations & WINED3D_LOCATION_PERSISTENT_MAP)
-            GL_EXTCALL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib->buffer_heap->buffer_object));
-        else
-            GL_EXTCALL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib->buffer_object));
+        GL_EXTCALL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib->buffer_object));
     }
 }
 
@@ -4413,7 +4408,6 @@ static void state_cb(struct wined3d_context *context, const struct wined3d_state
     enum wined3d_shader_type shader_type;
     struct wined3d_buffer *buffer;
     unsigned int i, base, count;
-    struct wined3d_bo_address bo_addr;
 
     TRACE("context %p, state %p, state_id %#x.\n", context, state, state_id);
 
@@ -4423,51 +4417,11 @@ static void state_cb(struct wined3d_context *context, const struct wined3d_state
         shader_type = WINED3D_SHADER_TYPE_COMPUTE;
 
     wined3d_gl_limits_get_uniform_block_range(&gl_info->limits, shader_type, &base, &count);
-
-    if (gl_info->supported[ARB_MULTI_BIND])
+    for (i = 0; i < count; ++i)
     {
-        GLuint buffer_objects[count];
-        GLsizeiptr buffer_offsets[count];
-        GLsizeiptr buffer_sizes[count];
-
-        for (i = 0; i < count; ++i)
-        {
-            buffer = state->cb[shader_type][i];
-            if (buffer)
-            {
-                wined3d_buffer_get_memory(buffer, &bo_addr, buffer->locations);
-                buffer_objects[i] = bo_addr.buffer_object;
-                buffer_offsets[i] = bo_addr.addr;
-                buffer_sizes[i] = bo_addr.length;
-            }
-            else
-            {
-                buffer_objects[i] = buffer_offsets[i] = 0;
-                // The ARB_multi_bind spec states that an error may be thrown if
-                // `size` is less than or equal to zero, Thus, we specify a size for
-                // unused buffers anyway.
-                buffer_sizes[i] = 1;
-            }
-        }
-        GL_EXTCALL(glBindBuffersRange(GL_UNIFORM_BUFFER, base, count, buffer_objects, buffer_offsets, buffer_sizes));
+        buffer = state->cb[shader_type][i];
+        GL_EXTCALL(glBindBufferBase(GL_UNIFORM_BUFFER, base + i, buffer ? buffer->buffer_object : 0));
     }
-    else
-    {
-        for (i = 0; i < count; ++i)
-        {
-            buffer = state->cb[shader_type][i];
-            if (buffer)
-            {
-                wined3d_buffer_get_memory(buffer, &bo_addr, buffer->locations);
-                GL_EXTCALL(glBindBufferRange(GL_UNIFORM_BUFFER, base + i, bo_addr.buffer_object, bo_addr.addr, bo_addr.length));
-            }
-            else
-            {
-                GL_EXTCALL(glBindBufferBase(GL_UNIFORM_BUFFER, base + i, 0));
-            }
-        }
-    }
-
     checkGLcall("bind constant buffers");
 }
 
@@ -4581,6 +4535,8 @@ const struct StateEntryTemplate misc_state_template[] =
     { STATE_RENDER(WINED3D_RS_DESTBLENDALPHA),            { STATE_RENDER(WINED3D_RS_ALPHABLENDENABLE),          NULL                }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_BLENDOPALPHA),              { STATE_RENDER(WINED3D_RS_ALPHABLENDENABLE),          NULL                }, WINED3D_GL_EXT_NONE             },
     { STATE_BLEND,                                        { STATE_BLEND,                                        state_blend_object  }, WINED3D_GL_EXT_NONE             },
+    { STATE_BLEND_FACTOR,                                 { STATE_BLEND_FACTOR,                                 state_blend_factor  }, EXT_BLEND_COLOR                 },
+    { STATE_BLEND_FACTOR,                                 { STATE_BLEND_FACTOR,                                 state_blend_factor_w}, WINED3D_GL_EXT_NONE             },
     { STATE_STREAMSRC,                                    { STATE_STREAMSRC,                                    streamsrc           }, WINED3D_GL_EXT_NONE             },
     { STATE_VDECL,                                        { STATE_VDECL,                                        vdecl_miscpart      }, WINED3D_GL_EXT_NONE             },
     { STATE_RASTERIZER,                                   { STATE_RASTERIZER,                                   rasterizer_cc       }, ARB_CLIP_CONTROL                },
@@ -4739,8 +4695,6 @@ const struct StateEntryTemplate misc_state_template[] =
     { STATE_RENDER(WINED3D_RS_BLENDOP),                   { STATE_RENDER(WINED3D_RS_BLENDOP),                   state_blendop_w     }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_SCISSORTESTENABLE),         { STATE_RENDER(WINED3D_RS_SCISSORTESTENABLE),         state_scissor       }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_SLOPESCALEDEPTHBIAS),       { STATE_RENDER(WINED3D_RS_DEPTHBIAS),                 NULL                }, WINED3D_GL_EXT_NONE             },
-    { STATE_RENDER(WINED3D_RS_BLENDFACTOR),               { STATE_RENDER(WINED3D_RS_BLENDFACTOR),               state_blendfactor   }, EXT_BLEND_COLOR                 },
-    { STATE_RENDER(WINED3D_RS_BLENDFACTOR),               { STATE_RENDER(WINED3D_RS_BLENDFACTOR),               state_blendfactor_w }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_DEPTHBIAS),                 { STATE_RENDER(WINED3D_RS_DEPTHBIAS),                 state_depthbias     }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_ZVISIBLE),                  { STATE_RENDER(WINED3D_RS_ZVISIBLE),                  state_zvisible      }, WINED3D_GL_EXT_NONE             },
     /* Samplers */
@@ -5503,6 +5457,7 @@ static void validate_state_table(struct StateEntry *state_table)
         {149, 150},
         {169, 169},
         {177, 177},
+        {193, 193},
         {196, 197},
         {  0,   0},
     };
@@ -5538,6 +5493,7 @@ static void validate_state_table(struct StateEntry *state_table)
         STATE_POINT_ENABLE,
         STATE_COLOR_KEY,
         STATE_BLEND,
+        STATE_BLEND_FACTOR,
     };
     unsigned int i, current;
 
