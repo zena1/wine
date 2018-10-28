@@ -121,7 +121,7 @@ static void fill_mouse_dideviceinstanceA(LPDIDEVICEINSTANCEA lpddi, DWORD versio
 
     ddi.dwSize = dwSize;
     ddi.guidInstance = GUID_SysMouse;/* DInput's GUID */
-    ddi.guidProduct = DInput_Wine_Mouse_GUID; /* Vendor's GUID */
+    ddi.guidProduct = GUID_SysMouse;
     if (version >= 0x0800)
         ddi.dwDevType = DI8DEVTYPE_MOUSE | (DI8DEVTYPEMOUSE_TRADITIONAL << 8);
     else
