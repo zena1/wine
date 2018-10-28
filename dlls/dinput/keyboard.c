@@ -179,7 +179,7 @@ static void fill_keyboard_dideviceinstanceA(LPDIDEVICEINSTANCEA lpddi, DWORD ver
 
     ddi.dwSize = dwSize;
     ddi.guidInstance = GUID_SysKeyboard;/* DInput's GUID */
-    ddi.guidProduct = DInput_Wine_Keyboard_GUID; /* Vendor's GUID */
+    ddi.guidProduct = GUID_SysKeyboard;
     if (version >= 0x0800)
         ddi.dwDevType = DI8DEVTYPE_KEYBOARD | (subtype << 8);
     else
