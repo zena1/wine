@@ -416,7 +416,7 @@ NTSTATUS WINAPI NtQueryInformationToken(
         0,    /* TokenHasRestrictions */
         0,    /* TokenAccessInformation */
         0,    /* TokenVirtualizationAllowed */
-        0,    /* TokenVirtualizationEnabled */
+        sizeof(DWORD), /* TokenVirtualizationEnabled */
         0,    /* TokenIntegrityLevel */
         0,    /* TokenUIAccess */
         0,    /* TokenMandatoryPolicy */
@@ -693,6 +693,12 @@ NTSTATUS WINAPI NtQueryInformationToken(
         {
             *((DWORD*)tokeninfo) = 0;
             FIXME("QueryInformationToken( ..., TokenSessionId, ...) semi-stub\n");
+        }
+        break;
+    case TokenVirtualizationEnabled:
+        {
+            *(DWORD *)tokeninfo = 0;
+            TRACE("QueryInformationToken( ..., TokenVirtualizationEnabled, ...) semi-stub\n");
         }
         break;
     case TokenIntegrityLevel:

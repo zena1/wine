@@ -464,7 +464,6 @@ struct async_fileio_write
 struct async_irp
 {
     struct async_fileio io;
-    HANDLE              event;    /* async event */
     void               *buffer;   /* buffer for output */
     ULONG               size;     /* size of buffer */
 };
@@ -668,7 +667,6 @@ static NTSTATUS server_read_file( HANDLE handle, HANDLE event, PIO_APC_ROUTINE a
     if (!(async = (struct async_irp *)alloc_fileio( sizeof(*async), irp_completion, handle )))
         return STATUS_NO_MEMORY;
 
-    async->event   = event;
     async->buffer  = buffer;
     async->size    = size;
 
@@ -712,7 +710,6 @@ static NTSTATUS server_write_file( HANDLE handle, HANDLE event, PIO_APC_ROUTINE 
     if (!(async = (struct async_irp *)alloc_fileio( sizeof(*async), irp_completion, handle )))
         return STATUS_NO_MEMORY;
 
-    async->event   = event;
     async->buffer  = NULL;
     async->size    = 0;
 
@@ -940,7 +937,7 @@ NTSTATUS WINAPI NtReadFile(HANDLE hFile, HANDLE hEvent,
     ULONG_PTR cvalue = apc ? 0 : (ULONG_PTR)apc_user;
     BOOL send_completion = FALSE, async_read, timeout_init_done = FALSE;
 
-    TRACE("(%p,%p,%p,%p,%p,%p,0x%08x,%p,%p),partial stub!\n",
+    TRACE("(%p,%p,%p,%p,%p,%p,0x%08x,%p,%p)\n",
           hFile,hEvent,apc,apc_user,io_status,buffer,length,offset,key);
 
     if (!io_status) return STATUS_ACCESS_VIOLATION;
@@ -1307,7 +1304,7 @@ NTSTATUS WINAPI NtWriteFile(HANDLE hFile, HANDLE hEvent,
     BOOL send_completion = FALSE, async_write, append_write = FALSE, timeout_init_done = FALSE;
     LARGE_INTEGER offset_eof;
 
-    TRACE("(%p,%p,%p,%p,%p,%p,0x%08x,%p,%p)!\n",
+    TRACE("(%p,%p,%p,%p,%p,%p,0x%08x,%p,%p)\n",
           hFile,hEvent,apc,apc_user,io_status,buffer,length,offset,key);
 
     if (!io_status) return STATUS_ACCESS_VIOLATION;
@@ -1622,7 +1619,6 @@ static NTSTATUS server_ioctl_file( HANDLE handle, HANDLE event,
 
     if (!(async = (struct async_irp *)alloc_fileio( sizeof(*async), irp_completion, handle )))
         return STATUS_NO_MEMORY;
-    async->event   = event;
     async->buffer  = out_buffer;
     async->size    = out_size;
 
@@ -2547,7 +2543,7 @@ NTSTATUS WINAPI NtQueryInformationFile( HANDLE hFile, PIO_STATUS_BLOCK io,
         sizeof(FILE_DISPOSITION_INFORMATION),          /* FileDispositionInformation */
         sizeof(FILE_POSITION_INFORMATION),             /* FilePositionInformation */
         sizeof(FILE_FULL_EA_INFORMATION),              /* FileFullEaInformation */
-        sizeof(FILE_MODE_INFORMATION),                 /* FileModeInformation */
+        0,                                             /* FileModeInformation */
         sizeof(FILE_ALIGNMENT_INFORMATION),            /* FileAlignmentInformation */
         sizeof(FILE_ALL_INFORMATION),                  /* FileAllInformation */
         sizeof(FILE_ALLOCATION_INFORMATION),           /* FileAllocationInformation */
@@ -2932,8 +2928,8 @@ NTSTATUS WINAPI NtSetInformationFile(HANDLE handle, PIO_STATUS_BLOCK io,
         {
             FILE_IO_COMPLETION_NOTIFICATION_INFORMATION *info = ptr;
 
-            if (info->Flags & ~FILE_SKIP_COMPLETION_PORT_ON_SUCCESS)
-                FIXME( "Unsupported completion flags %x\n", info->Flags );
+            if (info->Flags & FILE_SKIP_SET_USER_EVENT_ON_FAST_IO)
+                FIXME( "FILE_SKIP_SET_USER_EVENT_ON_FAST_IO not supported\n" );
 
             SERVER_START_REQ( set_fd_completion_mode )
             {
@@ -3671,7 +3667,7 @@ NTSTATUS WINAPI NtFlushBuffersFile( HANDLE hFile, IO_STATUS_BLOCK *io )
     enum server_fd_type type;
     int fd, needs_close;
 
-    if (!io || !virtual_check_buffer_for_write( io, sizeof(io) )) return STATUS_ACCESS_VIOLATION;
+    if (!io || !virtual_check_buffer_for_write( io, sizeof(*io) )) return STATUS_ACCESS_VIOLATION;
 
     ret = server_get_unix_fd( hFile, FILE_WRITE_DATA, &fd, &needs_close, &type, NULL );
     if (ret == STATUS_ACCESS_DENIED)
@@ -3683,9 +3679,16 @@ NTSTATUS WINAPI NtFlushBuffersFile( HANDLE hFile, IO_STATUS_BLOCK *io )
     }
     else if (ret != STATUS_ACCESS_DENIED)
     {
+        struct async_irp *async;
+
+        if (!(async = (struct async_irp *)alloc_fileio( sizeof(*async), irp_completion, hFile )))
+            return STATUS_NO_MEMORY;
+        async->buffer  = NULL;
+        async->size    = 0;
+
         SERVER_START_REQ( flush )
         {
-            req->async = server_async( hFile, NULL, NULL, NULL, NULL, io );
+            req->async = server_async( hFile, &async->io, NULL, NULL, NULL, io );
             ret = wine_server_call( req );
             wait_handle = wine_server_ptr_handle( reply->event );
             if (wait_handle && ret != STATUS_PENDING)
@@ -3695,6 +3698,8 @@ NTSTATUS WINAPI NtFlushBuffersFile( HANDLE hFile, IO_STATUS_BLOCK *io )
             }
         }
         SERVER_END_REQ;
+
+        if (ret != STATUS_PENDING) RtlFreeHeap( GetProcessHeap(), 0, async );
 
         if (wait_handle)
         {

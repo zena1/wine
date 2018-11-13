@@ -13,8 +13,8 @@ SOURCES = \
 	amaudio.h \
 	amstream.idl \
 	amvideo.idl \
-	appcompatapi.h \
 	apiset.h \
+	appcompatapi.h \
 	appmgmt.h \
 	appmodel.h \
 	asptlb.idl \

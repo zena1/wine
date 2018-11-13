@@ -35,7 +35,6 @@
 #include "wined3d_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d);
-WINE_DECLARE_DEBUG_CHANNEL(d3d_perf);
 WINE_DECLARE_DEBUG_CHANNEL(winediag);
 
 /* Define the default light parameters as specified by MSDN. */
@@ -575,6 +574,7 @@ static void device_load_logo(struct wined3d_device *device, const char *filename
     desc.multisample_type = WINED3D_MULTISAMPLE_NONE;
     desc.multisample_quality = 0;
     desc.usage = WINED3DUSAGE_DYNAMIC;
+    desc.bind_flags = 0;
     desc.access = WINED3D_RESOURCE_ACCESS_GPU;
     desc.width = bm.bmWidth;
     desc.height = bm.bmHeight;
@@ -838,110 +838,6 @@ static void destroy_default_samplers(struct wined3d_device *device, struct wined
     device->null_sampler = NULL;
 }
 
-/* Context activation is done by the caller. */
-static void create_buffer_heap(struct wined3d_device *device, struct wined3d_context *context)
-{
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
-    BOOL use_pba = FALSE;
-    char *env_pba_enable;
-
-    if (!gl_info->supported[ARB_BUFFER_STORAGE])
-    {
-        FIXME_(d3d_perf)("Not using PBA, ARB_buffer_storage unsupported.\n");
-    }
-    else if ((env_pba_enable = getenv("PBA_ENABLE")) && *env_pba_enable != '0')
-    {
-        //(Firerat) is it worth initialising an int for vram?
-        unsigned int vram_mb = device->adapter->vram_bytes / 1048576;
-        const char *env_pba_geo_heap = getenv("__PBA_GEO_HEAP");
-        // TODO(acomminos): kill this magic number. perhaps base on vram.
-        unsigned int geo_heap = ( env_pba_geo_heap ? atoi(env_pba_geo_heap) : 512 );
-        const char *env_pba_cb_heap = getenv("__PBA_CB_HEAP");
-        // We choose a constant buffer size of 128MB, the same as NVIDIA claims to
-        // use in their Direct3D driver for discarded constant buffers.
-        unsigned int cb_heap = ( env_pba_cb_heap ? atoi(env_pba_cb_heap) : 128 );
-
-        if (env_pba_geo_heap)
-        {
-            FIXME_(d3d_perf)("geo_heap_size set by envvar __PBA_GEO_HEAP=%s\n",env_pba_geo_heap);
-        }
-        if (env_pba_cb_heap)
-        {
-            FIXME_(d3d_perf)("cb_heap_size set by envvar __PBA_CB_HEAP=%s\n",env_pba_cb_heap);
-        }
-
-        if ( geo_heap + cb_heap > vram_mb )
-        {
-            FIXME_(d3d_perf)("geo_heap + cb_heap ( %dmb + %dmb ) exceeds vram of %dmb. Dropping back to PBA defaults\n", geo_heap, cb_heap, vram_mb);
-            if ( vram_mb <= 640 ) // most users should have plenty of vram, but if not at least try to give them PBA..
-            {
-                //TODO (Firerat) I should probably figure out if using dx10+ ( possible? ), could skip cb_heap if not
-                FIXME_(d3d_perf)("You have low vram(%dmb), making crude guess at reasonable heap sizes for PBA\n", vram_mb);
-                // very crude, using 87.5% of vram
-                geo_heap = vram_mb * 0.75; // 3 quarters of vram
-                cb_heap = vram_mb * 0.125; // 8th of vram, probably too low
-                FIXME_(d3d_perf)("guess expressed as envvars: __PBA_GEO_HEAP=%d __PBA_CB_HEAP=%d\n", geo_heap, cb_heap);
-                //TODO (Firerat) might not be worth messing about here, just fail with note about envvars
-            }
-            else
-            {
-                // should ony get here if user screwed up their pba envvars
-                geo_heap = 512;
-                cb_heap = 128;
-            }
-        }
-        GLsizeiptr geo_heap_size = geo_heap * 1024 * 1024;
-        GLsizeiptr cb_heap_size = cb_heap * 1024 * 1024;
-        GLint ub_alignment;
-        HRESULT hr;
-
-        gl_info->gl_ops.gl.p_glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &ub_alignment);
-
-        // Align constant buffer heap size, in case GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT isn't a power of two (for some reason).
-        cb_heap_size -= cb_heap_size % ub_alignment;
-
-        if (FAILED(hr = wined3d_buffer_heap_create(context, geo_heap_size, 0, TRUE, &device->wo_buffer_heap)))
-        {
-            ERR("Failed to create write-only persistent buffer heap, hr %#x.\n", hr);
-            goto fail;
-        }
-
-        if (cb_heap != 0) // assume user doesn't want a cb_heap , e.g. not dx10+
-        {
-            if (FAILED(hr = wined3d_buffer_heap_create(context, cb_heap_size, ub_alignment, TRUE, &device->cb_buffer_heap)))
-            {
-                ERR("Failed to create persistent buffer heap for constant buffers, hr %#x.\n", hr);
-                goto fail;
-            }
-        }
-        else
-        {
-            FIXME_(d3d_perf)("cb_heap set to 0, this will degrade performance with dx10 and dx11\n");
-        }
-
-        FIXME("Initialized PBA (geo_heap_size: %ld, cb_heap_size: %ld, ub_align: %d)\n", geo_heap_size, cb_heap_size, ub_alignment);
-
-        use_pba = TRUE;
-    }
-    else
-    {
-        FIXME("Not using PBA, envvar 'PBA_ENABLE' not set.\n");
-    }
-
-fail:
-    device->use_pba = use_pba;
-}
-
-/* Context activation is done by the caller. */
-static void destroy_buffer_heap(struct wined3d_device *device, struct wined3d_context *context)
-{
-    if (device->wo_buffer_heap)
-        wined3d_buffer_heap_destroy(device->wo_buffer_heap, context);
-
-    if (device->cb_buffer_heap)
-        wined3d_buffer_heap_destroy(device->cb_buffer_heap, context);
-}
-
 static LONG fullscreen_style(LONG style)
 {
     /* Make sure the window is managed, otherwise we won't get keyboard input. */
@@ -1106,8 +1002,6 @@ static void wined3d_device_delete_opengl_contexts_cs(void *object)
     device->shader_backend->shader_free_private(device);
     destroy_dummy_textures(device, context);
     destroy_default_samplers(device, context);
-    destroy_buffer_heap(device, context);
-
     context_release(context);
 
     while (device->context_count)
@@ -1157,9 +1051,6 @@ static void wined3d_device_create_primary_opengl_context_cs(void *object)
     context = context_acquire(device, target, 0);
     create_dummy_textures(device, context);
     create_default_samplers(device, context);
-
-    create_buffer_heap(device, context);
-
     context_release(context);
 }
 
@@ -1199,7 +1090,7 @@ HRESULT CDECL wined3d_device_init_3d(struct wined3d_device *device,
         goto err_out;
     }
 
-    if (swapchain_desc->backbuffer_count && swapchain_desc->backbuffer_usage & WINED3DUSAGE_RENDERTARGET)
+    if (swapchain_desc->backbuffer_count && swapchain_desc->backbuffer_bind_flags & WINED3D_BIND_RENDER_TARGET)
     {
         struct wined3d_resource *back_buffer = &swapchain->back_buffers[0]->resource;
         struct wined3d_view_desc view_desc;
@@ -4589,9 +4480,9 @@ HRESULT CDECL wined3d_device_set_rendertarget_view(struct wined3d_device *device
         return WINED3DERR_INVALIDCALL;
     }
 
-    if (view && !(view->resource->usage & WINED3DUSAGE_RENDERTARGET))
+    if (view && !(view->resource->bind_flags & WINED3D_BIND_RENDER_TARGET))
     {
-        WARN("View resource %p doesn't have render target usage.\n", view->resource);
+        WARN("View resource %p doesn't have render target bind flags.\n", view->resource);
         return WINED3DERR_INVALIDCALL;
     }
 
@@ -4677,6 +4568,7 @@ static struct wined3d_texture *wined3d_device_create_cursor_texture(struct wined
     desc.multisample_type = WINED3D_MULTISAMPLE_NONE;
     desc.multisample_quality = 0;
     desc.usage = WINED3DUSAGE_DYNAMIC;
+    desc.bind_flags = 0;
     desc.access = WINED3D_RESOURCE_ACCESS_GPU;
     desc.width = wined3d_texture_get_level_width(cursor_image, texture_level);
     desc.height = wined3d_texture_get_level_height(cursor_image, texture_level);
@@ -4879,6 +4771,21 @@ void CDECL wined3d_device_evict_managed_resources(struct wined3d_device *device)
     }
 }
 
+static void update_swapchain_flags(struct wined3d_texture *texture)
+{
+    unsigned int flags = texture->swapchain->desc.flags;
+
+    if (flags & WINED3D_SWAPCHAIN_LOCKABLE_BACKBUFFER)
+        texture->resource.access |= WINED3D_RESOURCE_ACCESS_MAP_R | WINED3D_RESOURCE_ACCESS_MAP_W;
+    else
+        texture->resource.access &= ~(WINED3D_RESOURCE_ACCESS_MAP_R | WINED3D_RESOURCE_ACCESS_MAP_W);
+
+    if (flags & WINED3D_SWAPCHAIN_GDI_COMPATIBLE)
+        texture->flags |= WINED3D_TEXTURE_GET_DC;
+    else
+        texture->flags &= ~WINED3D_TEXTURE_GET_DC;
+}
+
 HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
         const struct wined3d_swapchain_desc *swapchain_desc, const struct wined3d_display_mode *mode,
         wined3d_device_reset_cb callback, BOOL reset_state)
@@ -4950,8 +4857,8 @@ HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
     TRACE("refresh_rate %u\n", swapchain_desc->refresh_rate);
     TRACE("auto_restore_display_mode %#x\n", swapchain_desc->auto_restore_display_mode);
 
-    if (swapchain_desc->backbuffer_usage && swapchain_desc->backbuffer_usage != WINED3DUSAGE_RENDERTARGET)
-        FIXME("Got unexpected backbuffer usage %#x.\n", swapchain_desc->backbuffer_usage);
+    if (swapchain_desc->backbuffer_bind_flags && swapchain_desc->backbuffer_bind_flags != WINED3D_BIND_RENDER_TARGET)
+        FIXME("Got unexpected backbuffer bind flags %#x.\n", swapchain_desc->backbuffer_bind_flags);
 
     if (swapchain_desc->swap_effect != WINED3D_SWAP_EFFECT_DISCARD
             && swapchain_desc->swap_effect != WINED3D_SWAP_EFFECT_SEQUENTIAL
@@ -4962,7 +4869,6 @@ HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
     swapchain->desc.swap_effect = swapchain_desc->swap_effect;
     swapchain->desc.enable_auto_depth_stencil = swapchain_desc->enable_auto_depth_stencil;
     swapchain->desc.auto_depth_stencil_format = swapchain_desc->auto_depth_stencil_format;
-    swapchain->desc.flags = swapchain_desc->flags;
     swapchain->desc.refresh_rate = swapchain_desc->refresh_rate;
     swapchain->desc.auto_restore_display_mode = swapchain_desc->auto_restore_display_mode;
 
@@ -5008,6 +4914,17 @@ HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
             swapchain_desc->multisample_type, swapchain_desc->multisample_quality)))
         return hr;
 
+    if (swapchain_desc->flags != swapchain->desc.flags)
+    {
+        swapchain->desc.flags = swapchain_desc->flags;
+
+        update_swapchain_flags(swapchain->front_buffer);
+        for (i = 0; i < swapchain->desc.backbuffer_count; ++i)
+        {
+            update_swapchain_flags(swapchain->back_buffers[i]);
+        }
+    }
+
     if (device->auto_depth_stencil_view)
     {
         wined3d_rendertarget_view_decref(device->auto_depth_stencil_view);
@@ -5017,7 +4934,6 @@ HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
     {
         struct wined3d_resource_desc texture_desc;
         struct wined3d_texture *texture;
-        DWORD flags = 0;
 
         TRACE("Creating the depth stencil buffer.\n");
 
@@ -5025,18 +4941,16 @@ HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
         texture_desc.format = swapchain->desc.auto_depth_stencil_format;
         texture_desc.multisample_type = swapchain->desc.multisample_type;
         texture_desc.multisample_quality = swapchain->desc.multisample_quality;
-        texture_desc.usage = WINED3DUSAGE_DEPTHSTENCIL;
+        texture_desc.usage = 0;
+        texture_desc.bind_flags = WINED3D_BIND_DEPTH_STENCIL;
         texture_desc.access = WINED3D_RESOURCE_ACCESS_GPU;
         texture_desc.width = swapchain->desc.backbuffer_width;
         texture_desc.height = swapchain->desc.backbuffer_height;
         texture_desc.depth = 1;
         texture_desc.size = 0;
 
-        if (swapchain_desc->flags & WINED3D_SWAPCHAIN_GDI_COMPATIBLE)
-            flags |= WINED3D_TEXTURE_CREATE_GET_DC;
-
         if (FAILED(hr = device->device_parent->ops->create_swapchain_texture(device->device_parent,
-                device->device_parent, &texture_desc, flags, &texture)))
+                device->device_parent, &texture_desc, 0, &texture)))
         {
             ERR("Failed to create the auto depth/stencil surface, hr %#x.\n", hr);
             return WINED3DERR_INVALIDCALL;
@@ -5065,7 +4979,7 @@ HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
         wined3d_rendertarget_view_decref(device->back_buffer_view);
         device->back_buffer_view = NULL;
     }
-    if (swapchain->desc.backbuffer_count && swapchain->desc.backbuffer_usage & WINED3DUSAGE_RENDERTARGET)
+    if (swapchain->desc.backbuffer_count && swapchain->desc.backbuffer_bind_flags & WINED3D_BIND_RENDER_TARGET)
     {
         struct wined3d_resource *back_buffer = &swapchain->back_buffers[0]->resource;
 

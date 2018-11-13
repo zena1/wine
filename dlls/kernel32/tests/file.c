@@ -4802,7 +4802,7 @@ static void test_GetFinalPathNameByHandleA(void)
 
     if (!pGetFinalPathNameByHandleA)
     {
-        skip("GetFinalPathNameByHandleA is missing\n");
+        win_skip("GetFinalPathNameByHandleA is missing\n");
         return;
     }
 
@@ -4895,7 +4895,7 @@ static void test_GetFinalPathNameByHandleW(void)
 
     if (!pGetFinalPathNameByHandleW)
     {
-        skip("GetFinalPathNameByHandleW is missing\n");
+        win_skip("GetFinalPathNameByHandleW is missing\n");
         return;
     }
 
@@ -5118,7 +5118,7 @@ static void test_post_completion(void)
 
     if (!pGetQueuedCompletionStatusEx)
     {
-        skip("GetQueuedCompletionStatusEx not available\n");
+        win_skip("GetQueuedCompletionStatusEx not available\n");
         CloseHandle( port );
         return;
     }
