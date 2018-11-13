@@ -51,6 +51,7 @@
 static const char usage[] =
 "Usage: widl [options...] infile.idl\n"
 "   or: widl [options...] --dlldata-only name1 [name2...]\n"
+"   --acf=file         Use ACF file\n"
 "   -app_config        Ignored, present for midl compatibility\n"
 "   -b arch            Set the target architecture\n"
 "   -c                 Generate client stub\n"
@@ -73,6 +74,7 @@ static const char usage[] =
 "   --prefix-client=p  Prefix names of client stubs with 'p'\n"
 "   --prefix-server=p  Prefix names of server functions with 'p'\n"
 "   -r                 Generate registration script\n"
+"   -robust            Ignored, present for midl compatibility\n"
 "   --winrt            Enable Windows Runtime mode\n"
 "   --ns_prefix        Prefix namespaces with ABI namespace\n"
 "   -s                 Generate server stub\n"
@@ -123,6 +125,7 @@ static enum stub_mode stub_mode = MODE_Os;
 
 char *input_name;
 char *input_idl_name;
+char *acf_name;
 char *header_name;
 char *local_stubs_name;
 char *header_token;
@@ -152,43 +155,47 @@ time_t now;
 
 enum {
     OLDNAMES_OPTION = CHAR_MAX + 1,
+    ACF_OPTION,
+    APP_CONFIG_OPTION,
     DLLDATA_OPTION,
     DLLDATA_ONLY_OPTION,
     LOCAL_STUBS_OPTION,
+    OLD_TYPELIB_OPTION,
     PREFIX_ALL_OPTION,
     PREFIX_CLIENT_OPTION,
     PREFIX_SERVER_OPTION,
     PRINT_HELP,
     RT_NS_PREFIX,
     RT_OPTION,
+    ROBUST_OPTION,
     WIN32_OPTION,
     WIN64_OPTION,
     WIN32_ALIGN_OPTION,
-    WIN64_ALIGN_OPTION,
-    APP_CONFIG_OPTION,
-    OLD_TYPELIB_OPTION
+    WIN64_ALIGN_OPTION
 };
 
 static const char short_options[] =
     "b:cC:d:D:EhH:I:m:No:O:pP:rsS:tT:uU:VW";
 static const struct option long_options[] = {
+    { "acf", 1, NULL, ACF_OPTION },
+    { "app_config", 0, NULL, APP_CONFIG_OPTION },
     { "dlldata", 1, NULL, DLLDATA_OPTION },
     { "dlldata-only", 0, NULL, DLLDATA_ONLY_OPTION },
     { "help", 0, NULL, PRINT_HELP },
     { "local-stubs", 1, NULL, LOCAL_STUBS_OPTION },
     { "ns_prefix", 0, NULL, RT_NS_PREFIX },
     { "oldnames", 0, NULL, OLDNAMES_OPTION },
+    { "oldtlb", 0, NULL, OLD_TYPELIB_OPTION },
     { "output", 0, NULL, 'o' },
     { "prefix-all", 1, NULL, PREFIX_ALL_OPTION },
     { "prefix-client", 1, NULL, PREFIX_CLIENT_OPTION },
     { "prefix-server", 1, NULL, PREFIX_SERVER_OPTION },
+    { "robust", 0, NULL, ROBUST_OPTION },
     { "winrt", 0, NULL, RT_OPTION },
     { "win32", 0, NULL, WIN32_OPTION },
     { "win64", 0, NULL, WIN64_OPTION },
     { "win32-align", 1, NULL, WIN32_ALIGN_OPTION },
     { "win64-align", 1, NULL, WIN64_ALIGN_OPTION },
-    { "app_config", 0, NULL, APP_CONFIG_OPTION },
-    { "oldtlb", 0, NULL, OLD_TYPELIB_OPTION },
     { NULL, 0, NULL, 0 }
 };
 
@@ -481,6 +488,11 @@ static void write_id_data_stmts(const statement_list_t *stmts)
         uuid = get_attrp(type->attrs, ATTR_UUID);
         write_id_guid(idfile, "IID", is_attr(type->attrs, ATTR_DISPINTERFACE) ? "DIID" : "IID",
                    type->name, uuid);
+        if (type->details.iface->async_iface)
+        {
+          uuid = get_attrp(type->details.iface->async_iface->attrs, ATTR_UUID);
+          write_id_guid(idfile, "IID", "IID", type->details.iface->async_iface->name, uuid);
+        }
       }
       else if (type_get_type(type) == TYPE_COCLASS)
       {
@@ -525,10 +537,15 @@ void write_id_data(const statement_list_t *stmts)
   fprintf(idfile, "#define MIDL_DEFINE_GUID(type,name,l,w1,w2,b1,b2,b3,b4,b5,b6,b7,b8) \\\n");
   fprintf(idfile, "    DEFINE_GUID(name,l,w1,w2,b1,b2,b3,b4,b5,b6,b7,b8)\n\n");
 
+  fprintf(idfile, "#elif defined(__cplusplus)\n\n");
+
+  fprintf(idfile, "#define MIDL_DEFINE_GUID(type,name,l,w1,w2,b1,b2,b3,b4,b5,b6,b7,b8) \\\n");
+  fprintf(idfile, "    EXTERN_C const type DECLSPEC_SELECTANY name = {l,w1,w2,{b1,b2,b3,b4,b5,b6,b7,b8}}\n\n");
+
   fprintf(idfile, "#else\n\n");
 
   fprintf(idfile, "#define MIDL_DEFINE_GUID(type,name,l,w1,w2,b1,b2,b3,b4,b5,b6,b7,b8) \\\n");
-  fprintf(idfile, "    const type name = {l,w1,w2,{b1,b2,b3,b4,b5,b6,b7,b8}}\n\n");
+  fprintf(idfile, "    const type DECLSPEC_SELECTANY name = {l,w1,w2,{b1,b2,b3,b4,b5,b6,b7,b8}}\n\n");
 
   fprintf(idfile, "#endif\n\n");
   start_cplusplus_guard(idfile);
@@ -610,9 +627,15 @@ int main(int argc,char *argv[])
       if(win64_packing != 2 && win64_packing != 4 && win64_packing != 8)
           error("Packing must be one of 2, 4 or 8\n");
       break;
+    case ACF_OPTION:
+      acf_name = xstrdup(optarg);
+      break;
     case APP_CONFIG_OPTION:
       /* widl does not distinguish between app_mode and default mode,
          but we ignore this option for midl compatibility */
+      break;
+    case ROBUST_OPTION:
+        /* FIXME: Support robust option */
         break;
     case 'b':
       set_target( optarg );

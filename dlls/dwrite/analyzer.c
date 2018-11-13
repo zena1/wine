@@ -517,7 +517,7 @@ static HRESULT analyze_linebreaks(const WCHAR *text, UINT32 count, DWRITE_LINE_B
     {
         switch (break_class[i])
         {
-            /* LB7 - do not break before spaces */
+            /* LB7 - do not break before spaces or zero-width space */
             case b_SP:
                 set_break_condition(i, BreakConditionBefore, DWRITE_BREAK_CONDITION_MAY_NOT_BREAK, &state);
                 break;
@@ -531,10 +531,9 @@ static HRESULT analyze_linebreaks(const WCHAR *text, UINT32 count, DWRITE_LINE_B
                 if (j < count-1 && break_class[j+1] != b_ZW)
                     set_break_condition(j, BreakConditionAfter, DWRITE_BREAK_CONDITION_CAN_BREAK, &state);
                 break;
-            /* LB8a - do not break between ZWJ and an ideograph, emoji base or emoji modifier */
+            /* LB8a - do not break after ZWJ */
             case b_ZWJ:
-                if (i < count-1 && (break_class[i+1] == b_ID || break_class[i+1] == b_EB || break_class[i+1] == b_EM))
-                    set_break_condition(i, BreakConditionAfter, DWRITE_BREAK_CONDITION_MAY_NOT_BREAK, &state);
+                set_break_condition(i, BreakConditionAfter, DWRITE_BREAK_CONDITION_MAY_NOT_BREAK, &state);
                 break;
         }
     }
@@ -2082,7 +2081,6 @@ static HRESULT fallback_get_fallback_font(struct dwrite_fontfallback *fallback, 
         IDWriteFont **mapped_font)
 {
     const struct fallback_mapping *mapping;
-    IDWriteFontCollection *collection;
     HRESULT hr;
     UINT32 i;
 
@@ -2094,15 +2092,9 @@ static HRESULT fallback_get_fallback_font(struct dwrite_fontfallback *fallback, 
         return E_FAIL;
     }
 
-    if (mapping->collection) {
-        collection = mapping->collection;
-    } else {
-        collection = (IDWriteFontCollection *)fallback->systemcollection;
-    }
-
     /* Now let's see what fallback can handle. Pick first font that could be created. */
     for (i = 0; i < mapping->families_count; i++) {
-        hr = create_matching_font(collection, mapping->families[i],
+        hr = create_matching_font((IDWriteFontCollection *)fallback->systemcollection, mapping->families[i],
                 weight, style, stretch, mapped_font);
         if (hr == S_OK) {
             TRACE("Created fallback font using family %s.\n", debugstr_w(mapping->families[i]));
@@ -2159,64 +2151,30 @@ static HRESULT WINAPI fontfallback_MapCharacters(IDWriteFontFallback *iface, IDW
 
     if (basefamily && *basefamily) {
         hr = create_matching_font(basecollection, basefamily, weight, style, stretch, ret_font);
-        if (SUCCEEDED(hr)) {
-            hr = fallback_map_characters(*ret_font, text, length, mapped_length);
-            if (FAILED(hr)) {
-                IDWriteFont_Release(*ret_font);
-                *ret_font = NULL;
-                WARN("Mapping with requested family %s failed, hr %#x.\n", debugstr_w(basefamily), hr);
-            }
-        }
+        if (FAILED(hr))
+            goto done;
+
+        hr = fallback_map_characters(*ret_font, text, length, mapped_length);
+        if (FAILED(hr))
+            goto done;
     }
 
     if (!*mapped_length) {
-        if (*ret_font) {
-            IDWriteFont_Release(*ret_font);
-            *ret_font = NULL;
-        }
+        IDWriteFont *mapped_font;
 
-        hr = fallback_get_fallback_font(fallback, text, length, weight, style, stretch, mapped_length, ret_font);
+        hr = fallback_get_fallback_font(fallback, text, length, weight, style, stretch, mapped_length, &mapped_font);
         if (FAILED(hr)) {
-            WARN("Mapping with fallback families failed, hr %#x.\n", hr);
+            /* fallback wasn't found, keep base font if any, so we can get at least some visual output */
+            if (*ret_font) {
+                *mapped_length = length;
+                hr = S_OK;
+            }
         }
-    }
-
-    /**
-     * This is a rough hack. We search the system font collection because
-     * the system fontfallback, which would have been searched above, is not
-     * fully implemented as it isn't populated with any system fonts. Once
-     * implemented, the block below can be removed.
-     * */
-    if (!*mapped_length) {
-        IDWriteFontFamily *family;
-        IDWriteFont *font;
-        UINT32 i, count = IDWriteFontCollection_GetFontFamilyCount((IDWriteFontCollection *)fallback->systemcollection);
-        for (i = 0; i < count; i++) {
-            hr = IDWriteFontCollection_GetFontFamily((IDWriteFontCollection *)fallback->systemcollection, i, &family);
-            if (FAILED(hr)) {
-                ERR("Failed to get font family.\n");
-                continue;
-            }
-
-            hr = IDWriteFontFamily_GetFirstMatchingFont(family, weight, stretch, style, &font);
-            IDWriteFontFamily_Release(family);
-            if (FAILED(hr)) {
-                continue;
-            }
-
-            hr = fallback_map_characters(font, text, length, mapped_length);
-            if (SUCCEEDED(hr) && mapped_length > 0) {
-                *ret_font = font;
-                break;
-            }
-
-            IDWriteFont_Release(font);
+        else {
+            if (*ret_font)
+                IDWriteFont_Release(*ret_font);
+            *ret_font = mapped_font;
         }
-    }
-
-    if (!*mapped_length) {
-        *mapped_length = length == 0 ? 0 : 1;
-        hr = S_OK;
     }
 
 done:

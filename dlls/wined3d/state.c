@@ -3210,12 +3210,13 @@ void tex_alphaop(struct wined3d_context *context, const struct wined3d_state *st
 
     if (state->render_states[WINED3D_RS_COLORKEYENABLE] && !stage && state->textures[0])
     {
-        struct wined3d_texture *texture = state->textures[0];
-        GLenum texture_dimensions = texture->target;
+        struct wined3d_texture_gl *texture_gl = wined3d_texture_gl(state->textures[0]);
+        GLenum texture_dimensions = texture_gl->target;
 
         if (texture_dimensions == GL_TEXTURE_2D || texture_dimensions == GL_TEXTURE_RECTANGLE_ARB)
         {
-            if (texture->async.color_key_flags & WINED3D_CKEY_SRC_BLT && !texture->resource.format->alpha_size)
+            if (texture_gl->t.async.color_key_flags & WINED3D_CKEY_SRC_BLT
+                    && !texture_gl->t.resource.format->alpha_size)
             {
                 /* Color keying needs to pass alpha values from the texture through to have the alpha test work
                  * properly. On the other hand applications can still use texture combiners apparently. This code
@@ -3513,7 +3514,7 @@ static void sampler_texmatrix(struct wined3d_context *context, const struct wine
     }
 }
 
-static enum wined3d_texture_address wined3d_texture_address_mode(const struct wined3d_texture *texture,
+static enum wined3d_texture_address wined3d_texture_gl_address_mode(const struct wined3d_texture_gl *texture_gl,
         enum wined3d_texture_address t)
 {
     if (t < WINED3D_TADDRESS_WRAP || t > WINED3D_TADDRESS_MIRROR_ONCE)
@@ -3523,7 +3524,7 @@ static enum wined3d_texture_address wined3d_texture_address_mode(const struct wi
     }
 
     /* Cubemaps are always set to clamp, regardless of the sampler state. */
-    if (texture->target == GL_TEXTURE_CUBE_MAP_ARB || ((texture->flags & WINED3D_TEXTURE_COND_NP2)
+    if (texture_gl->target == GL_TEXTURE_CUBE_MAP_ARB || ((texture_gl->t.flags & WINED3D_TEXTURE_COND_NP2)
             && t == WINED3D_TADDRESS_WRAP))
         return WINED3D_TADDRESS_CLAMP;
 
@@ -3531,7 +3532,8 @@ static enum wined3d_texture_address wined3d_texture_address_mode(const struct wi
 }
 
 static void wined3d_sampler_desc_from_sampler_states(struct wined3d_sampler_desc *desc,
-        const struct wined3d_context *context, const DWORD *sampler_states, const struct wined3d_texture *texture)
+        const struct wined3d_context *context, const DWORD *sampler_states,
+        const struct wined3d_texture_gl *texture_gl)
 {
     union
     {
@@ -3539,9 +3541,9 @@ static void wined3d_sampler_desc_from_sampler_states(struct wined3d_sampler_desc
         DWORD d;
     } lod_bias;
 
-    desc->address_u = wined3d_texture_address_mode(texture, sampler_states[WINED3D_SAMP_ADDRESS_U]);
-    desc->address_v = wined3d_texture_address_mode(texture, sampler_states[WINED3D_SAMP_ADDRESS_V]);
-    desc->address_w = wined3d_texture_address_mode(texture, sampler_states[WINED3D_SAMP_ADDRESS_W]);
+    desc->address_u = wined3d_texture_gl_address_mode(texture_gl, sampler_states[WINED3D_SAMP_ADDRESS_U]);
+    desc->address_v = wined3d_texture_gl_address_mode(texture_gl, sampler_states[WINED3D_SAMP_ADDRESS_V]);
+    desc->address_w = wined3d_texture_gl_address_mode(texture_gl, sampler_states[WINED3D_SAMP_ADDRESS_W]);
     wined3d_color_from_d3dcolor((struct wined3d_color *)desc->border_color,
             sampler_states[WINED3D_SAMP_BORDER_COLOR]);
     if (sampler_states[WINED3D_SAMP_MAG_FILTER] > WINED3D_TEXF_ANISOTROPIC)
@@ -3565,20 +3567,20 @@ static void wined3d_sampler_desc_from_sampler_states(struct wined3d_sampler_desc
     if ((sampler_states[WINED3D_SAMP_MAG_FILTER] != WINED3D_TEXF_ANISOTROPIC
                 && sampler_states[WINED3D_SAMP_MIN_FILTER] != WINED3D_TEXF_ANISOTROPIC
                 && sampler_states[WINED3D_SAMP_MIP_FILTER] != WINED3D_TEXF_ANISOTROPIC)
-            || (texture->flags & WINED3D_TEXTURE_COND_NP2))
+            || (texture_gl->t.flags & WINED3D_TEXTURE_COND_NP2))
         desc->max_anisotropy = 1;
-    desc->compare = texture->resource.format_flags & WINED3DFMT_FLAG_SHADOW;
+    desc->compare = texture_gl->t.resource.format_flags & WINED3DFMT_FLAG_SHADOW;
     desc->comparison_func = WINED3D_CMP_LESSEQUAL;
     desc->srgb_decode = sampler_states[WINED3D_SAMP_SRGB_TEXTURE];
 
-    if (!(texture->resource.format_flags & WINED3DFMT_FLAG_FILTERING))
+    if (!(texture_gl->t.resource.format_flags & WINED3DFMT_FLAG_FILTERING))
     {
         desc->mag_filter = WINED3D_TEXF_POINT;
         desc->min_filter = WINED3D_TEXF_POINT;
         desc->mip_filter = WINED3D_TEXF_NONE;
     }
 
-    if (texture->flags & WINED3D_TEXTURE_COND_NP2)
+    if (texture_gl->t.flags & WINED3D_TEXTURE_COND_NP2)
     {
         desc->mip_filter = WINED3D_TEXF_NONE;
         if (context->gl_info->supported[WINED3D_GL_NORMALIZED_TEXRECT])
@@ -3609,17 +3611,17 @@ static void sampler(struct wined3d_context *context, const struct wined3d_state 
 
     if (state->textures[sampler_idx])
     {
+        struct wined3d_texture_gl *texture_gl = wined3d_texture_gl(state->textures[sampler_idx]);
         BOOL srgb = state->sampler_states[sampler_idx][WINED3D_SAMP_SRGB_TEXTURE];
         const DWORD *sampler_states = state->sampler_states[sampler_idx];
-        struct wined3d_texture *texture = state->textures[sampler_idx];
         struct wined3d_device *device = context->device;
         struct wined3d_sampler_desc desc;
         struct wined3d_sampler *sampler;
         struct wine_rb_entry *entry;
 
-        wined3d_sampler_desc_from_sampler_states(&desc, context, sampler_states, texture);
+        wined3d_sampler_desc_from_sampler_states(&desc, context, sampler_states, texture_gl);
 
-        wined3d_texture_bind(texture, context, srgb);
+        wined3d_texture_gl_bind(texture_gl, context, srgb);
 
         if ((entry = wine_rb_get(&device->samplers, &desc)))
         {
@@ -3640,10 +3642,10 @@ static void sampler(struct wined3d_context *context, const struct wined3d_state 
             }
         }
 
-        wined3d_sampler_bind(sampler, mapped_stage, texture, context);
+        wined3d_sampler_bind(sampler, mapped_stage, texture_gl, context);
 
         /* Trigger shader constant reloading (for NP2 texcoord fixup) */
-        if (!(texture->flags & WINED3D_TEXTURE_POW2_MAT_IDENT))
+        if (!(texture_gl->t.flags & WINED3D_TEXTURE_POW2_MAT_IDENT))
             context->constant_update_mask |= WINED3D_SHADER_CONST_PS_NP2_FIXUP;
     }
     else
@@ -4319,12 +4321,8 @@ static void indexbuffer(struct wined3d_context *context, const struct wined3d_st
     }
     else
     {
-        struct wined3d_buffer *ib = state->index_buffer;
-        // FIXME(acomminos): disasterous.
-        if (ib->locations & WINED3D_LOCATION_PERSISTENT_MAP)
-            GL_EXTCALL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib->buffer_heap->buffer_object));
-        else
-            GL_EXTCALL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib->buffer_object));
+        struct wined3d_buffer_gl *ib = wined3d_buffer_gl(state->index_buffer);
+        GL_EXTCALL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib->buffer_object));
     }
 }
 
@@ -4412,7 +4410,6 @@ static void state_cb(struct wined3d_context *context, const struct wined3d_state
     enum wined3d_shader_type shader_type;
     struct wined3d_buffer *buffer;
     unsigned int i, base, count;
-    struct wined3d_bo_address bo_addr;
 
     TRACE("context %p, state %p, state_id %#x.\n", context, state, state_id);
 
@@ -4422,51 +4419,12 @@ static void state_cb(struct wined3d_context *context, const struct wined3d_state
         shader_type = WINED3D_SHADER_TYPE_COMPUTE;
 
     wined3d_gl_limits_get_uniform_block_range(&gl_info->limits, shader_type, &base, &count);
-
-    if (gl_info->supported[ARB_MULTI_BIND])
+    for (i = 0; i < count; ++i)
     {
-        GLuint buffer_objects[count];
-        GLsizeiptr buffer_offsets[count];
-        GLsizeiptr buffer_sizes[count];
-
-        for (i = 0; i < count; ++i)
-        {
-            buffer = state->cb[shader_type][i];
-            if (buffer)
-            {
-                wined3d_buffer_get_memory(buffer, &bo_addr, buffer->locations);
-                buffer_objects[i] = bo_addr.buffer_object;
-                buffer_offsets[i] = bo_addr.addr;
-                buffer_sizes[i] = bo_addr.length;
-            }
-            else
-            {
-                buffer_objects[i] = buffer_offsets[i] = 0;
-                // The ARB_multi_bind spec states that an error may be thrown if
-                // `size` is less than or equal to zero, Thus, we specify a size for
-                // unused buffers anyway.
-                buffer_sizes[i] = 1;
-            }
-        }
-        GL_EXTCALL(glBindBuffersRange(GL_UNIFORM_BUFFER, base, count, buffer_objects, buffer_offsets, buffer_sizes));
+        buffer = state->cb[shader_type][i];
+        GL_EXTCALL(glBindBufferBase(GL_UNIFORM_BUFFER, base + i,
+                buffer ? wined3d_buffer_gl(buffer)->buffer_object : 0));
     }
-    else
-    {
-        for (i = 0; i < count; ++i)
-        {
-            buffer = state->cb[shader_type][i];
-            if (buffer)
-            {
-                wined3d_buffer_get_memory(buffer, &bo_addr, buffer->locations);
-                GL_EXTCALL(glBindBufferRange(GL_UNIFORM_BUFFER, base + i, bo_addr.buffer_object, bo_addr.addr, bo_addr.length));
-            }
-            else
-            {
-                GL_EXTCALL(glBindBufferBase(GL_UNIFORM_BUFFER, base + i, 0));
-            }
-        }
-    }
-
     checkGLcall("bind constant buffers");
 }
 
@@ -4537,7 +4495,7 @@ static void state_so(struct wined3d_context *context, const struct wined3d_state
         }
         size = buffer->resource.size - offset;
         GL_EXTCALL(glBindBufferRange(GL_TRANSFORM_FEEDBACK_BUFFER, i,
-                buffer->buffer_object, offset, size));
+                wined3d_buffer_gl(buffer)->buffer_object, offset, size));
     }
     checkGLcall("bind transform feedback buffers");
 }

@@ -73,7 +73,6 @@ enum wined3d_cs_op
     WINED3D_CS_OP_CLEAR_UNORDERED_ACCESS_VIEW,
     WINED3D_CS_OP_COPY_UAV_COUNTER,
     WINED3D_CS_OP_GENERATE_MIPMAPS,
-    WINED3D_CS_OP_DISCARD_BUFFER,
     WINED3D_CS_OP_STOP,
 };
 
@@ -441,13 +440,6 @@ struct wined3d_cs_generate_mipmaps
     struct wined3d_shader_resource_view *view;
 };
 
-struct wined3d_cs_discard_buffer
-{
-    enum wined3d_cs_op opcode;
-    struct wined3d_buffer *buffer;
-    struct wined3d_buffer_heap_element *map_range;
-};
-
 struct wined3d_cs_stop
 {
     enum wined3d_cs_op opcode;
@@ -535,15 +527,6 @@ static void wined3d_cs_exec_present(struct wined3d_cs *cs, const void *data)
     }
 
     InterlockedDecrement(&cs->pending_presents);
-
-    // FIXME(acomminos): is this the right place to put double-buffered frame
-    //                   timing based logic?
-    // FIXME(acomminos): this conditional sucks, replace with fancier feature check
-    if (cs->device->wo_buffer_heap && cs->device->cb_buffer_heap)
-    {
-        wined3d_buffer_heap_cs_fence_issue(cs->device->wo_buffer_heap, cs->device);
-        wined3d_buffer_heap_cs_fence_issue(cs->device->cb_buffer_heap, cs->device);
-    }
 }
 
 void wined3d_cs_emit_present(struct wined3d_cs *cs, struct wined3d_swapchain *swapchain,
@@ -1369,7 +1352,7 @@ static void wined3d_cs_exec_set_texture(struct wined3d_cs *cs, const void *data)
         if (InterlockedIncrement(&op->texture->resource.bind_count) == 1)
             op->texture->sampler = op->stage;
 
-        if (!prev || op->texture->target != prev->target
+        if (!prev || wined3d_texture_gl(op->texture)->target != wined3d_texture_gl(prev)->target
                 || (!is_same_fixup(new_format->color_fixup, old_format->color_fixup)
                 && !(can_use_texture_swizzle(gl_info, new_format) && can_use_texture_swizzle(gl_info, old_format)))
                 || (new_fmt_flags & WINED3DFMT_FLAG_SHADOW) != (old_fmt_flags & WINED3DFMT_FLAG_SHADOW))
@@ -2112,7 +2095,7 @@ static void wined3d_cs_exec_map(struct wined3d_cs *cs, const void *data)
     const struct wined3d_cs_map *op = data;
     struct wined3d_resource *resource = op->resource;
 
-    *op->hr = resource->resource_ops->resource_sub_resource_map_cs(resource,
+    *op->hr = resource->resource_ops->resource_sub_resource_map(resource,
             op->sub_resource_idx, op->map_desc, op->box, op->flags);
 }
 
@@ -2146,7 +2129,7 @@ static void wined3d_cs_exec_unmap(struct wined3d_cs *cs, const void *data)
     const struct wined3d_cs_unmap *op = data;
     struct wined3d_resource *resource = op->resource;
 
-    *op->hr = resource->resource_ops->resource_sub_resource_unmap_cs(resource, op->sub_resource_idx);
+    *op->hr = resource->resource_ops->resource_sub_resource_unmap(resource, op->sub_resource_idx);
 }
 
 HRESULT wined3d_cs_unmap(struct wined3d_cs *cs, struct wined3d_resource *resource, unsigned int sub_resource_idx)
@@ -2245,7 +2228,7 @@ static void wined3d_cs_exec_blt_sub_resource(struct wined3d_cs *cs, const void *
         wined3d_texture_get_pitch(src_texture, op->src_sub_resource_idx % src_texture->level_count,
                 &row_pitch, &slice_pitch);
 
-        wined3d_texture_bind_and_dirtify(dst_texture, context, FALSE);
+        wined3d_texture_gl_bind_and_dirtify(wined3d_texture_gl(dst_texture), context, FALSE);
         wined3d_texture_upload_data(dst_texture, op->dst_sub_resource_idx, context,
                 dst_texture->resource.format, &op->src_box, wined3d_const_bo_address(&addr),
                 row_pitch, slice_pitch, op->dst_box.left, op->dst_box.top, op->dst_box.front, FALSE);
@@ -2343,7 +2326,7 @@ static void wined3d_cs_exec_update_sub_resource(struct wined3d_cs *cs, const voi
         wined3d_texture_prepare_texture(texture, context, FALSE);
     else
         wined3d_texture_load_location(texture, op->sub_resource_idx, context, WINED3D_LOCATION_TEXTURE_RGB);
-    wined3d_texture_bind_and_dirtify(texture, context, FALSE);
+    wined3d_texture_gl_bind_and_dirtify(wined3d_texture_gl(texture), context, FALSE);
 
     wined3d_box_set(&src_box, 0, 0, box->right - box->left, box->bottom - box->top, 0, box->back - box->front);
     wined3d_texture_upload_data(texture, op->sub_resource_idx, context, texture->resource.format, &src_box,
@@ -2541,53 +2524,6 @@ void wined3d_cs_emit_generate_mipmaps(struct wined3d_cs *cs, struct wined3d_shad
     cs->ops->submit(cs, WINED3D_CS_QUEUE_DEFAULT);
 }
 
-static void wined3d_cs_exec_discard_buffer(struct wined3d_cs *cs, const void *data)
-{
-    const struct wined3d_cs_discard_buffer *op = data;
-    struct wined3d_buffer *buffer = op->buffer;
-    HRESULT hr;
-
-    // TODO(acomminos): should call into buffer.c here instead.
-    if (FAILED(hr = wined3d_buffer_heap_free_fenced(buffer->buffer_heap, cs->device, buffer->cs_persistent_map)))
-    {
-        ERR("Failed to do a fenced free on discarded buffer %p, hr %x\n. Freeing anyway.", buffer, hr);
-        wined3d_buffer_heap_free(buffer->buffer_heap, buffer->cs_persistent_map);
-    }
-
-    buffer->cs_persistent_map = op->map_range;
-
-    // TODO(acomminos): merge this logic with buffer.c functions for standalone BOs
-    if (buffer->bind_flags & WINED3D_BIND_VERTEX_BUFFER)
-        device_invalidate_state(cs->device, STATE_STREAMSRC);
-    if (buffer->bind_flags & WINED3D_BIND_INDEX_BUFFER)
-        device_invalidate_state(cs->device, STATE_INDEXBUFFER);
-    if (buffer->bind_flags & WINED3D_BIND_CONSTANT_BUFFER)
-    {
-        device_invalidate_state(cs->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_VERTEX));
-        device_invalidate_state(cs->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_HULL));
-        device_invalidate_state(cs->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_DOMAIN));
-        device_invalidate_state(cs->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_GEOMETRY));
-        device_invalidate_state(cs->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL));
-        device_invalidate_state(cs->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_COMPUTE));
-    }
-
-    wined3d_resource_release(&op->buffer->resource);
-}
-
-void wined3d_cs_emit_discard_buffer(struct wined3d_cs *cs, struct wined3d_buffer *buffer, struct wined3d_buffer_heap_element *elem)
-{
-    struct wined3d_cs_discard_buffer *op;
-
-    op = cs->ops->require_space(cs, sizeof(*op), WINED3D_CS_QUEUE_DEFAULT);
-    op->opcode = WINED3D_CS_OP_DISCARD_BUFFER;
-    op->buffer = buffer;
-    op->map_range = elem;
-
-    wined3d_resource_acquire(&buffer->resource);
-
-    cs->ops->submit(cs, WINED3D_CS_QUEUE_DEFAULT);
-}
-
 static void wined3d_cs_emit_stop(struct wined3d_cs *cs)
 {
     struct wined3d_cs_stop *op;
@@ -2648,7 +2584,6 @@ static void (* const wined3d_cs_op_handlers[])(struct wined3d_cs *cs, const void
     /* WINED3D_CS_OP_CLEAR_UNORDERED_ACCESS_VIEW */ wined3d_cs_exec_clear_unordered_access_view,
     /* WINED3D_CS_OP_COPY_UAV_COUNTER            */ wined3d_cs_exec_copy_uav_counter,
     /* WINED3D_CS_OP_GENERATE_MIPMAPS            */ wined3d_cs_exec_generate_mipmaps,
-    /* WINED3D_CS_OP_DISCARD_BUFFER              */ wined3d_cs_exec_discard_buffer,
 };
 
 static BOOL wined3d_cs_st_check_space(struct wined3d_cs *cs, size_t size, enum wined3d_cs_queue_id queue_id)

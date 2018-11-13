@@ -69,14 +69,11 @@ struct request_max_size
 #define FIRST_USER_HANDLE 0x0020  /* first possible value for low word of user handle */
 #define LAST_USER_HANDLE  0xffef  /* last possible value for low word of user handle */
 
-/* wineserver global shared memory block */
 typedef struct
 {
-    unsigned int last_input_time;       /* last input time */
-    unsigned int foreground_wnd_epoch;  /* counter to invalidate foreground window */
+    unsigned int last_input_time;   /* last input time */
 } shmglobal_t;
 
-/* wineserver local shared memory block */
 typedef struct
 {
     int             queue_bits;     /* queue wake bits */
@@ -295,11 +292,18 @@ typedef struct
 
 /* structures for extra message data */
 
+struct hw_msg_source
+{
+    unsigned int    device;        /* source device (IMDT_* values) */
+    unsigned int    origin;        /* source origin (IMO_* values) */
+};
+
 struct hardware_msg_data
 {
-    lparam_t        info;      /* extra info */
-    unsigned int    hw_id;     /* unique id */
-    unsigned int    flags;     /* hook flags */
+    lparam_t             info;      /* extra info */
+    unsigned int         hw_id;     /* unique id */
+    unsigned int         flags;     /* hook flags */
+    struct hw_msg_source source;    /* message source */
     union
     {
         int type;

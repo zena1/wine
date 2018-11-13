@@ -304,7 +304,6 @@ struct d3d_device
     IUnknown IUnknown_inner;
     LONG ref;
     UINT version;
-    BOOL hw;
 
     IUnknown *outer_unknown;
     struct wined3d_device *wined3d_device;
@@ -349,7 +348,7 @@ struct d3d_device
     struct wined3d_vec4 user_clip_planes[D3DMAXUSERCLIPPLANES];
 };
 
-HRESULT d3d_device_create(struct ddraw *ddraw, const GUID *guid, struct ddraw_surface *target, IUnknown *rt_iface,
+HRESULT d3d_device_create(struct ddraw *ddraw, struct ddraw_surface *target, IUnknown *rt_iface,
         UINT version, struct d3d_device **device, IUnknown *outer_unknown) DECLSPEC_HIDDEN;
 enum wined3d_depth_buffer_type d3d_device_update_depth_stencil(struct d3d_device *device) DECLSPEC_HIDDEN;
 
@@ -476,6 +475,13 @@ struct d3d_material
 void material_activate(struct d3d_material *material) DECLSPEC_HIDDEN;
 struct d3d_material *d3d_material_create(struct ddraw *ddraw) DECLSPEC_HIDDEN;
 
+enum ddraw_viewport_version
+{
+    DDRAW_VIEWPORT_VERSION_NONE,
+    DDRAW_VIEWPORT_VERSION_1,
+    DDRAW_VIEWPORT_VERSION_2,
+};
+
 /*****************************************************************************
  * IDirect3DViewport - Wraps to D3D7
  *****************************************************************************/
@@ -493,7 +499,7 @@ struct d3d_viewport
     DWORD                     num_lights;
     DWORD                     map_lights;
 
-    int                       use_vp2;
+    enum ddraw_viewport_version version;
 
     union
     {

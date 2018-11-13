@@ -53,13 +53,10 @@ struct request_max_size
 #define FIRST_USER_HANDLE 0x0020
 #define LAST_USER_HANDLE  0xffef
 
-
 typedef struct
 {
     unsigned int last_input_time;
-    unsigned int foreground_wnd_epoch;
 } shmglobal_t;
-
 
 typedef struct
 {
@@ -279,11 +276,18 @@ typedef struct
 
 
 
+struct hw_msg_source
+{
+    unsigned int    device;
+    unsigned int    origin;
+};
+
 struct hardware_msg_data
 {
-    lparam_t        info;
-    unsigned int    hw_id;
-    unsigned int    flags;
+    lparam_t             info;
+    unsigned int         hw_id;
+    unsigned int         flags;
+    struct hw_msg_source source;
     union
     {
         int type;
@@ -6916,6 +6920,6 @@ union generic_reply
     struct esync_msgwait_reply esync_msgwait_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 571
+#define SERVER_PROTOCOL_VERSION 572
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */
