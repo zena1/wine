@@ -457,7 +457,6 @@ DWORD HID_set_state(xinput_controller* device, XINPUT_VIBRATION* state)
                 return ERROR_SUCCESS;
             return GetLastError();
         }
-        return ERROR_SUCCESS;
     }
 
     return ERROR_SUCCESS;

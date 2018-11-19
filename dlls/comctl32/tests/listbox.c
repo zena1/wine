@@ -1806,9 +1806,7 @@ static void test_set_count( void )
 
         SetLastError( 0xdeadbeef );
         ret = SendMessageA( listbox, LB_SETCOUNT, 100, 0 );
-    todo_wine_if(i == 0)
         ok( ret == LB_ERR, "expected %d, got %d\n", LB_ERR, ret );
-    todo_wine_if(i == 1)
         ok( GetLastError() == 0xdeadbeef, "Unexpected error %d.\n", GetLastError() );
 
         DestroyWindow( listbox );
@@ -2298,30 +2296,30 @@ static void test_LBS_NODATA(void)
         ret = SendMessageA(listbox, LB_SETITEMDATA, valid_idx[i], 42);
         ok(ret == TRUE, "Unexpected return value %d.\n", ret);
         ret = SendMessageA(listbox, LB_GETTEXTLEN, valid_idx[i], 0);
-    todo_wine_if(text_len == 8)
+    todo_wine_if(is_wow64)
         ok(ret == text_len, "Unexpected return value %d.\n", ret);
 
         memset(&data, 0xee, sizeof(data));
         ret = SendMessageA(listbox, LB_GETTEXT, valid_idx[i], (LPARAM)&data);
-    todo_wine_if(sizeof(void *) == 8)
         ok(ret == sizeof(data), "Unexpected return value %d.\n", ret);
-    todo_wine
         ok(!memcmp(&data, &zero_data, sizeof(data)), "Unexpected item data.\n");
 
         ret = SendMessageA(listbox, LB_GETITEMDATA, valid_idx[i], 0);
-    todo_wine
         ok(ret == 0, "Unexpected return value %d.\n", ret);
     }
 
     /* More messages that don't work with LBS_NODATA. */
+    ret = SendMessageA(listbox, LB_FINDSTRING, 1, 0);
+    ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
     ret = SendMessageA(listbox, LB_FINDSTRING, 1, 42);
-todo_wine
+    ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
+    ret = SendMessageA(listbox, LB_FINDSTRINGEXACT, 1, 0);
     ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
     ret = SendMessageA(listbox, LB_FINDSTRINGEXACT, 1, 42);
-todo_wine
+    ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
+    ret = SendMessageA(listbox, LB_SELECTSTRING, 1, 0);
     ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
     ret = SendMessageA(listbox, LB_SELECTSTRING, 1, 42);
-todo_wine
     ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
 
     DestroyWindow(listbox);
@@ -2341,7 +2339,6 @@ todo_wine
         style = GetWindowLongA(listbox, GWL_STYLE);
         ok((style & invalid_styles[i]) == invalid_styles[i], "%u: unexpected window styles %#x.\n", i, style);
         ret = SendMessageA(listbox, LB_SETCOUNT, 100, 0);
-    todo_wine_if(i == 1 || i == 4)
         ok(ret == LB_ERR, "%u: unexpected return value %d.\n", i, ret);
         DestroyWindow(listbox);
     }

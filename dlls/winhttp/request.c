@@ -541,7 +541,7 @@ BOOL WINAPI WinHttpAddRequestHeaders( HINTERNET hrequest, LPCWSTR headers, DWORD
     return ret;
 }
 
-static WCHAR *build_absolute_request_path( request_t *request )
+static WCHAR *build_absolute_request_path( request_t *request, const WCHAR **path )
 {
     static const WCHAR http[] = {'h','t','t','p',0};
     static const WCHAR https[] = {'h','t','t','p','s',0};
@@ -555,16 +555,17 @@ static WCHAR *build_absolute_request_path( request_t *request )
     len = strlenW( scheme ) + strlenW( request->connect->hostname ) + 4; /* '://' + nul */
     if (request->connect->hostport) len += 6; /* ':' between host and port, up to 5 for port */
 
-    if (request->path) len += strlenW( request->path );
+    len += strlenW( request->path );
     if ((ret = heap_alloc( len * sizeof(WCHAR) )))
     {
         len = sprintfW( ret, fmt, scheme, request->connect->hostname );
         if (request->connect->hostport)
         {
             static const WCHAR port_fmt[] = {':','%','u',0};
-            sprintfW( ret + len, port_fmt, request->connect->hostport );
+            len += sprintfW( ret + len, port_fmt, request->connect->hostport );
         }
-        if (request->path) strcatW( ret, request->path );
+        strcpyW( ret + len, request->path );
+        if (path) *path = ret + len;
     }
 
     return ret;
@@ -578,7 +579,7 @@ static WCHAR *build_request_string( request_t *request )
     unsigned int i, len;
 
     if (!strcmpiW( request->connect->hostname, request->connect->servername )) path = request->path;
-    else if (!(path = build_absolute_request_path( request ))) return NULL;
+    else if (!(path = build_absolute_request_path( request, NULL ))) return NULL;
 
     len = strlenW( request->verb ) + 1 /* ' ' */;
     len += strlenW( path ) + 1 /* ' ' */;
@@ -1336,122 +1337,73 @@ static BOOL do_authorization( request_t *request, DWORD target, DWORD scheme_fla
     return ret;
 }
 
-static LPWSTR concatenate_string_list( LPCWSTR *list, int len )
+static WCHAR *build_proxy_connect_string( request_t *request )
 {
-    LPCWSTR *t;
-    LPWSTR str;
+    static const WCHAR fmtW[] = {'%','s',':','%','u',0};
+    static const WCHAR connectW[] = {'C','O','N','N','E','C','T', 0};
+    static const WCHAR spaceW[] = {' ',0}, crlfW[] = {'\r','\n',0}, colonW[] = {':',' ',0};
+    static const WCHAR twocrlfW[] = {'\r','\n','\r','\n',0};
+    WCHAR *ret, *host;
+    unsigned int i;
+    int len;
 
-    for( t = list; *t ; t++  )
-        len += strlenW( *t );
-    len++;
+    if (!(host = heap_alloc( (strlenW( request->connect->hostname ) + 7) * sizeof(WCHAR) ))) return NULL;
+    len = sprintfW( host, fmtW, request->connect->hostname, request->connect->hostport );
 
-    str = heap_alloc( len * sizeof(WCHAR) );
-    if (!str) return NULL;
-    *str = 0;
+    len += ARRAY_SIZE(connectW);
+    len += ARRAY_SIZE(http1_1);
 
-    for( t = list; *t ; t++ )
-        strcatW( str, *t );
-
-    return str;
-}
-
-static LPWSTR build_header_request_string( request_t *request, LPCWSTR verb,
-    LPCWSTR path, LPCWSTR version )
-{
-    static const WCHAR crlf[] = {'\r','\n',0};
-    static const WCHAR space[] = { ' ',0 };
-    static const WCHAR colon[] = { ':',' ',0 };
-    static const WCHAR twocrlf[] = {'\r','\n','\r','\n', 0};
-    LPWSTR requestString;
-    DWORD len, n;
-    LPCWSTR *req;
-    UINT i;
-    LPWSTR p;
-
-    /* allocate space for an array of all the string pointers to be added */
-    len = (request->num_headers) * 4 + 10;
-    req = heap_alloc( len * sizeof(LPCWSTR) );
-    if (!req) return NULL;
-
-    /* add the verb, path and HTTP version string */
-    n = 0;
-    req[n++] = verb;
-    req[n++] = space;
-    req[n++] = path;
-    req[n++] = space;
-    req[n++] = version;
-
-    /* Append custom request headers */
     for (i = 0; i < request->num_headers; i++)
     {
         if (request->headers[i].is_request)
-        {
-            req[n++] = crlf;
-            req[n++] = request->headers[i].field;
-            req[n++] = colon;
-            req[n++] = request->headers[i].value;
+            len += strlenW( request->headers[i].field ) + strlenW( request->headers[i].value ) + 4; /* '\r\n: ' */
+    }
+    len += 4; /* '\r\n\r\n' */
 
-            TRACE("Adding custom header %s (%s)\n",
-                   debugstr_w(request->headers[i].field),
-                   debugstr_w(request->headers[i].value));
+    if ((ret = heap_alloc( (len + 1) * sizeof(WCHAR) )))
+    {
+        strcpyW( ret, connectW );
+        strcatW( ret, spaceW );
+        strcatW( ret, host );
+        strcatW( ret, spaceW );
+        strcatW( ret, http1_1 );
+
+        for (i = 0; i < request->num_headers; i++)
+        {
+            if (request->headers[i].is_request)
+            {
+                strcatW( ret, crlfW );
+                strcatW( ret, request->headers[i].field );
+                strcatW( ret, colonW );
+                strcatW( ret, request->headers[i].value );
+            }
         }
+        strcatW( ret, twocrlfW );
     }
 
-    if( n >= len )
-        ERR("oops. buffer overrun\n");
-
-    req[n] = NULL;
-    requestString = concatenate_string_list( req, 4 );
-    heap_free( req );
-    if (!requestString) return NULL;
-
-    /*
-     * Set (header) termination string for request
-     * Make sure there are exactly two new lines at the end of the request
-     */
-    p = &requestString[strlenW(requestString)-1];
-    while ( (*p == '\n') || (*p == '\r') )
-       p--;
-    strcpyW( p+1, twocrlf );
-
-    return requestString;
+    heap_free( host );
+    return ret;
 }
 
 static BOOL read_reply( request_t *request );
 
 static BOOL secure_proxy_connect( request_t *request )
 {
-    static const WCHAR verbConnect[] = {'C','O','N','N','E','C','T',0};
-    static const WCHAR fmt[] = {'%','s',':','%','u',0};
-    BOOL ret = FALSE;
-    LPWSTR path;
-    connect_t *connect = request->connect;
+    WCHAR *str;
+    char *strA;
+    int len, bytes_sent;
+    BOOL ret;
 
-    path = heap_alloc( (strlenW( connect->hostname ) + 13) * sizeof(WCHAR) );
-    if (path)
-    {
-        LPWSTR requestString;
+    if (!(str = build_proxy_connect_string( request ))) return FALSE;
+    strA = strdupWA( str );
+    heap_free( str );
+    if (!strA) return FALSE;
 
-        sprintfW( path, fmt, connect->hostname, connect->hostport );
-        requestString = build_header_request_string( request, verbConnect,
-            path, http1_1 );
-        heap_free( path );
-        if (requestString)
-        {
-            LPSTR req_ascii = strdupWA( requestString );
+    len = strlen( strA );
+    ret = netconn_send( request->netconn, strA, len, &bytes_sent );
+    heap_free( strA );
+    if (ret) ret = read_reply( request );
 
-            heap_free( requestString );
-            if (req_ascii)
-            {
-                int len = strlen( req_ascii ), bytes_sent;
-
-                ret = netconn_send( request->netconn, req_ascii, len, &bytes_sent );
-                heap_free( req_ascii );
-                if (ret)
-                    ret = read_reply( request );
-            }
-        }
-    }
     return ret;
 }
 
@@ -1487,7 +1439,7 @@ static CRITICAL_SECTION connection_pool_cs = { &connection_pool_debug, -1, 0, 0,
 
 static struct list connection_pool = LIST_INIT( connection_pool );
 
-void release_host( hostdata_t *host )
+void release_host( struct hostdata *host )
 {
     LONG ref;
 
@@ -1507,7 +1459,7 @@ static DWORD WINAPI connection_collector(void *arg)
 {
     unsigned int remaining_connections;
     netconn_t *netconn, *next_netconn;
-    hostdata_t *host, *next_host;
+    struct hostdata *host, *next_host;
     ULONGLONG now;
 
     do
@@ -1519,7 +1471,7 @@ static DWORD WINAPI connection_collector(void *arg)
 
         EnterCriticalSection(&connection_pool_cs);
 
-        LIST_FOR_EACH_ENTRY_SAFE(host, next_host, &connection_pool, hostdata_t, entry)
+        LIST_FOR_EACH_ENTRY_SAFE(host, next_host, &connection_pool, struct hostdata, entry)
         {
             LIST_FOR_EACH_ENTRY_SAFE(netconn, next_netconn, &host->connections, netconn_t, entry)
             {
@@ -1617,7 +1569,7 @@ static BOOL ensure_cred_handle( session_t *session )
 static BOOL open_connection( request_t *request )
 {
     BOOL is_secure = request->hdr.flags & WINHTTP_FLAG_SECURE;
-    hostdata_t *host = NULL, *iter;
+    struct hostdata *host = NULL, *iter;
     netconn_t *netconn = NULL;
     connect_t *connect;
     WCHAR *addressW = NULL;
@@ -1631,7 +1583,7 @@ static BOOL open_connection( request_t *request )
 
     EnterCriticalSection( &connection_pool_cs );
 
-    LIST_FOR_EACH_ENTRY( iter, &connection_pool, hostdata_t, entry )
+    LIST_FOR_EACH_ENTRY( iter, &connection_pool, struct hostdata, entry )
     {
         if (iter->port == port && !strcmpW( connect->servername, iter->hostname ) && !is_secure == !iter->secure)
         {
@@ -2125,16 +2077,16 @@ static DWORD str_to_wire( const WCHAR *src, int src_len, char *dst, enum escape_
 static char *build_wire_path( request_t *request, DWORD *ret_len )
 {
     WCHAR *full_path;
-    const WCHAR *path, *query = NULL;
+    const WCHAR *start, *path, *query = NULL;
     DWORD len, len_path = 0, len_query = 0;
     enum escape_flags path_flags, query_flags;
     char *ret;
 
-    if (!strcmpiW( request->connect->hostname, request->connect->servername )) full_path = request->path;
-    else if (!(full_path = build_absolute_request_path( request ))) return NULL;
+    if (!strcmpiW( request->connect->hostname, request->connect->servername )) start = full_path = request->path;
+    else if (!(full_path = build_absolute_request_path( request, &start ))) return NULL;
 
     len = strlenW( full_path );
-    if ((path = strchrW( full_path, '/' )))
+    if ((path = strchrW( start, '/' )))
     {
         len_path = strlenW( path );
         if ((query = strchrW( path, '?' )))
@@ -2834,7 +2786,7 @@ static BOOL receive_response( request_t *request, BOOL async )
 
 static void task_receive_response( struct task_header *task )
 {
-    receive_response_t *r = (receive_response_t *)task;
+    struct receive_response *r = (struct receive_response *)task;
     receive_response( r->hdr.request, TRUE );
 }
 
@@ -2862,9 +2814,9 @@ BOOL WINAPI WinHttpReceiveResponse( HINTERNET hrequest, LPVOID reserved )
 
     if (request->connect->hdr.flags & WINHTTP_FLAG_ASYNC)
     {
-        receive_response_t *r;
+        struct receive_response *r;
 
-        if (!(r = heap_alloc( sizeof(receive_response_t) ))) return FALSE;
+        if (!(r = heap_alloc( sizeof(struct receive_response) ))) return FALSE;
         r->hdr.request = request;
         r->hdr.proc    = task_receive_response;
 
@@ -2905,7 +2857,7 @@ done:
 
 static void task_query_data_available( struct task_header *task )
 {
-    query_data_t *q = (query_data_t *)task;
+    struct query_data *q = (struct query_data *)task;
     query_data_available( q->hdr.request, q->available, TRUE );
 }
 
@@ -2933,9 +2885,9 @@ BOOL WINAPI WinHttpQueryDataAvailable( HINTERNET hrequest, LPDWORD available )
 
     if (request->connect->hdr.flags & WINHTTP_FLAG_ASYNC)
     {
-        query_data_t *q;
+        struct query_data *q;
 
-        if (!(q = heap_alloc( sizeof(query_data_t) ))) return FALSE;
+        if (!(q = heap_alloc( sizeof(struct query_data) ))) return FALSE;
         q->hdr.request = request;
         q->hdr.proc    = task_query_data_available;
         q->available   = available;
@@ -2953,7 +2905,7 @@ BOOL WINAPI WinHttpQueryDataAvailable( HINTERNET hrequest, LPDWORD available )
 
 static void task_read_data( struct task_header *task )
 {
-    read_data_t *r = (read_data_t *)task;
+    struct read_data *r = (struct read_data *)task;
     read_data( r->hdr.request, r->buffer, r->to_read, r->read, TRUE );
 }
 
@@ -2981,9 +2933,9 @@ BOOL WINAPI WinHttpReadData( HINTERNET hrequest, LPVOID buffer, DWORD to_read, L
 
     if (request->connect->hdr.flags & WINHTTP_FLAG_ASYNC)
     {
-        read_data_t *r;
+        struct read_data *r;
 
-        if (!(r = heap_alloc( sizeof(read_data_t) ))) return FALSE;
+        if (!(r = heap_alloc( sizeof(struct read_data) ))) return FALSE;
         r->hdr.request = request;
         r->hdr.proc    = task_read_data;
         r->buffer      = buffer;
@@ -3025,7 +2977,7 @@ static BOOL write_data( request_t *request, LPCVOID buffer, DWORD to_write, LPDW
 
 static void task_write_data( struct task_header *task )
 {
-    write_data_t *w = (write_data_t *)task;
+    struct write_data *w = (struct write_data *)task;
     write_data( w->hdr.request, w->buffer, w->to_write, w->written, TRUE );
 }
 
@@ -3053,9 +3005,9 @@ BOOL WINAPI WinHttpWriteData( HINTERNET hrequest, LPCVOID buffer, DWORD to_write
 
     if (request->connect->hdr.flags & WINHTTP_FLAG_ASYNC)
     {
-        write_data_t *w;
+        struct write_data *w;
 
-        if (!(w = heap_alloc( sizeof(write_data_t) ))) return FALSE;
+        if (!(w = heap_alloc( sizeof(struct write_data) ))) return FALSE;
         w->hdr.request = request;
         w->hdr.proc    = task_write_data;
         w->buffer      = buffer;

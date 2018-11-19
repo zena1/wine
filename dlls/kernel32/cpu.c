@@ -329,16 +329,14 @@ WORD WINAPI GetMaximumProcessorGroupCount(void)
  */
 DWORD WINAPI GetMaximumProcessorCount(WORD group)
 {
-    TRACE("(%u)\n", group);
+    SYSTEM_INFO si;
+    DWORD cpus;
 
-    if (group && group != ALL_PROCESSOR_GROUPS)
-    {
-        SetLastError(ERROR_INVALID_PARAMETER);
-        return 0;
-    }
+    GetSystemInfo( &si );
+    cpus = si.dwNumberOfProcessors;
 
-    /* Wine only counts active processors so far */
-    return system_info.NumberOfProcessors;
+    FIXME("semi-stub, returning %u\n", cpus);
+    return cpus;
 }
 
 /***********************************************************************

@@ -1023,31 +1023,31 @@
 @ stdcall PathAddBackslashW(wstr) shlwapi.PathAddBackslashW
 @ stdcall PathAddExtensionA(str str) shlwapi.PathAddExtensionA
 @ stdcall PathAddExtensionW(wstr wstr) shlwapi.PathAddExtensionW
-# @ stub PathAllocCanonicalize
-# @ stub PathAllocCombine
+@ stdcall PathAllocCanonicalize(wstr long ptr)
+@ stdcall PathAllocCombine(wstr wstr long ptr)
 @ stdcall PathAppendA(str str) shlwapi.PathAppendA
 @ stdcall PathAppendW(wstr wstr) shlwapi.PathAppendW
 @ stdcall PathCanonicalizeA(ptr str) shlwapi.PathCanonicalizeA
 @ stdcall PathCanonicalizeW(ptr wstr) shlwapi.PathCanonicalizeW
 @ stdcall PathCchAddBackslash(wstr long)
 @ stdcall PathCchAddBackslashEx(wstr long ptr ptr)
-# @ stub PathCchAddExtension
-# @ stub PathCchAppend
-# @ stub PathCchAppendEx
-# @ stub PathCchCanonicalize
-# @ stub PathCchCanonicalizeEx
-# @ stub PathCchCombine
-@ stdcall PathCchCombineEx(ptr long ptr ptr long)
-# @ stub PathCchFindExtension
-# @ stub PathCchIsRoot
+@ stdcall PathCchAddExtension(wstr long wstr)
+@ stdcall PathCchAppend(wstr long wstr)
+@ stdcall PathCchAppendEx(wstr long wstr long)
+@ stdcall PathCchCanonicalize(ptr long wstr)
+@ stdcall PathCchCanonicalizeEx(ptr long wstr long)
+@ stdcall PathCchCombine(ptr long wstr wstr)
+@ stdcall PathCchCombineEx(ptr long wstr wstr long)
+@ stdcall PathCchFindExtension(wstr long ptr)
+@ stdcall PathCchIsRoot(wstr)
 @ stdcall PathCchRemoveBackslash(wstr long)
 @ stdcall PathCchRemoveBackslashEx(wstr long ptr ptr)
-# @ stub PathCchRemoveExtension
-# @ stub PathCchRemoveFileSpec
-# @ stub PathCchRenameExtension
-# @ stub PathCchSkipRoot
-# @ stub PathCchStripPrefix
-# @ stub PathCchStripToRoot
+@ stdcall PathCchRemoveExtension(wstr long)
+@ stdcall PathCchRemoveFileSpec(wstr long)
+@ stdcall PathCchRenameExtension(wstr long wstr)
+@ stdcall PathCchSkipRoot(wstr ptr)
+@ stdcall PathCchStripPrefix(wstr long)
+@ stdcall PathCchStripToRoot(wstr long)
 @ stdcall PathCombineA(ptr str str) shlwapi.PathCombineA
 @ stdcall PathCombineW(ptr wstr wstr) shlwapi.PathCombineW
 @ stdcall PathCommonPrefixA(str str ptr) shlwapi.PathCommonPrefixA
@@ -1082,7 +1082,7 @@
 @ stdcall PathIsSameRootA(str str) shlwapi.PathIsSameRootA
 @ stdcall PathIsSameRootW(wstr wstr) shlwapi.PathIsSameRootW
 @ stdcall PathIsUNCA(str) shlwapi.PathIsUNCA
-# @ stub PathIsUNCEx
+@ stdcall PathIsUNCEx(wstr ptr)
 @ stdcall PathIsUNCServerA(str) shlwapi.PathIsUNCServerA
 @ stdcall PathIsUNCServerShareA(str) shlwapi.PathIsUNCServerShareA
 @ stdcall PathIsUNCServerShareW(wstr) shlwapi.PathIsUNCServerShareW
@@ -1288,8 +1288,8 @@
 # @ stub RegKrnResetAppKeyLoaded
 # @ stub RegKrnSetDllHasThreadStateGlobal
 # @ stub RegKrnSetTermsrvRegistryExtensionFlags
-# @ stub RegLoadAppKeyA
-# @ stub RegLoadAppKeyW
+@ stdcall RegLoadAppKeyA(wstr ptr long long long) advapi32.RegLoadAppKeyA
+@ stdcall RegLoadAppKeyW(str ptr long long long) advapi32.RegLoadAppKeyW
 @ stdcall -private RegLoadKeyA(long str str) kernel32.RegLoadKeyA
 @ stdcall -private RegLoadKeyW(long wstr wstr) kernel32.RegLoadKeyW
 @ stdcall -private RegLoadMUIStringA(long str str long ptr long str) kernel32.RegLoadMUIStringA
