@@ -2581,7 +2581,7 @@ static BOOL create_cmd_process( HANDLE token, LPSECURITY_ATTRIBUTES psa, LPSECUR
 
     if (!GetEnvironmentVariableW( comspecW, comspec, ARRAY_SIZE( comspec )))
     {
-        GetSystemDirectoryW( comspec, (sizeof(comspec) - sizeof(cmdW))/sizeof(WCHAR) );
+        GetSystemDirectoryW( comspec, ARRAY_SIZE( comspec ) - ARRAY_SIZE( cmdW ));
         strcatW( comspec, cmdW );
     }
     if (!(newcmdline = HeapAlloc( GetProcessHeap(), 0,

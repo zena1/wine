@@ -39,20 +39,19 @@ static const WCHAR http1_0[] = {'H','T','T','P','/','1','.','0',0};
 static const WCHAR http1_1[] = {'H','T','T','P','/','1','.','1',0};
 static const WCHAR chunkedW[] = {'c','h','u','n','k','e','d',0};
 
-typedef struct _object_header_t object_header_t;
-
-typedef struct
+struct object_header;
+struct object_vtbl
 {
-    void (*destroy)( object_header_t * );
-    BOOL (*query_option)( object_header_t *, DWORD, void *, DWORD * );
-    BOOL (*set_option)( object_header_t *, DWORD, void *, DWORD );
-} object_vtbl_t;
+    void (*destroy)( struct object_header * );
+    BOOL (*query_option)( struct object_header *, DWORD, void *, DWORD * );
+    BOOL (*set_option)( struct object_header *, DWORD, void *, DWORD );
+};
 
-struct _object_header_t
+struct object_header
 {
     DWORD type;
     HINTERNET handle;
-    const object_vtbl_t *vtbl;
+    const struct object_vtbl *vtbl;
     DWORD flags;
     DWORD disable_flags;
     DWORD logon_policy;
@@ -66,18 +65,19 @@ struct _object_header_t
     struct list children;
 };
 
-typedef struct {
+struct hostdata
+{
     struct list entry;
     LONG ref;
     WCHAR *hostname;
     INTERNET_PORT port;
     BOOL secure;
     struct list connections;
-} hostdata_t;
+};
 
 typedef struct
 {
-    object_header_t hdr;
+    struct object_header hdr;
     CRITICAL_SECTION cs;
     LPWSTR agent;
     DWORD access;
@@ -99,7 +99,7 @@ typedef struct
 
 typedef struct
 {
-    object_header_t hdr;
+    struct object_header hdr;
     session_t *session;
     LPWSTR hostname;    /* final destination of the request */
     LPWSTR servername;  /* name of the server we directly connect to */
@@ -117,7 +117,7 @@ typedef struct
     int socket;
     struct sockaddr_storage sockaddr;
     BOOL secure; /* SSL active on connection? */
-    hostdata_t *host;
+    struct hostdata *host;
     ULONGLONG keep_until;
     CtxtHandle ssl_ctx;
     SecPkgContext_StreamSizes ssl_sizes;
@@ -170,7 +170,7 @@ struct authinfo
 
 typedef struct
 {
-    object_header_t hdr;
+    struct object_header hdr;
     connect_t *connect;
     LPWSTR verb;
     LPWSTR path;
@@ -230,46 +230,46 @@ struct send_request
     DWORD_PTR context;
 };
 
-typedef struct
+struct receive_response
 {
     struct task_header hdr;
-} receive_response_t;
+};
 
-typedef struct
+struct query_data
 {
     struct task_header hdr;
-    LPDWORD available;
-} query_data_t;
+    DWORD *available;
+};
 
-typedef struct
+struct read_data
 {
     struct task_header hdr;
-    LPVOID buffer;
+    void *buffer;
     DWORD to_read;
-    LPDWORD read;
-} read_data_t;
+    DWORD *read;
+};
 
-typedef struct
+struct write_data
 {
     struct task_header hdr;
-    LPCVOID buffer;
+    const void *buffer;
     DWORD to_write;
-    LPDWORD written;
-} write_data_t;
+    DWORD *written;
+};
 
-object_header_t *addref_object( object_header_t * ) DECLSPEC_HIDDEN;
-object_header_t *grab_object( HINTERNET ) DECLSPEC_HIDDEN;
-void release_object( object_header_t * ) DECLSPEC_HIDDEN;
-HINTERNET alloc_handle( object_header_t * ) DECLSPEC_HIDDEN;
+struct object_header *addref_object( struct object_header * ) DECLSPEC_HIDDEN;
+struct object_header *grab_object( HINTERNET ) DECLSPEC_HIDDEN;
+void release_object( struct object_header * ) DECLSPEC_HIDDEN;
+HINTERNET alloc_handle( struct object_header * ) DECLSPEC_HIDDEN;
 BOOL free_handle( HINTERNET ) DECLSPEC_HIDDEN;
 
 void set_last_error( DWORD ) DECLSPEC_HIDDEN;
 DWORD get_last_error( void ) DECLSPEC_HIDDEN;
-void send_callback( object_header_t *, DWORD, LPVOID, DWORD ) DECLSPEC_HIDDEN;
+void send_callback( struct object_header *, DWORD, LPVOID, DWORD ) DECLSPEC_HIDDEN;
 void close_connection( request_t * ) DECLSPEC_HIDDEN;
 
 void netconn_close( netconn_t * ) DECLSPEC_HIDDEN;
-netconn_t *netconn_create( hostdata_t *, const struct sockaddr_storage *, int ) DECLSPEC_HIDDEN;
+netconn_t *netconn_create( struct hostdata *, const struct sockaddr_storage *, int ) DECLSPEC_HIDDEN;
 void netconn_unload( void ) DECLSPEC_HIDDEN;
 ULONG netconn_query_data_available( netconn_t * ) DECLSPEC_HIDDEN;
 BOOL netconn_recv( netconn_t *, void *, size_t, int, int * ) DECLSPEC_HIDDEN;
@@ -288,7 +288,7 @@ void destroy_cookies( session_t * ) DECLSPEC_HIDDEN;
 BOOL set_server_for_hostname( connect_t *, LPCWSTR, INTERNET_PORT ) DECLSPEC_HIDDEN;
 void destroy_authinfo( struct authinfo * ) DECLSPEC_HIDDEN;
 
-void release_host( hostdata_t *host ) DECLSPEC_HIDDEN;
+void release_host( struct hostdata *host ) DECLSPEC_HIDDEN;
 
 BOOL process_header( request_t *request, LPCWSTR field, LPCWSTR value, DWORD flags, BOOL request_only ) DECLSPEC_HIDDEN;
 

@@ -1883,6 +1883,9 @@ typedef struct _CONTEXT
     DWORD64 Wvr[ARM64_MAX_WATCHPOINTS]; /* 380 */
 } CONTEXT;
 
+BOOLEAN CDECL            RtlAddFunctionTable(RUNTIME_FUNCTION*,DWORD,ULONG_PTR);
+BOOLEAN CDECL            RtlDeleteFunctionTable(RUNTIME_FUNCTION*);
+
 #endif /* __aarch64__ */
 
 
@@ -3747,6 +3750,7 @@ typedef struct _IMAGE_DEBUG_DIRECTORY {
 #define IMAGE_DEBUG_TYPE_POGO          13
 #define IMAGE_DEBUG_TYPE_ILTCG         14
 #define IMAGE_DEBUG_TYPE_MPX           15
+#define IMAGE_DEBUG_TYPE_REPRO         16
 
 typedef enum ReplacesCorHdrNumericDefines
 {
