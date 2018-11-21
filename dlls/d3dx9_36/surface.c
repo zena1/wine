@@ -1875,10 +1875,14 @@ HRESULT WINAPI D3DXLoadSurfaceFromMemory(IDirect3DSurface9 *dst_surface,
         DWORD filter, D3DCOLOR color_key)
 {
     const struct pixel_format_desc *srcformatdesc, *destformatdesc;
+    void *tmp_src_memory = NULL, *tmp_dst_memory = NULL;
+    dxtn_conversion_func pre_convert = NULL, post_convert = NULL;
+    IDirect3DSurface9 *surface = dst_surface;
+    IDirect3DDevice9 *device;
     D3DSURFACE_DESC surfdesc;
     D3DLOCKED_RECT lockrect;
     struct volume src_size, dst_size;
-    HRESULT ret = D3D_OK;
+    HRESULT hr = D3D_OK;
 
     TRACE("(%p, %p, %s, %p, %#x, %u, %p, %s, %#x, 0x%08x)\n",
             dst_surface, dst_palette, wine_dbgstr_rect(dst_rect), src_memory, src_format,
@@ -1934,6 +1938,26 @@ HRESULT WINAPI D3DXLoadSurfaceFromMemory(IDirect3DSurface9 *dst_surface,
         return E_NOTIMPL;
     }
 
+    if (surfdesc.Pool == D3DPOOL_DEFAULT && !(surfdesc.Usage & D3DUSAGE_DYNAMIC))
+    {
+        IDirect3DSurface9_GetDevice(dst_surface, &device);
+        hr = IDirect3DDevice9_CreateOffscreenPlainSurface(device, surfdesc.Width,
+                surfdesc.Height, surfdesc.Format, D3DPOOL_SYSTEMMEM, &surface, NULL);
+        IDirect3DDevice9_Release(device);
+        if (FAILED(hr))
+        {
+            WARN("Failed to create staging surface, hr %#x.\n", hr);
+            return D3DERR_INVALIDCALL;
+        }
+    }
+
+    if (FAILED(IDirect3DSurface9_LockRect(surface, &lockrect, dst_rect, 0)))
+    {
+        if (surface != dst_surface)
+            IDirect3DSurface9_Release(surface);
+        return D3DXERR_INVALIDDATA;
+    }
+
     if (src_format == surfdesc.Format
             && dst_size.width == src_size.width
             && dst_size.height == src_size.height
@@ -1947,21 +1971,15 @@ HRESULT WINAPI D3DXLoadSurfaceFromMemory(IDirect3DSurface9 *dst_surface,
                     && src_size.height != surfdesc.Height))
         {
             WARN("Source rect %s is misaligned.\n", wine_dbgstr_rect(src_rect));
-            return D3DXERR_INVALIDDATA;
+            hr = D3DXERR_INVALIDDATA;
+            goto done;
         }
-
-        if (FAILED(IDirect3DSurface9_LockRect(dst_surface, &lockrect, dst_rect, 0)))
-            return D3DXERR_INVALIDDATA;
 
         copy_pixels(src_memory, src_pitch, 0, lockrect.pBits, lockrect.Pitch, 0,
                 &src_size, srcformatdesc);
-
-        IDirect3DSurface9_UnlockRect(dst_surface);
     }
     else /* Stretching or format conversion. */
     {
-        dxtn_conversion_func pre_convert, post_convert;
-        void *tmp_src_memory = NULL, *tmp_dst_memory = NULL;
         UINT tmp_src_pitch, tmp_dst_pitch;
 
         pre_convert  = get_dxtn_conversion_func(srcformatdesc->format, FALSE);
@@ -1971,11 +1989,9 @@ HRESULT WINAPI D3DXLoadSurfaceFromMemory(IDirect3DSurface9 *dst_surface,
                 (!post_convert && !is_conversion_to_supported(destformatdesc)))
         {
             FIXME("Unsupported format conversion %#x -> %#x.\n", src_format, surfdesc.Format);
-            return E_NOTIMPL;
+            hr = E_NOTIMPL;
+            goto done;
         }
-
-        if (FAILED(IDirect3DSurface9_LockRect(dst_surface, &lockrect, dst_rect, 0)))
-            return D3DXERR_INVALIDDATA;
 
         /* handle pre-conversion */
         if (pre_convert)
@@ -1983,15 +1999,15 @@ HRESULT WINAPI D3DXLoadSurfaceFromMemory(IDirect3DSurface9 *dst_surface,
             tmp_src_memory = HeapAlloc(GetProcessHeap(), 0, src_size.width * src_size.height * sizeof(DWORD));
             if (!tmp_src_memory)
             {
-                ret = E_OUTOFMEMORY;
-                goto error;
+                hr = E_OUTOFMEMORY;
+                goto done;
             }
             tmp_src_pitch = src_size.width * sizeof(DWORD);
             if (!pre_convert(src_memory, tmp_src_memory, src_pitch, tmp_src_pitch,
                     WINED3DFMT_B8G8R8A8_UNORM, src_size.width, src_size.height))
             {
-                ret = E_FAIL;
-                goto error;
+                hr = E_FAIL;
+                goto done;
             }
             srcformatdesc = get_format_info(D3DFMT_A8R8G8B8);
         }
@@ -2007,8 +2023,8 @@ HRESULT WINAPI D3DXLoadSurfaceFromMemory(IDirect3DSurface9 *dst_surface,
             tmp_dst_memory = HeapAlloc(GetProcessHeap(), 0, dst_size.width * dst_size.height * sizeof(DWORD));
             if (!tmp_dst_memory)
             {
-                ret = E_OUTOFMEMORY;
-                goto error;
+                hr = E_OUTOFMEMORY;
+                goto done;
             }
             tmp_dst_pitch = dst_size.width * sizeof(DWORD);
             destformatdesc = get_format_info(D3DFMT_A8R8G8B8);
@@ -2041,12 +2057,24 @@ HRESULT WINAPI D3DXLoadSurfaceFromMemory(IDirect3DSurface9 *dst_surface,
             if (!post_convert(tmp_dst_memory, lockrect.pBits, tmp_dst_pitch, lockrect.Pitch,
                     WINED3DFMT_B8G8R8A8_UNORM, dst_size.width, dst_size.height))
             {
-                ret = E_FAIL;
-                goto error;
+                hr = E_FAIL;
+                goto done;
             }
         }
+    }
 
-error:
+done:
+    IDirect3DSurface9_UnlockRect(surface);
+    if (surface != dst_surface)
+    {
+        if (SUCCEEDED(hr))
+        {
+            IDirect3DSurface9_GetDevice(dst_surface, &device);
+            hr = IDirect3DDevice9_UpdateSurface(device, surface, NULL, dst_surface, NULL);
+            IDirect3DDevice9_Release(device);
+        }
+        IDirect3DSurface9_Release(surface);
+
         if (pre_convert)
             HeapFree(GetProcessHeap(), 0, tmp_src_memory);
         if (post_convert)
@@ -2054,7 +2082,7 @@ error:
         IDirect3DSurface9_UnlockRect(dst_surface);
     }
 
-    return ret;
+    return hr;
 }
 
 /************************************************************

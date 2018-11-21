@@ -2769,7 +2769,6 @@ static void test_WSASocket(void)
     if (sock == INVALID_SOCKET)
     {
         err = WSAGetLastError();
-todo_wine
         ok(err == WSAEAFNOSUPPORT || broken(err == WSAEPROTONOSUPPORT), "Expected 10047, received %d\n", err);
         skip("IPX is not supported\n");
     }

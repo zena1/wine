@@ -404,20 +404,8 @@ enum wined3d_render_state
     WINED3D_RS_SRCBLENDALPHA                = 207,
     WINED3D_RS_DESTBLENDALPHA               = 208,
     WINED3D_RS_BLENDOPALPHA                 = 209,
-    WINED3D_RS_COLORWRITEENABLE4            = 210,
-    WINED3D_RS_COLORWRITEENABLE5            = 211,
-    WINED3D_RS_COLORWRITEENABLE6            = 212,
-    WINED3D_RS_COLORWRITEENABLE7            = 213,
 };
-#define WINEHIGHEST_RENDER_STATE                                WINED3D_RS_COLORWRITEENABLE7
-
-static inline enum wined3d_render_state WINED3D_RS_COLORWRITE(int index)
-{
-    if (index == 0) return WINED3D_RS_COLORWRITEENABLE;
-    if (index <= 3) return WINED3D_RS_COLORWRITEENABLE1 + index - 1;
-    if (index <= 7) return WINED3D_RS_COLORWRITEENABLE4 + index - 4;
-    return WINED3D_RS_COLORWRITEENABLE;
-}
+#define WINEHIGHEST_RENDER_STATE                                WINED3D_RS_BLENDOPALPHA
 
 enum wined3d_blend
 {
@@ -2420,7 +2408,7 @@ void __cdecl wined3d_device_set_cursor_position(struct wined3d_device *device,
         int x_screen_space, int y_screen_space, DWORD flags);
 HRESULT __cdecl wined3d_device_set_cursor_properties(struct wined3d_device *device,
         UINT x_hotspot, UINT y_hotspot, struct wined3d_texture *texture, unsigned int sub_resource_idx);
-void __cdecl wined3d_device_set_depth_stencil_view(struct wined3d_device *device,
+HRESULT __cdecl wined3d_device_set_depth_stencil_view(struct wined3d_device *device,
         struct wined3d_rendertarget_view *view);
 HRESULT __cdecl wined3d_device_set_dialog_box_mode(struct wined3d_device *device, BOOL enable_dialogs);
 void __cdecl wined3d_device_set_domain_shader(struct wined3d_device *device, struct wined3d_shader *shader);

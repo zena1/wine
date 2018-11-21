@@ -2959,8 +2959,6 @@ static HRESULT wined3d_texture_init(struct wined3d_texture *texture, const struc
     if ((flags & WINED3D_TEXTURE_CREATE_MAPPABLE) && !((desc->usage & WINED3DUSAGE_DYNAMIC)
             || (desc->bind_flags & (WINED3D_BIND_RENDER_TARGET | WINED3D_BIND_DEPTH_STENCIL))))
         WARN("Creating a mappable texture that doesn't specify dynamic usage.\n");
-    if (desc->bind_flags & WINED3D_BIND_RENDER_TARGET && desc->access & WINED3D_RESOURCE_ACCESS_CPU)
-        FIXME("Trying to create a CPU accessible render target.\n");
 
     pow2_width = desc->width;
     pow2_height = desc->height;
@@ -3062,7 +3060,7 @@ static HRESULT wined3d_texture_init(struct wined3d_texture *texture, const struc
         return hr;
     }
     wined3d_resource_update_draw_binding(&texture->resource);
-    if ((flags & WINED3D_TEXTURE_CREATE_MAPPABLE) || desc->format == WINED3DFMT_D16_LOCKABLE)
+    if (flags & WINED3D_TEXTURE_CREATE_MAPPABLE)
         texture->resource.access |= WINED3D_RESOURCE_ACCESS_MAP_R | WINED3D_RESOURCE_ACCESS_MAP_W;
 
     texture->texture_ops = texture_ops;

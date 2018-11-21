@@ -440,6 +440,12 @@ struct wined3d_cs_generate_mipmaps
     struct wined3d_shader_resource_view *view;
 };
 
+struct wined3d_cs_set_software_vertex_processing
+{
+    enum wined3d_cs_op opcode;
+    BOOL software;
+};
+
 struct wined3d_cs_stop
 {
     enum wined3d_cs_op opcode;
@@ -1654,7 +1660,8 @@ static void wined3d_cs_exec_set_transform(struct wined3d_cs *cs, const void *dat
     const struct wined3d_cs_set_transform *op = data;
 
     cs->state.transforms[op->state] = op->matrix;
-    if (op->state < WINED3D_TS_WORLD_MATRIX(cs->device->adapter->d3d_info.limits.ffp_vertex_blend_matrices))
+    if (op->state < WINED3D_TS_WORLD_MATRIX(max(cs->device->adapter->d3d_info.limits.ffp_vertex_blend_matrices,
+        cs->device->adapter->d3d_info.limits.ffp_max_vertex_blend_matrix_index + 1)))
         device_invalidate_state(cs->device, STATE_TRANSFORM(op->state));
 }
 
@@ -2522,6 +2529,30 @@ void wined3d_cs_emit_generate_mipmaps(struct wined3d_cs *cs, struct wined3d_shad
     wined3d_resource_acquire(view->resource);
 
     cs->ops->submit(cs, WINED3D_CS_QUEUE_DEFAULT);
+}
+
+void wined3d_cs_exec_set_software_vertex_processing(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_set_software_vertex_processing *op = data;
+    BOOL software = op->software;
+
+    if (!cs->device->softwareVertexProcessing != !software)
+    {
+        unsigned int i;
+
+        for (i = 0; i < cs->device->context_count; ++i)
+            cs->device->contexts[i]->constant_update_mask |= WINED3D_SHADER_CONST_VS_F;
+    }
+    cs->device->softwareVertexProcessing = software;
+}
+
+void wined3d_cs_emit_set_software_vertex_processing(struct wined3d_cs *cs, BOOL software)
+{
+    struct wined3d_cs_set_software_vertex_processing op;
+
+    cs->ops->finish(cs, WINED3D_CS_QUEUE_DEFAULT);
+    op.software = software;
+    wined3d_cs_exec_set_software_vertex_processing(cs, &op);
 }
 
 static void wined3d_cs_emit_stop(struct wined3d_cs *cs)
