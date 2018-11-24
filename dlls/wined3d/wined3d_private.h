@@ -447,6 +447,7 @@ enum wined3d_shader_resource_type
 #define WINED3D_SHADER_CONST_FFP_LIGHTS      0x00080000
 #define WINED3D_SHADER_CONST_FFP_PS          0x00100000
 #define WINED3D_SHADER_CONST_FFP_COLOR_KEY   0x00200000
+#define WINED3D_SHADER_CONST_BASE_VERTEX_ID  0x00400000
 #define WINED3D_SHADER_CONST_FFP_VERTEXBLEND 0xff000000
 #define WINED3D_SHADER_CONST_FFP_VERTEXBLEND_INDEX(i) (0x01000000 << ((i) - 1))
 
@@ -2655,6 +2656,7 @@ struct wined3d_driver_info
     const char *name;
     const char *description;
     UINT64 vram_bytes;
+    UINT64 sysmem_bytes;
     DWORD version_high;
     DWORD version_low;
 };
@@ -2681,12 +2683,12 @@ struct wined3d_adapter
     struct wined3d_gl_info  gl_info;
     struct wined3d_d3d_info d3d_info;
     struct wined3d_driver_info driver_info;
-    WCHAR                   DeviceName[CCHDEVICENAME]; /* DeviceName for use with e.g. ChangeDisplaySettings */
-    unsigned int cfg_count;
-    struct wined3d_pixel_format *cfgs;
-    UINT64 vram_bytes;
     UINT64 vram_bytes_used;
     LUID luid;
+
+    WCHAR device_name[CCHDEVICENAME]; /* for use with e.g. ChangeDisplaySettings() */
+    unsigned int cfg_count;
+    struct wined3d_pixel_format *cfgs;
 
     void *formats;
     size_t format_size;
@@ -4431,6 +4433,7 @@ extern enum wined3d_format_id pixelformat_for_depth(DWORD depth) DECLSPEC_HIDDEN
 #define WINED3DFMT_FLAG_NORMALISED                  0x00800000
 #define WINED3DFMT_FLAG_VERTEX_ATTRIBUTE            0x01000000
 #define WINED3DFMT_FLAG_BLIT                        0x02000000
+#define WINED3DFMT_FLAG_MAPPABLE                    0x04000000
 
 struct wined3d_rational
 {

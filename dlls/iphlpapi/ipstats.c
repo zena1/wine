@@ -2823,8 +2823,7 @@ DWORD build_udp6_table( UDP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE
                     break;
             }
             HeapFree( GetProcessHeap(), 0, map );
-            if (addr_scopes)
-                HeapFree( GetProcessHeap(), 0, addr_scopes );
+            HeapFree( GetProcessHeap(), 0, addr_scopes );
             fclose( fp );
         }
         else ret = ERROR_NOT_SUPPORTED;

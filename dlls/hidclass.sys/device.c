@@ -121,13 +121,6 @@ NTSTATUS HID_LinkDevice(DEVICE_OBJECT *device)
         return status;
     }
 
-    status = IoCreateSymbolicLink( &ext->link_name, &nameW );
-    if (status != STATUS_SUCCESS)
-    {
-        FIXME( "failed to create link error %x\n", status );
-        return status;
-    }
-
     return STATUS_SUCCESS;
 
 error:
@@ -137,22 +130,11 @@ error:
 
 void HID_DeleteDevice(HID_MINIDRIVER_REGISTRATION *driver, DEVICE_OBJECT *device)
 {
-    NTSTATUS status;
     BASE_DEVICE_EXTENSION *ext;
     LIST_ENTRY *entry;
     IRP *irp;
 
     ext = device->DeviceExtension;
-
-    if (ext->link_name.Buffer)
-    {
-        TRACE("Delete link %s\n", debugstr_w(ext->link_name.Buffer));
-
-        IoSetDeviceInterfaceState(&ext->link_name, FALSE);
-        status = IoDeleteSymbolicLink(&ext->link_name);
-        if (status != STATUS_SUCCESS)
-            ERR("Delete Symbolic Link failed (%x)\n",status);
-    }
 
     if (ext->thread)
     {
