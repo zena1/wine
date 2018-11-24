@@ -283,6 +283,16 @@ HRESULT vertexbuffer_init(struct d3d9_vertexbuffer *buffer, struct d3d9_device *
         return D3DERR_INVALIDCALL;
     }
 
+    if (pool == D3DPOOL_MANAGED && device->d3d_parent->extended)
+    {
+        WARN("Managed resources are not supported by d3d9ex devices.\n");
+        return D3DERR_INVALIDCALL;
+    }
+
+    /* In d3d9, buffers can't be used as rendertarget or depth/stencil buffer. */
+    if (usage & (D3DUSAGE_RENDERTARGET | D3DUSAGE_DEPTHSTENCIL))
+        return D3DERR_INVALIDCALL;
+
     buffer->IDirect3DVertexBuffer9_iface.lpVtbl = &d3d9_vertexbuffer_vtbl;
     buffer->fvf = fvf;
     d3d9_resource_init(&buffer->resource);
@@ -573,6 +583,16 @@ HRESULT indexbuffer_init(struct d3d9_indexbuffer *buffer, struct d3d9_device *de
     HRESULT hr;
 
     if (pool == D3DPOOL_SCRATCH)
+        return D3DERR_INVALIDCALL;
+
+    if (pool == D3DPOOL_MANAGED && device->d3d_parent->extended)
+    {
+        WARN("Managed resources are not supported by d3d9ex devices.\n");
+        return D3DERR_INVALIDCALL;
+    }
+
+    /* In d3d9, buffers can't be used as rendertarget or depth/stencil buffer. */
+    if (usage & (D3DUSAGE_RENDERTARGET | D3DUSAGE_DEPTHSTENCIL))
         return D3DERR_INVALIDCALL;
 
     desc.byte_width = size;

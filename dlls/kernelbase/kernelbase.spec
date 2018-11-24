@@ -1024,7 +1024,7 @@
 @ stdcall PathAddExtensionA(str str) shlwapi.PathAddExtensionA
 @ stdcall PathAddExtensionW(wstr wstr) shlwapi.PathAddExtensionW
 @ stdcall PathAllocCanonicalize(wstr long ptr)
-@ stdcall PathAllocCombine(wstr wstr long ptr)
+# @ stub PathAllocCombine
 @ stdcall PathAppendA(str str) shlwapi.PathAppendA
 @ stdcall PathAppendW(wstr wstr) shlwapi.PathAppendW
 @ stdcall PathCanonicalizeA(ptr str) shlwapi.PathCanonicalizeA
@@ -1032,12 +1032,12 @@
 @ stdcall PathCchAddBackslash(wstr long)
 @ stdcall PathCchAddBackslashEx(wstr long ptr ptr)
 @ stdcall PathCchAddExtension(wstr long wstr)
-@ stdcall PathCchAppend(wstr long wstr)
-@ stdcall PathCchAppendEx(wstr long wstr long)
+# @ stub PathCchAppend
+# @ stub PathCchAppendEx
 @ stdcall PathCchCanonicalize(ptr long wstr)
 @ stdcall PathCchCanonicalizeEx(ptr long wstr long)
-@ stdcall PathCchCombine(ptr long wstr wstr)
-@ stdcall PathCchCombineEx(ptr long wstr wstr long)
+# @ stub PathCchCombine
+@ stdcall PathCchCombineEx(ptr long ptr ptr long)
 @ stdcall PathCchFindExtension(wstr long ptr)
 @ stdcall PathCchIsRoot(wstr)
 @ stdcall PathCchRemoveBackslash(wstr long)
@@ -1288,8 +1288,8 @@
 # @ stub RegKrnResetAppKeyLoaded
 # @ stub RegKrnSetDllHasThreadStateGlobal
 # @ stub RegKrnSetTermsrvRegistryExtensionFlags
-@ stdcall RegLoadAppKeyA(wstr ptr long long long) advapi32.RegLoadAppKeyA
-@ stdcall RegLoadAppKeyW(str ptr long long long) advapi32.RegLoadAppKeyW
+@ stdcall RegLoadAppKeyA(str ptr long long long) advapi32.RegLoadAppKeyA
+@ stdcall RegLoadAppKeyW(wstr ptr long long long) advapi32.RegLoadAppKeyW
 @ stdcall -private RegLoadKeyA(long str str) kernel32.RegLoadKeyA
 @ stdcall -private RegLoadKeyW(long wstr wstr) kernel32.RegLoadKeyW
 @ stdcall -private RegLoadMUIStringA(long str str long ptr long str) kernel32.RegLoadMUIStringA

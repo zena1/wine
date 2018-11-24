@@ -22,6 +22,7 @@
 #include "windef.h"
 #include "winbase.h"
 #include "pathcch.h"
+#include "shlwapi.h"
 #include "strsafe.h"
 
 #include "wine/debug.h"
@@ -29,27 +30,34 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(path);
 
+static SIZE_T strnlenW(const WCHAR *string, SIZE_T maxlen)
+{
+    SIZE_T i;
+
+    for (i = 0; i < maxlen; i++)
+        if (!string[i]) break;
+    return i;
+}
+
 static BOOL is_prefixed_unc(const WCHAR *string)
 {
-    static const WCHAR prefixed_unc[] = {'\\', '\\', '?', '\\', 'U','N','C', '\\'};
-    return !memicmpW(string, prefixed_unc, ARRAY_SIZE(prefixed_unc));
+    static const WCHAR prefixed_unc[] = {'\\', '\\', '?', '\\', 'U', 'N', 'C', '\\'};
+    return !strncmpiW(string, prefixed_unc, ARRAY_SIZE(prefixed_unc));
 }
 
 static BOOL is_prefixed_disk(const WCHAR *string)
 {
     static const WCHAR prefix[] = {'\\', '\\', '?', '\\'};
-    return !memcmp(string, prefix, sizeof(prefix)) && isalphaW(string[4]) && string[5] == ':';
+    return !strncmpW(string, prefix, ARRAY_SIZE(prefix)) && isalphaW(string[4]) && string[5] == ':';
 }
 
 static BOOL is_prefixed_volume(const WCHAR *string)
 {
     static const WCHAR prefixed_volume[] = {'\\', '\\', '?', '\\', 'V', 'o', 'l', 'u', 'm', 'e'};
     const WCHAR *guid;
-    INT ret;
     INT i = 0;
 
-    ret = memicmpW(string, prefixed_volume, ARRAY_SIZE(prefixed_volume));
-    if (ret) return FALSE;
+    if (strncmpiW(string, prefixed_volume, ARRAY_SIZE(prefixed_volume))) return FALSE;
 
     guid = string + ARRAY_SIZE(prefixed_volume);
 
@@ -81,7 +89,7 @@ static BOOL is_prefixed_volume(const WCHAR *string)
 
 /* Get the next character beyond end of the segment.
    Return TRUE if the last segment ends with a backslash */
-static BOOL get_next_segment(const WCHAR *next,const WCHAR **next_segment)
+static BOOL get_next_segment(const WCHAR *next, const WCHAR **next_segment)
 {
     while (*next && *next != '\\') next++;
     if (*next == '\\')
@@ -199,7 +207,7 @@ HRESULT WINAPI PathAllocCanonicalize(const WCHAR *path_in, DWORD flags, WCHAR **
 
                 /* Keep the . if one of the following is true:
                  * 1. PATHCCH_DO_NOT_NORMALIZE_SEGMENTS
-                 * 2. in form of a..b,
+                 * 2. in form of a..b
                  */
                 if (dst > buffer
                     && (((flags & PATHCCH_DO_NOT_NORMALIZE_SEGMENTS) && dst[-1] != '\\')
@@ -301,69 +309,6 @@ HRESULT WINAPI PathAllocCanonicalize(const WCHAR *path_in, DWORD flags, WCHAR **
     return S_OK;
 }
 
-HRESULT WINAPI PathAllocCombine(const WCHAR *path1, const WCHAR *path2, DWORD flags, WCHAR **out)
-{
-    SIZE_T length1, size2;
-    WCHAR *new_path1;
-    BOOL from_path2 = FALSE;
-    HRESULT hr;
-
-    TRACE("%s %s %#x %p\n", wine_dbgstr_w(path1), wine_dbgstr_w(path2), flags, out);
-
-    if ((!path1 && !path2) || !out)
-    {
-        if (out) *out = NULL;
-        return E_INVALIDARG;
-    }
-
-    if (!path1 || !path2)
-    {
-        hr = PathAllocCanonicalize(path1 ? path1 : path2, flags, out);
-        return FAILED(hr) ? hr : S_OK;
-    }
-
-    /* If path2 is fully qualified, use path2 only */
-    if (path2 && ((isalphaW(path2[0]) && path2[1] == ':') || (path2[0] == '\\' && path2[1] == '\\')))
-    {
-        path1 = path2;
-        path2 = NULL;
-        from_path2 = TRUE;
-    }
-
-    size2 = path2 ? strlenW(path2) : 0;
-    /* path1 length + path2 length + possible backslash + NULL */
-    length1 = strlenW(path1) + size2 + 2;
-
-    new_path1 = HeapAlloc(GetProcessHeap(), 0, length1 * sizeof(WCHAR));
-    if(!new_path1)
-    {
-        *out = NULL;
-        return E_OUTOFMEMORY;
-    }
-
-    lstrcpyW(new_path1, path1);
-    PathCchStripPrefix(new_path1, length1);
-    if (from_path2) PathCchAddBackslashEx(new_path1, length1, NULL, NULL);
-
-    if (path2 && path2[0])
-    {
-        PathCchAddBackslashEx(new_path1, length1, NULL, NULL);
-
-        if (path2[0] == '\\' && path2[1] != '\\')
-        {
-            PathCchStripToRoot(new_path1, length1);
-            PathCchAddBackslashEx(new_path1, length1, NULL, NULL);
-            lstrcatW(new_path1, path2 + 1);
-        }
-        else
-            lstrcatW(new_path1, path2);
-    }
-
-    hr = PathAllocCanonicalize(new_path1, flags, out);
-    HeapFree(GetProcessHeap(), 0, new_path1);
-    return FAILED(hr) ? hr : S_OK;
-}
-
 HRESULT WINAPI PathCchAddBackslash(WCHAR *path, SIZE_T size)
 {
     return PathCchAddBackslashEx(path, size, NULL, NULL);
@@ -407,6 +352,7 @@ HRESULT WINAPI PathCchAddExtension(WCHAR *path, SIZE_T size, const WCHAR *extens
     const WCHAR *existing_extension, *next;
     SIZE_T path_length, extension_length, dot_length;
     BOOL has_dot;
+    HRESULT hr;
 
     TRACE("%s %lu %s\n", wine_dbgstr_w(path), size, wine_dbgstr_w(extension));
 
@@ -421,14 +367,15 @@ HRESULT WINAPI PathCchAddExtension(WCHAR *path, SIZE_T size, const WCHAR *extens
 
     has_dot = extension[0] == '.' ? TRUE : FALSE;
 
-    PathCchFindExtension(path, size, &existing_extension);
+    hr = PathCchFindExtension(path, size, &existing_extension);
+    if (FAILED(hr)) return hr;
     if (*existing_extension) return S_FALSE;
 
-    path_length = strlenW(path);
+    path_length = strnlenW(path, size);
     dot_length = has_dot ? 0 : 1;
     extension_length = strlenW(extension);
 
-    if (path_length + dot_length + extension_length + 1 > size) return HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER);
+    if (path_length + dot_length + extension_length + 1 > size) return STRSAFE_E_INSUFFICIENT_BUFFER;
 
     /* If extension is empty or only dot, return S_OK with path unchanged */
     if (!extension[0] || (extension[0] == '.' && !extension[1])) return S_OK;
@@ -441,38 +388,6 @@ HRESULT WINAPI PathCchAddExtension(WCHAR *path, SIZE_T size, const WCHAR *extens
 
     strcpyW(path + path_length, extension);
     return S_OK;
-}
-
-HRESULT WINAPI PathCchAppend(WCHAR *path1, SIZE_T size, const WCHAR *path2)
-{
-    TRACE("%s %lu %s\n", wine_dbgstr_w(path1), size, wine_dbgstr_w(path2));
-
-    return PathCchAppendEx(path1, size, path2, PATHCCH_NONE);
-}
-
-HRESULT WINAPI PathCchAppendEx(WCHAR *path1, SIZE_T size, const WCHAR *path2, DWORD flags)
-{
-    HRESULT hr;
-    WCHAR *result;
-
-    TRACE("%s %lu %s %#x\n", wine_dbgstr_w(path1), size, wine_dbgstr_w(path2), flags);
-
-    if (!path1 || !size) return E_INVALIDARG;
-
-    /* Create a temporary buffer for result because we need to keep path1 unchanged if error occurs.
-     * And PathCchCombineEx writes empty result if there is error so we can't just use path1 as output
-     * buffer for PathCchCombineEx */
-    result = HeapAlloc(GetProcessHeap(), 0, size * sizeof(WCHAR));
-    if (!result) return E_OUTOFMEMORY;
-
-    /* Avoid the single backslash behavior with PathCchCombineEx when appending */
-    if (path2 && path2[0] == '\\' && path2[1] != '\\') path2++;
-
-    hr = PathCchCombineEx(result, size, path1, path2, flags);
-    if (SUCCEEDED(hr)) memcpy(path1, result, size * sizeof(WCHAR));
-
-    HeapFree(GetProcessHeap(), 0, result);
-    return FAILED(hr) ? hr : S_OK;
 }
 
 HRESULT WINAPI PathCchCanonicalize(WCHAR *out, SIZE_T size, const WCHAR *in)
@@ -506,7 +421,7 @@ HRESULT WINAPI PathCchCanonicalizeEx(WCHAR *out, SIZE_T size, const WCHAR *in, D
         if (length > MAX_PATH - 4 && !(in[0] == '\\' || (isalphaW(in[0]) && in[1] == ':' && in[2] == '\\')))
             hr = HRESULT_FROM_WIN32(ERROR_FILENAME_EXCED_RANGE);
         else
-            hr = HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER);
+            hr = STRSAFE_E_INSUFFICIENT_BUFFER;
     }
 
     if (SUCCEEDED(hr))
@@ -525,50 +440,10 @@ HRESULT WINAPI PathCchCanonicalizeEx(WCHAR *out, SIZE_T size, const WCHAR *in, D
     return hr;
 }
 
-HRESULT WINAPI PathCchCombine(WCHAR *out, SIZE_T size, const WCHAR *path1, const WCHAR *path2)
-{
-    TRACE("%p %s %s\n", out, wine_dbgstr_w(path1), wine_dbgstr_w(path2));
-
-    return PathCchCombineEx(out, size, path1, path2, PATHCCH_NONE);
-}
-
-HRESULT WINAPI PathCchCombineEx(WCHAR *out, SIZE_T size, const WCHAR *path1, const WCHAR *path2, DWORD flags)
-{
-    HRESULT hr;
-    WCHAR *buffer;
-    SIZE_T length;
-
-    TRACE("%p %s %s %#x\n", out, wine_dbgstr_w(path1), wine_dbgstr_w(path2), flags);
-
-    if (!out || !size || size > PATHCCH_MAX_CCH) return E_INVALIDARG;
-
-    hr = PathAllocCombine(path1, path2, flags, &buffer);
-    if (FAILED(hr))
-    {
-        out[0] = 0;
-        return hr;
-    }
-
-    length = strlenW(buffer);
-    if (length + 1 > size)
-    {
-        out[0] = 0;
-        HeapFree(GetProcessHeap(), 0, buffer);
-        return HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER);
-    }
-    else
-    {
-        memcpy(out, buffer, (length + 1) * sizeof(WCHAR));
-        HeapFree(GetProcessHeap(), 0, buffer);
-        return S_OK;
-    }
-}
-
 HRESULT WINAPI PathCchFindExtension(const WCHAR *path, SIZE_T size, const WCHAR **extension)
 {
     const WCHAR *lastpoint = NULL;
-    const WCHAR *next;
-    SIZE_T length;
+    SIZE_T counter = 0;
 
     TRACE("%s %lu %p\n", wine_dbgstr_w(path), size, extension);
 
@@ -578,24 +453,23 @@ HRESULT WINAPI PathCchFindExtension(const WCHAR *path, SIZE_T size, const WCHAR 
         return E_INVALIDARG;
     }
 
-    length = strlenW(path);
-    if (length + 1 > PATHCCH_MAX_CCH)
+    while (*path)
     {
-        *extension = NULL;
-        return E_INVALIDARG;
-    }
-
-    next = path;
-    while (*next)
-    {
-        if (*next == '\\' || *next == ' ')
+        if (*path == '\\' || *path == ' ')
             lastpoint = NULL;
-        else if (*next == '.')
-            lastpoint = next;
-        next++;
+        else if (*path == '.')
+            lastpoint = path;
+
+        path++;
+        counter++;
+        if (counter == size || counter == PATHCCH_MAX_CCH)
+        {
+            *extension = NULL;
+            return E_INVALIDARG;
+        }
     }
 
-    *extension = lastpoint ? lastpoint : path + length;
+    *extension = lastpoint ? lastpoint : path;
     return S_OK;
 }
 
@@ -661,9 +535,10 @@ HRESULT WINAPI PathCchRemoveBackslashEx(WCHAR *path, SIZE_T path_size, WCHAR **p
         return E_INVALIDARG;
     }
 
-    root_end = get_root_end(path);
+    path_length = strnlenW(path, path_size);
+    if (path_length == path_size && !path[path_length]) return E_INVALIDARG;
 
-    path_length = strlenW(path);
+    root_end = get_root_end(path);
     if (path_length > 0 && path[path_length - 1] == '\\')
     {
         *path_end = path + path_length - 1;
@@ -689,15 +564,17 @@ HRESULT WINAPI PathCchRemoveExtension(WCHAR *path, SIZE_T size)
 {
     const WCHAR *extension;
     WCHAR *next;
+    HRESULT hr;
 
     TRACE("%s %lu\n", wine_dbgstr_w(path), size);
 
     if (!path || !size || size > PATHCCH_MAX_CCH) return E_INVALIDARG;
 
-    PathCchFindExtension(path, size, &extension);
+    hr = PathCchFindExtension(path, size, &extension);
+    if (FAILED(hr)) return hr;
 
     next = path + (extension - path);
-    while (*next) *next++ = 0;
+    while (next - path < size && *next) *next++ = 0;
 
     return next == extension ? S_FALSE : S_OK;
 }
@@ -725,6 +602,8 @@ HRESULT WINAPI PathCchRemoveFileSpec(WCHAR *path, SIZE_T size)
     last = path + length - 1;
     while (last >= path && (!root_end || last >= root_end))
     {
+        if (last - path >= size) return E_INVALIDARG;
+
         if (*last == '\\')
         {
             *last-- = 0;
@@ -752,7 +631,7 @@ HRESULT WINAPI PathCchRenameExtension(WCHAR *path, SIZE_T size, const WCHAR *ext
 
 HRESULT WINAPI PathCchSkipRoot(const WCHAR *path, const WCHAR **root_end)
 {
-    static const WCHAR unc_prefix[] = {'\\', '\\', '\?'};
+    static const WCHAR unc_prefix[] = {'\\', '\\', '?'};
 
     TRACE("%s %p\n", debugstr_w(path), root_end);
 
@@ -790,11 +669,15 @@ HRESULT WINAPI PathCchStripPrefix(WCHAR *path, SIZE_T size)
 
     if (is_prefixed_unc(path))
     {
+        /* \\?\UNC\a -> \\a */
+        if (size < strlenW(path + 8) + 3) return E_INVALIDARG;
         strcpyW(path + 2, path + 8);
         return S_OK;
     }
     else if (is_prefixed_disk(path))
     {
+        /* \\?\C:\ -> C:\ */
+        if (size < strlenW(path + 4) + 1) return E_INVALIDARG;
         strcpyW(path, path + 4);
         return S_OK;
     }
@@ -821,15 +704,19 @@ HRESULT WINAPI PathCchStripToRoot(WCHAR *path, SIZE_T size)
         if (!get_next_segment(root_end, &root_end)) return S_FALSE;
         if (!get_next_segment(root_end, &root_end)) return S_FALSE;
 
+        if (root_end - path >= size) return E_INVALIDARG;
+
         segment_end = path + (root_end - path) - 1;
         *segment_end = 0;
         return S_OK;
     }
     else if (PathCchSkipRoot(path, &root_end) == S_OK)
     {
+        if (root_end - path >= size) return E_INVALIDARG;
+
         segment_end = path + (root_end - path);
         if (!*segment_end) return S_FALSE;
-        
+
         *segment_end = 0;
         return S_OK;
     }
@@ -851,3 +738,29 @@ BOOL WINAPI PathIsUNCEx(const WCHAR *path, const WCHAR **server)
     if (server) *server = result;
     return result ? TRUE : FALSE;
 }
+
+/***********************************************************************
+ *          PathCchCombineEx (KERNELBASE.@)
+ */
+HRESULT WINAPI PathCchCombineEx(WCHAR *out, SIZE_T size, const WCHAR *path1, const WCHAR *path2, DWORD flags)
+{
+    WCHAR result[MAX_PATH];
+
+    FIXME("(%p, %lu, %s, %s, %x): semi-stub\n", out, size, wine_dbgstr_w(path1), wine_dbgstr_w(path2), flags);
+
+    if (!out || !size) return E_INVALIDARG;
+    if (flags) FIXME("Flags %x not supported\n", flags);
+
+    if (!PathCombineW(result, path1, path2))
+        return E_INVALIDARG;
+
+    if (strlenW(result) + 1 > size)
+    {
+        out[0] = 0;
+        return STRSAFE_E_INSUFFICIENT_BUFFER;
+    }
+
+    strcpyW(out, result);
+    return S_OK;
+}
+

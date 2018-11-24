@@ -12878,10 +12878,9 @@ static void test_resource_access(void)
                 expected_hr = D3D_OK;
             else
                 expected_hr = D3DERR_INVALIDCALL;
-            todo_wine_if(expected_hr != D3D_OK)
-                ok(hr == expected_hr, "Test %s %u: Got unexpected hr %#x.\n", surface_types[i].name, j, hr);
+            ok(hr == expected_hr, "Test %s %u: Got unexpected hr %#x.\n", surface_types[i].name, j, hr);
             hr = IDirect3DSurface9_UnlockRect(surface);
-            todo_wine_if(expected_hr != D3D_OK)
+            todo_wine_if(expected_hr != D3D_OK && surface_types[i].type == SURFACE_2D)
                 ok(hr == expected_hr, "Test %s %u: Got unexpected hr %#x.\n", surface_types[i].name, j, hr);
 
             if (SUCCEEDED(IDirect3DSurface9_GetContainer(surface, &IID_IDirect3DBaseTexture9, (void **)&texture)))
@@ -12966,16 +12965,14 @@ static void test_resource_access(void)
 
         hr = IDirect3DDevice9_CreateIndexBuffer(device, 16, tests[i].usage,
                 tests[i].format == FORMAT_COLOUR ? D3DFMT_INDEX32 : D3DFMT_INDEX16, tests[i].pool, &ib, NULL);
-        todo_wine_if(tests[i].pool != D3DPOOL_SCRATCH && tests[i].usage & ~D3DUSAGE_DYNAMIC)
-            ok(hr == (tests[i].pool == D3DPOOL_SCRATCH || (tests[i].usage & ~D3DUSAGE_DYNAMIC)
-                    ? D3DERR_INVALIDCALL : D3D_OK), "Test %u: Got unexpected hr %#x.\n", i, hr);
+        ok(hr == (tests[i].pool == D3DPOOL_SCRATCH || (tests[i].usage & ~D3DUSAGE_DYNAMIC)
+                ? D3DERR_INVALIDCALL : D3D_OK), "Test %u: Got unexpected hr %#x.\n", i, hr);
         if (FAILED(hr))
             continue;
 
         hr = IDirect3DIndexBuffer9_GetDesc(ib, &ib_desc);
         ok(hr == D3D_OK, "Test %u: Got unexpected hr %#x.\n", i, hr);
-        todo_wine_if(tests[i].usage & ~D3DUSAGE_DYNAMIC)
-            ok(ib_desc.Usage == tests[i].usage, "Test %u: Got unexpected usage %#x.\n", i, ib_desc.Usage);
+        ok(ib_desc.Usage == tests[i].usage, "Test %u: Got unexpected usage %#x.\n", i, ib_desc.Usage);
         ok(ib_desc.Pool == tests[i].pool, "Test %u: Got unexpected pool %#x.\n", i, ib_desc.Pool);
 
         hr = IDirect3DIndexBuffer9_Lock(ib, 0, 0, &data, 0);
@@ -12999,16 +12996,14 @@ static void test_resource_access(void)
 
         hr = IDirect3DDevice9_CreateVertexBuffer(device, 16, tests[i].usage,
                 tests[i].format == FORMAT_COLOUR ? 0 : D3DFVF_XYZRHW, tests[i].pool, &vb, NULL);
-        todo_wine_if(tests[i].pool != D3DPOOL_SCRATCH && tests[i].usage & ~D3DUSAGE_DYNAMIC)
-            ok(hr == (tests[i].pool == D3DPOOL_SCRATCH || (tests[i].usage & ~D3DUSAGE_DYNAMIC)
-                    ? D3DERR_INVALIDCALL : D3D_OK), "Test %u: Got unexpected hr %#x.\n", i, hr);
+        ok(hr == (tests[i].pool == D3DPOOL_SCRATCH || (tests[i].usage & ~D3DUSAGE_DYNAMIC)
+                ? D3DERR_INVALIDCALL : D3D_OK), "Test %u: Got unexpected hr %#x.\n", i, hr);
         if (FAILED(hr))
             continue;
 
         hr = IDirect3DVertexBuffer9_GetDesc(vb, &vb_desc);
         ok(hr == D3D_OK, "Test %u: Got unexpected hr %#x.\n", i, hr);
-        todo_wine_if(tests[i].usage & ~D3DUSAGE_DYNAMIC)
-            ok(vb_desc.Usage == tests[i].usage, "Test %u: Got unexpected usage %#x.\n", i, vb_desc.Usage);
+        ok(vb_desc.Usage == tests[i].usage, "Test %u: Got unexpected usage %#x.\n", i, vb_desc.Usage);
         ok(vb_desc.Pool == tests[i].pool, "Test %u: Got unexpected pool %#x.\n", i, vb_desc.Pool);
 
         hr = IDirect3DVertexBuffer9_Lock(vb, 0, 0, &data, 0);

@@ -5305,7 +5305,7 @@ static void test_create_query(void)
         {D3D11_QUERY_PIPELINE_STATISTICS,           D3D_FEATURE_LEVEL_10_0, FALSE, FALSE, FALSE},
         {D3D11_QUERY_OCCLUSION_PREDICATE,           D3D_FEATURE_LEVEL_10_0, TRUE,  TRUE,  FALSE},
         {D3D11_QUERY_SO_STATISTICS,                 D3D_FEATURE_LEVEL_10_0, FALSE, FALSE, FALSE},
-        {D3D11_QUERY_SO_OVERFLOW_PREDICATE,         D3D_FEATURE_LEVEL_10_0, TRUE,  TRUE,  FALSE},
+        {D3D11_QUERY_SO_OVERFLOW_PREDICATE,         D3D_FEATURE_LEVEL_10_0, TRUE,  TRUE,  TRUE},
         {D3D11_QUERY_SO_STATISTICS_STREAM0,         D3D_FEATURE_LEVEL_11_0, FALSE, FALSE, FALSE},
         {D3D11_QUERY_SO_OVERFLOW_PREDICATE_STREAM0, D3D_FEATURE_LEVEL_11_0, TRUE,  FALSE, TRUE},
         {D3D11_QUERY_SO_STATISTICS_STREAM1,         D3D_FEATURE_LEVEL_11_0, FALSE, FALSE, FALSE},
@@ -5813,12 +5813,92 @@ static void test_so_statistics_query(void)
     struct d3d11_test_context test_context;
     D3D11_QUERY_DATA_SO_STATISTICS data;
     ID3D11DeviceContext *context;
+    unsigned int vertex_count[4];
     D3D11_QUERY_DESC query_desc;
+    ID3D11Buffer *so_buffer[4];
     ID3D11Asynchronous *query;
+    ID3D11GeometryShader *gs;
+    ID3D11VertexShader *vs;
     unsigned int data_size;
     ID3D11Device *device;
+    ID3D11Buffer *cb;
     unsigned int i;
     HRESULT hr;
+
+    static const DWORD vs_code[] =
+    {
+#if 0
+        float4 main(uint id : SV_VertexID) : custom
+        {
+            return (float4)id;
+        }
+#endif
+        0x43425844, 0x8b0e47b9, 0x6efc9512, 0xd55ca6ff, 0x487c5ef2, 0x00000001, 0x000000d4, 0x00000003,
+        0x0000002c, 0x00000060, 0x00000090, 0x4e475349, 0x0000002c, 0x00000001, 0x00000008, 0x00000020,
+        0x00000000, 0x00000006, 0x00000001, 0x00000000, 0x00000101, 0x565f5653, 0x65747265, 0x00444978,
+        0x4e47534f, 0x00000028, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000003,
+        0x00000000, 0x0000000f, 0x74737563, 0xab006d6f, 0x52444853, 0x0000003c, 0x00010040, 0x0000000f,
+        0x04000060, 0x00101012, 0x00000000, 0x00000006, 0x03000065, 0x001020f2, 0x00000000, 0x05000056,
+        0x001020f2, 0x00000000, 0x00101006, 0x00000000, 0x0100003e,
+    };
+    static const DWORD gs_code[] =
+    {
+#if 0
+        struct vertex
+        {
+            float4 data : custom;
+        };
+
+        uint4 vertex_count;
+
+        [maxvertexcount(32)]
+        void main(point vertex input[1], uint id : SV_PrimitiveID,
+                inout PointStream<vertex> output0,
+                inout PointStream<vertex> output1,
+                inout PointStream<vertex> output2,
+                inout PointStream<vertex> output3)
+        {
+            if (id < vertex_count.x)
+                output0.Append(input[0]);
+            if (id < vertex_count.y)
+                output1.Append(input[0]);
+            if (id < vertex_count.z)
+                output2.Append(input[0]);
+            if (id < vertex_count.w)
+                output3.Append(input[0]);
+        }
+#endif
+        0x43425844, 0xd616829d, 0x4355ce2a, 0xd71909e5, 0xdc916d4c, 0x00000001, 0x000002bc, 0x00000003,
+        0x0000002c, 0x00000084, 0x0000010c, 0x4e475349, 0x00000050, 0x00000002, 0x00000008, 0x00000038,
+        0x00000000, 0x00000000, 0x00000003, 0x00000000, 0x00000f0f, 0x0000003f, 0x00000000, 0x00000007,
+        0x00000001, 0xffffffff, 0x00000101, 0x74737563, 0x53006d6f, 0x72505f56, 0x74696d69, 0x49657669,
+        0xabab0044, 0x3547534f, 0x00000080, 0x00000004, 0x00000008, 0x00000000, 0x00000078, 0x00000000,
+        0x00000000, 0x00000003, 0x00000000, 0x0000000f, 0x00000001, 0x00000078, 0x00000000, 0x00000000,
+        0x00000003, 0x00000000, 0x0000000f, 0x00000002, 0x00000078, 0x00000000, 0x00000000, 0x00000003,
+        0x00000000, 0x0000000f, 0x00000003, 0x00000078, 0x00000000, 0x00000000, 0x00000003, 0x00000000,
+        0x0000000f, 0x74737563, 0xab006d6f, 0x58454853, 0x000001a8, 0x00020050, 0x0000006a, 0x0100086a,
+        0x04000059, 0x00208e46, 0x00000000, 0x00000001, 0x0400005f, 0x002010f2, 0x00000001, 0x00000000,
+        0x0200005f, 0x0000b000, 0x02000068, 0x00000001, 0x0100085d, 0x0300008f, 0x00110000, 0x00000000,
+        0x0100085c, 0x03000065, 0x001020f2, 0x00000000, 0x0300008f, 0x00110000, 0x00000001, 0x0100085c,
+        0x03000065, 0x001020f2, 0x00000000, 0x0300008f, 0x00110000, 0x00000002, 0x0100085c, 0x03000065,
+        0x001020f2, 0x00000000, 0x0300008f, 0x00110000, 0x00000003, 0x0100085c, 0x03000065, 0x001020f2,
+        0x00000000, 0x0200005e, 0x00000020, 0x0700004f, 0x001000f2, 0x00000000, 0x0000b001, 0x00208e46,
+        0x00000000, 0x00000000, 0x0304001f, 0x0010000a, 0x00000000, 0x06000036, 0x001020f2, 0x00000000,
+        0x00201e46, 0x00000000, 0x00000000, 0x03000075, 0x00110000, 0x00000000, 0x01000015, 0x0304001f,
+        0x0010001a, 0x00000000, 0x06000036, 0x001020f2, 0x00000000, 0x00201e46, 0x00000000, 0x00000000,
+        0x03000075, 0x00110000, 0x00000001, 0x01000015, 0x0304001f, 0x0010002a, 0x00000000, 0x06000036,
+        0x001020f2, 0x00000000, 0x00201e46, 0x00000000, 0x00000000, 0x03000075, 0x00110000, 0x00000002,
+        0x01000015, 0x0304001f, 0x0010003a, 0x00000000, 0x06000036, 0x001020f2, 0x00000000, 0x00201e46,
+        0x00000000, 0x00000000, 0x03000075, 0x00110000, 0x00000003, 0x01000015, 0x0100003e,
+    };
+    static const D3D11_SO_DECLARATION_ENTRY so_declaration[] =
+    {
+        {0, "custom", 0, 0, 4, 0},
+        {1, "custom", 0, 0, 4, 1},
+        {2, "custom", 0, 0, 4, 2},
+        {3, "custom", 0, 0, 4, 3},
+    };
+    static const unsigned int offset[4] = {0};
 
     static const struct
     {
@@ -5851,9 +5931,7 @@ static void test_so_statistics_query(void)
         query_desc.Query = tests[i].query;
         query_desc.MiscFlags = 0;
         hr = ID3D11Device_CreateQuery(device, &query_desc, (ID3D11Query **)&query);
-        todo_wine_if(query_desc.Query == D3D11_QUERY_SO_STATISTICS)
         ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
-        if (FAILED(hr)) continue;
         data_size = ID3D11Asynchronous_GetDataSize(query);
         ok(data_size == sizeof(data), "Got unexpected data size %u.\n", data_size);
 
@@ -5880,7 +5958,7 @@ static void test_so_statistics_query(void)
         get_query_data(context, query, &data, sizeof(data));
         ok(!data.NumPrimitivesWritten, "Got unexpected NumPrimitivesWritten: %u.\n",
                 (unsigned int)data.NumPrimitivesWritten);
-        todo_wine_if(query_desc.Query == D3D11_QUERY_SO_STATISTICS_STREAM0)
+        todo_wine_if(query_desc.Query == D3D11_QUERY_SO_STATISTICS || query_desc.Query == D3D11_QUERY_SO_STATISTICS_STREAM0)
         ok(!data.PrimitivesStorageNeeded, "Got unexpected PrimitivesStorageNeeded: %u.\n",
                 (unsigned int)data.PrimitivesStorageNeeded);
 
@@ -5890,13 +5968,116 @@ static void test_so_statistics_query(void)
         get_query_data(context, query, &data, sizeof(data));
         ok(!data.NumPrimitivesWritten, "Got unexpected NumPrimitivesWritten: %u.\n",
                 (unsigned int)data.NumPrimitivesWritten);
-        todo_wine_if(query_desc.Query == D3D11_QUERY_SO_STATISTICS_STREAM0)
+        todo_wine_if(query_desc.Query == D3D11_QUERY_SO_STATISTICS || query_desc.Query == D3D11_QUERY_SO_STATISTICS_STREAM0)
         ok(!data.PrimitivesStorageNeeded, "Got unexpected PrimitivesStorageNeeded: %u.\n",
                 (unsigned int)data.PrimitivesStorageNeeded);
 
         ID3D11Asynchronous_Release(query);
     }
 
+    if (ID3D11Device_GetFeatureLevel(device) < D3D_FEATURE_LEVEL_11_0)
+    {
+        skip("Vertex streams are not supported.\n");
+        goto done;
+    }
+
+    /* multiple vertex streams */
+    hr = ID3D11Device_CreateVertexShader(device, vs_code, sizeof(vs_code), NULL, &vs);
+    ok(hr == S_OK, "Failed to create vertex shader, hr %#x.\n", hr);
+    ID3D11DeviceContext_VSSetShader(context, vs, NULL, 0);
+
+    hr = ID3D11Device_CreateGeometryShaderWithStreamOutput(device, gs_code, sizeof(gs_code),
+            so_declaration, ARRAY_SIZE(so_declaration),
+            NULL, 0, D3D11_SO_NO_RASTERIZED_STREAM, NULL, &gs);
+    todo_wine
+    ok(hr == S_OK, "Failed to create geometry shader with stream output, hr %#x.\n", hr);
+    if (FAILED(hr))
+    {
+        ID3D11VertexShader_Release(vs);
+        goto done;
+    }
+    ID3D11DeviceContext_GSSetShader(context, gs, NULL, 0);
+
+    for (i = 0; i < ARRAY_SIZE(vertex_count); ++i)
+        vertex_count[i] = 5;
+    cb = create_buffer(device, D3D11_BIND_CONSTANT_BUFFER, sizeof(vertex_count), vertex_count);
+    ID3D11DeviceContext_GSSetConstantBuffers(context, 0, 1, &cb);
+
+    ID3D11DeviceContext_IASetPrimitiveTopology(context, D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+
+    query_desc.Query = D3D11_QUERY_SO_STATISTICS;
+    query_desc.MiscFlags = 0;
+    hr = ID3D11Device_CreateQuery(device, &query_desc, (ID3D11Query **)&query);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+
+    ID3D11DeviceContext_Begin(context, query);
+    ID3D11DeviceContext_Draw(context, 5, 0);
+    ID3D11DeviceContext_End(context, query);
+
+    memset(&data, 0xff, sizeof(data));
+    get_query_data(context, query, &data, sizeof(data));
+    ok(!data.NumPrimitivesWritten, "Got unexpected primitives written %u.\n",
+            (unsigned int)data.NumPrimitivesWritten);
+    ok(data.PrimitivesStorageNeeded == 5, "Got unexpected primitives storage needed %u.\n",
+            (unsigned int)data.PrimitivesStorageNeeded);
+
+    for (i = 0; i < ARRAY_SIZE(so_buffer); ++i)
+        so_buffer[i] = create_buffer(device, D3D11_BIND_STREAM_OUTPUT, sizeof(struct vec4) * 10, NULL);
+
+    ID3D11DeviceContext_SOSetTargets(context, D3D11_SO_BUFFER_SLOT_COUNT, so_buffer, offset);
+    ID3D11DeviceContext_Begin(context, query);
+    ID3D11DeviceContext_Draw(context, 16, 0);
+    ID3D11DeviceContext_End(context, query);
+    memset(&data, 0xff, sizeof(data));
+    get_query_data(context, query, &data, sizeof(data));
+    ok(data.NumPrimitivesWritten == 5, "Got unexpected primitives written %u.\n",
+            (unsigned int)data.NumPrimitivesWritten);
+    ok(data.PrimitivesStorageNeeded == 5, "Got unexpected primitives storage needed %u.\n",
+            (unsigned int)data.PrimitivesStorageNeeded);
+
+    vertex_count[0] = 3;
+    vertex_count[1] = 6;
+    vertex_count[2] = 4;
+    vertex_count[3] = 12;
+    ID3D11DeviceContext_UpdateSubresource(context, (ID3D11Resource *)cb, 0, NULL, vertex_count, 0, 0);
+
+    ID3D11DeviceContext_SOSetTargets(context, D3D11_SO_BUFFER_SLOT_COUNT, so_buffer, offset);
+    ID3D11DeviceContext_Begin(context, query);
+    ID3D11DeviceContext_Draw(context, 32, 0);
+    ID3D11DeviceContext_End(context, query);
+    memset(&data, 0xff, sizeof(data));
+    get_query_data(context, query, &data, sizeof(data));
+    ok(data.NumPrimitivesWritten == 3, "Got unexpected primitives written %u.\n",
+            (unsigned int)data.NumPrimitivesWritten);
+    ok(data.PrimitivesStorageNeeded == 3, "Got unexpected primitives storage needed %u.\n",
+            (unsigned int)data.PrimitivesStorageNeeded);
+
+    vertex_count[0] = 16;
+    vertex_count[1] = 6;
+    vertex_count[2] = 4;
+    vertex_count[3] = 12;
+    ID3D11DeviceContext_UpdateSubresource(context, (ID3D11Resource *)cb, 0, NULL, vertex_count, 0, 0);
+
+    ID3D11DeviceContext_SOSetTargets(context, D3D11_SO_BUFFER_SLOT_COUNT, so_buffer, offset);
+    ID3D11DeviceContext_Begin(context, query);
+    ID3D11DeviceContext_Draw(context, 32, 0);
+    ID3D11DeviceContext_End(context, query);
+    memset(&data, 0xff, sizeof(data));
+    get_query_data(context, query, &data, sizeof(data));
+    ok(data.NumPrimitivesWritten == 10, "Got unexpected primitives written %u.\n",
+            (unsigned int)data.NumPrimitivesWritten);
+    ok(data.PrimitivesStorageNeeded == 16, "Got unexpected primitives storage needed %u.\n",
+            (unsigned int)data.PrimitivesStorageNeeded);
+
+    ID3D11Asynchronous_Release(query);
+
+    for (i = 0; i < ARRAY_SIZE(so_buffer); ++i)
+        ID3D11Buffer_Release(so_buffer[i]);
+    ID3D11Buffer_Release(cb);
+    ID3D11GeometryShader_Release(gs);
+    ID3D11VertexShader_Release(vs);
+
+done:
     release_test_context(&test_context);
 }
 
@@ -11560,6 +11741,194 @@ static void test_instance_id(void)
     ID3D11Texture2D_Release(render_target);
     ID3D11VertexShader_Release(vs);
     ID3D11PixelShader_Release(ps);
+    ID3D11InputLayout_Release(input_layout);
+    release_test_context(&test_context);
+}
+
+static void test_vertex_id(void)
+{
+    static const DWORD vs_code[] =
+    {
+#if 0
+        uint4 main(uint id : ID, uint instance_id : SV_InstanceID, uint vertex_id : SV_VertexID) : OUTPUT
+        {
+            return uint4(id, instance_id, vertex_id, 0);
+        }
+#endif
+        0x43425844, 0x5625197b, 0x588ccf8f, 0x48694905, 0x961d19ca, 0x00000001, 0x00000170, 0x00000003,
+        0x0000002c, 0x000000a4, 0x000000d4, 0x4e475349, 0x00000070, 0x00000003, 0x00000008, 0x00000050,
+        0x00000000, 0x00000000, 0x00000001, 0x00000000, 0x00000101, 0x00000053, 0x00000000, 0x00000008,
+        0x00000001, 0x00000001, 0x00000101, 0x00000061, 0x00000000, 0x00000006, 0x00000001, 0x00000002,
+        0x00000101, 0x53004449, 0x6e495f56, 0x6e617473, 0x44496563, 0x5f565300, 0x74726556, 0x44497865,
+        0xababab00, 0x4e47534f, 0x00000028, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000,
+        0x00000001, 0x00000000, 0x0000000f, 0x5054554f, 0xab005455, 0x52444853, 0x00000094, 0x00010040,
+        0x00000025, 0x0300005f, 0x00101012, 0x00000000, 0x04000060, 0x00101012, 0x00000001, 0x00000008,
+        0x04000060, 0x00101012, 0x00000002, 0x00000006, 0x03000065, 0x001020f2, 0x00000000, 0x05000036,
+        0x00102012, 0x00000000, 0x0010100a, 0x00000000, 0x05000036, 0x00102022, 0x00000000, 0x0010100a,
+        0x00000001, 0x05000036, 0x00102042, 0x00000000, 0x0010100a, 0x00000002, 0x05000036, 0x00102082,
+        0x00000000, 0x00004001, 0x00000000, 0x0100003e,
+    };
+    D3D11_INPUT_ELEMENT_DESC layout_desc[] =
+    {
+        {"ID", 0, DXGI_FORMAT_R32_UINT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    static const D3D11_SO_DECLARATION_ENTRY so_declaration[] =
+    {
+        {0, "OUTPUT", 0, 0, 4, 0},
+    };
+    static const unsigned int vertices[] =
+    {
+        0,
+        1,
+        2,
+
+        3,
+        4,
+        5,
+
+        6,
+        7,
+        8,
+
+        5,
+        6,
+        7,
+    };
+    static const unsigned int indices[] =
+    {
+        6, 7, 8,
+
+        0, 1, 2,
+    };
+    struct uvec4 expected_values[] =
+    {
+        {0, 0, 0},
+        {1, 0, 1},
+        {2, 0, 2},
+        {0, 1, 0},
+        {1, 1, 1},
+        {2, 1, 2},
+
+        {3, 0, 0},
+        {4, 0, 1},
+        {5, 0, 2},
+
+        {6, 0, 6},
+        {7, 0, 7},
+        {8, 0, 8},
+        {6, 1, 6},
+        {7, 1, 7},
+        {8, 1, 8},
+
+        {5, 0, 0},
+        {6, 0, 1},
+        {7, 0, 2},
+    };
+
+    BOOL found_values[ARRAY_SIZE(expected_values)] = {0};
+    BOOL used_values[ARRAY_SIZE(expected_values)] = {0};
+    struct d3d11_test_context test_context;
+    D3D11_QUERY_DATA_SO_STATISTICS data;
+    ID3D11Buffer *vb, *ib, *so_buffer;
+    ID3D11InputLayout *input_layout;
+    ID3D11DeviceContext *context;
+    D3D11_QUERY_DESC query_desc;
+    struct resource_readback rb;
+    unsigned int stride, offset;
+    ID3D11Asynchronous *query;
+    ID3D11GeometryShader *gs;
+    ID3D11VertexShader *vs;
+    ID3D11Device *device;
+    unsigned int count;
+    unsigned int i, j;
+    HRESULT hr;
+
+    if (!init_test_context(&test_context, NULL))
+        return;
+    device = test_context.device;
+    context = test_context.immediate_context;
+
+    query_desc.Query = D3D11_QUERY_SO_STATISTICS;
+    query_desc.MiscFlags = 0;
+    hr = ID3D11Device_CreateQuery(device, &query_desc, (ID3D11Query **)&query);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+
+    hr = ID3D11Device_CreateInputLayout(device, layout_desc, ARRAY_SIZE(layout_desc),
+            vs_code, sizeof(vs_code), &input_layout);
+    ok(hr == S_OK, "Failed to create input layout, hr %#x.\n", hr);
+
+    hr = ID3D11Device_CreateVertexShader(device, vs_code, sizeof(vs_code), NULL, &vs);
+    ok(hr == S_OK, "Failed to create vertex shader, hr %#x.\n", hr);
+
+    stride = 16;
+    hr = ID3D11Device_CreateGeometryShaderWithStreamOutput(device, vs_code, sizeof(vs_code),
+            so_declaration, ARRAY_SIZE(so_declaration), &stride, 1, 0, NULL, &gs);
+    ok(hr == S_OK, "Failed to create geometry shader with stream output, hr %#x.\n", hr);
+
+    vb = create_buffer(device, D3D11_BIND_VERTEX_BUFFER, sizeof(vertices), vertices);
+    ib = create_buffer(device, D3D11_BIND_INDEX_BUFFER, sizeof(indices), indices);
+    so_buffer = create_buffer(device, D3D11_BIND_STREAM_OUTPUT, 1024, NULL);
+
+    ID3D11DeviceContext_VSSetShader(context, vs, NULL, 0);
+    ID3D11DeviceContext_GSSetShader(context, gs, NULL, 0);
+    ID3D11DeviceContext_IASetInputLayout(context, input_layout);
+    ID3D11DeviceContext_IASetPrimitiveTopology(context, D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+    ID3D11DeviceContext_IASetIndexBuffer(context, ib, DXGI_FORMAT_R32_UINT, 0);
+    offset = 0;
+    stride = sizeof(*vertices);
+    ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, &vb, &stride, &offset);
+
+    offset = 0;
+    ID3D11DeviceContext_SOSetTargets(context, 1, &so_buffer, &offset);
+
+    ID3D11DeviceContext_Begin(context, query);
+
+    ID3D11DeviceContext_DrawInstanced(context, 3, 2, 0, 0);
+    ID3D11DeviceContext_DrawInstanced(context, 3, 1, 3, 16);
+
+    ID3D11DeviceContext_DrawIndexedInstanced(context, 3, 2, 0, 0, 0);
+    ID3D11DeviceContext_DrawIndexedInstanced(context, 3, 1, 3, 9, 7);
+
+    ID3D11DeviceContext_End(context, query);
+
+    get_query_data(context, query, &data, sizeof(data));
+    count = data.NumPrimitivesWritten;
+    ok(count == ARRAY_SIZE(expected_values), "Got unexpected value %u.\n", count);
+
+    count = min(count, ARRAY_SIZE(used_values));
+    get_buffer_readback(so_buffer, &rb);
+    for (i = 0; i < ARRAY_SIZE(expected_values); ++i)
+    {
+        for (j = 0; j < count; ++j)
+        {
+            if (!used_values[j] && compare_uvec4(get_readback_uvec4(&rb, j, 0), &expected_values[i]))
+            {
+                found_values[i] = TRUE;
+                used_values[j] = TRUE;
+                break;
+            }
+        }
+    }
+
+    for (i = 0; i < count; ++i)
+    {
+        const struct uvec4 *v = get_readback_uvec4(&rb, i, 0);
+        ok(used_values[i], "Found unexpected value {0x%08x, 0x%08x, 0x%08x, 0x%08x}.\n", v->x, v->y, v->z, v->w);
+    }
+    release_resource_readback(&rb);
+
+    for (i = 0; i < ARRAY_SIZE(expected_values); ++i)
+    {
+        ok(found_values[i], "Failed to find value {0x%08x, 0x%08x, 0x%08x, 0x%08x}.\n",
+                expected_values[i].x, expected_values[i].y, expected_values[i].z, expected_values[i].w);
+    }
+
+    ID3D11Asynchronous_Release(query);
+    ID3D11Buffer_Release(so_buffer);
+    ID3D11Buffer_Release(vb);
+    ID3D11Buffer_Release(ib);
+    ID3D11GeometryShader_Release(gs);
+    ID3D11VertexShader_Release(vs);
     ID3D11InputLayout_Release(input_layout);
     release_test_context(&test_context);
 }
@@ -29020,6 +29389,7 @@ START_TEST(d3d11)
     queue_test(test_clear_state);
     queue_test(test_il_append_aligned);
     queue_test(test_instance_id);
+    queue_test(test_vertex_id);
     queue_test(test_fragment_coords);
     queue_test(test_initial_texture_data);
     queue_test(test_update_subresource);
