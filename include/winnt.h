@@ -1154,6 +1154,9 @@ typedef struct _UNWIND_HISTORY_TABLE_ENTRY
     PRUNTIME_FUNCTION FunctionEntry;
 } UNWIND_HISTORY_TABLE_ENTRY, *PUNWIND_HISTORY_TABLE_ENTRY;
 
+NTSYSAPI DWORD NTAPI RtlAddGrowableFunctionTable(void**,RUNTIME_FUNCTION*,DWORD,DWORD,ULONG_PTR,ULONG_PTR);
+NTSYSAPI void  NTAPI RtlGrowFunctionTable(void*,DWORD);
+
 #define UNWIND_HISTORY_TABLE_NONE 0
 #define UNWIND_HISTORY_TABLE_GLOBAL 1
 #define UNWIND_HISTORY_TABLE_LOCAL 2
@@ -1882,6 +1885,9 @@ typedef struct _CONTEXT
     DWORD Wcr[ARM64_MAX_WATCHPOINTS];   /* 378 */
     DWORD64 Wvr[ARM64_MAX_WATCHPOINTS]; /* 380 */
 } CONTEXT;
+
+BOOLEAN CDECL            RtlAddFunctionTable(RUNTIME_FUNCTION*,DWORD,ULONG_PTR);
+BOOLEAN CDECL            RtlDeleteFunctionTable(RUNTIME_FUNCTION*);
 
 #endif /* __aarch64__ */
 
@@ -3747,6 +3753,7 @@ typedef struct _IMAGE_DEBUG_DIRECTORY {
 #define IMAGE_DEBUG_TYPE_POGO          13
 #define IMAGE_DEBUG_TYPE_ILTCG         14
 #define IMAGE_DEBUG_TYPE_MPX           15
+#define IMAGE_DEBUG_TYPE_REPRO         16
 
 typedef enum ReplacesCorHdrNumericDefines
 {

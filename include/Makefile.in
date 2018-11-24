@@ -534,6 +534,7 @@ SOURCES = \
 	pshpack8.h \
 	pstore.idl \
 	qedit.idl \
+	qos2.h \
 	ras.h \
 	rasdlg.h \
 	raserror.h \
