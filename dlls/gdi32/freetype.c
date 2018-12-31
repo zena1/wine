@@ -176,15 +176,24 @@ static FT_Error (*pFT_Library_SetLcdFilter)(FT_Library, FT_LcdFilter);
 #ifdef SONAME_LIBFONTCONFIG
 #include <fontconfig/fontconfig.h>
 MAKE_FUNCPTR(FcConfigSubstitute);
+MAKE_FUNCPTR(FcDefaultSubstitute);
 MAKE_FUNCPTR(FcFontList);
+MAKE_FUNCPTR(FcFontMatch);
 MAKE_FUNCPTR(FcFontSetDestroy);
 MAKE_FUNCPTR(FcInit);
+MAKE_FUNCPTR(FcPatternAddString);
 MAKE_FUNCPTR(FcPatternCreate);
 MAKE_FUNCPTR(FcPatternDestroy);
 MAKE_FUNCPTR(FcPatternGetBool);
 MAKE_FUNCPTR(FcPatternGetInteger);
 MAKE_FUNCPTR(FcPatternGetString);
+#ifndef FC_NAMELANG
+#define FC_NAMELANG "namelang"
 #endif
+#ifndef FC_PRGNAME
+#define FC_PRGNAME "prgname"
+#endif
+#endif /* SONAME_LIBFONTCONFIG */
 
 #undef MAKE_FUNCPTR
 
@@ -476,10 +485,6 @@ static inline struct freetype_physdev *get_freetype_dev( PHYSDEV dev )
 
 static const struct gdi_dc_funcs freetype_funcs;
 
-static const WCHAR defSerif[] = {'T','i','m','e','s',' ','N','e','w',' ','R','o','m','a','n','\0'};
-static const WCHAR defSans[] = {'A','r','i','a','l','\0'};
-static const WCHAR defFixed[] = {'C','o','u','r','i','e','r',' ','N','e','w','\0'};
-
 static const WCHAR fontsW[] = {'\\','f','o','n','t','s','\0'};
 static const WCHAR win9x_font_reg_key[] = {'S','o','f','t','w','a','r','e','\\','M','i','c','r','o','s','o','f','t','\\',
                                            'W','i','n','d','o','w','s','\\',
@@ -550,6 +555,10 @@ static const WCHAR *default_sans_list[] =
     bitstream_vera_sans,
     NULL
 };
+
+static const WCHAR *default_serif = times_new_roman;
+static const WCHAR *default_fixed = courier_new;
+static const WCHAR *default_sans = arial;
 
 typedef struct {
     WCHAR *name;
@@ -2792,9 +2801,12 @@ static void init_fontconfig(void)
 
 #define LOAD_FUNCPTR(f) if((p##f = wine_dlsym(fc_handle, #f, NULL, 0)) == NULL){WARN("Can't find symbol %s\n", #f); return;}
     LOAD_FUNCPTR(FcConfigSubstitute);
+    LOAD_FUNCPTR(FcDefaultSubstitute);
     LOAD_FUNCPTR(FcFontList);
+    LOAD_FUNCPTR(FcFontMatch);
     LOAD_FUNCPTR(FcFontSetDestroy);
     LOAD_FUNCPTR(FcInit);
+    LOAD_FUNCPTR(FcPatternAddString);
     LOAD_FUNCPTR(FcPatternCreate);
     LOAD_FUNCPTR(FcPatternDestroy);
     LOAD_FUNCPTR(FcPatternGetBool);
@@ -4336,22 +4348,24 @@ static BOOL move_to_front(const WCHAR *name)
     return FALSE;
 }
 
-static BOOL set_default(const WCHAR **name_list)
+static const WCHAR *set_default(const WCHAR **name_list)
 {
-    while (*name_list)
+    const WCHAR **entry = name_list;
+
+    while (*entry)
     {
-        if (move_to_front(*name_list)) return TRUE;
-        name_list++;
+        if (move_to_front(*entry)) return *entry;
+        entry++;
     }
 
-    return FALSE;
+    return *name_list;
 }
 
 static void reorder_font_list(void)
 {
-    set_default( default_serif_list );
-    set_default( default_fixed_list );
-    set_default( default_sans_list );
+    default_serif = set_default( default_serif_list );
+    default_fixed = set_default( default_fixed_list );
+    default_sans = set_default( default_sans_list );
 }
 
 static DWORD WINAPI freetype_lazy_init(RTL_RUN_ONCE *once, void *param, void **context)
@@ -5213,6 +5227,82 @@ done:
     return ret;
 }
 
+#ifdef SONAME_LIBFONTCONFIG
+static Family* get_fontconfig_family(DWORD pitch_and_family, const CHARSETINFO *csi)
+{
+    const char *name;
+    WCHAR nameW[LF_FACESIZE];
+    FcChar8 *str;
+    FcPattern *pat = NULL, *best = NULL;
+    FcResult result;
+    FcBool r;
+    int ret, i;
+    Family *family = NULL;
+
+    if (!csi->fs.fsCsb[0]) return NULL;
+
+    if((pitch_and_family & FIXED_PITCH) ||
+       (pitch_and_family & 0xF0) == FF_MODERN)
+        name = "monospace";
+    else if((pitch_and_family & 0xF0) == FF_ROMAN)
+        name = "serif";
+    else
+        name = "sans-serif";
+
+    pat = pFcPatternCreate();
+    if (!pat) return NULL;
+    r = pFcPatternAddString(pat, FC_FAMILY, (const FcChar8 *)name);
+    if (!r) goto end;
+    r = pFcPatternAddString(pat, FC_NAMELANG, (const FcChar8 *)"en-us");
+    if (!r) goto end;
+    r = pFcPatternAddString(pat, FC_PRGNAME, (const FcChar8 *)"wine");
+    if (!r) goto end;
+    r = pFcConfigSubstitute(NULL, pat, FcMatchPattern);
+    if (!r) goto end;
+    pFcDefaultSubstitute(pat);
+
+    best = pFcFontMatch(NULL, pat, &result);
+    if (!best || result != FcResultMatch) goto end;
+
+    for (i = 0;
+         !family && pFcPatternGetString(best, FC_FAMILY, i, &str) == FcResultMatch;
+         i++)
+    {
+        Face *face;
+        const SYSTEM_LINKS *font_link;
+        const struct list *face_list;
+
+        ret = MultiByteToWideChar(CP_UTF8, 0, (const char*)str, -1,
+                                  nameW, ARRAY_SIZE(nameW));
+        if (!ret) continue;
+        family = find_family_from_any_name(nameW);
+        if (!family) continue;
+
+        font_link = find_font_link(family->FamilyName);
+        face_list = get_face_list_from_family(family);
+        LIST_FOR_EACH_ENTRY( face, face_list, Face, entry ) {
+            if (!face->scalable)
+                continue;
+            if (csi->fs.fsCsb[0] & face->fs.fsCsb[0])
+                goto found;
+            if (font_link != NULL &&
+                csi->fs.fsCsb[0] & font_link->fs.fsCsb[0])
+                goto found;
+        }
+        family = NULL;
+    }
+
+found:
+    if (family)
+        TRACE("got %s\n", wine_dbgstr_w(nameW));
+
+end:
+    pFcPatternDestroy(pat);
+    pFcPatternDestroy(best);
+    return family;
+}
+#endif
+
 static const GSUB_Script* GSUB_get_script_table( const GSUB_Header* header, const char* tag)
 {
     const GSUB_ScriptList *script;
@@ -5579,13 +5669,13 @@ static HFONT freetype_SelectFont( PHYSDEV dev, HFONT hfont, UINT *aa_flags )
 
     if((lf.lfPitchAndFamily & FIXED_PITCH) ||
        (lf.lfPitchAndFamily & 0xF0) == FF_MODERN)
-        strcpyW(lf.lfFaceName, defFixed);
+        strcpyW(lf.lfFaceName, default_fixed);
     else if((lf.lfPitchAndFamily & 0xF0) == FF_ROMAN)
-        strcpyW(lf.lfFaceName, defSerif);
+        strcpyW(lf.lfFaceName, default_serif);
     else if((lf.lfPitchAndFamily & 0xF0) == FF_SWISS)
-        strcpyW(lf.lfFaceName, defSans);
+        strcpyW(lf.lfFaceName, default_sans);
     else
-        strcpyW(lf.lfFaceName, defSans);
+        strcpyW(lf.lfFaceName, default_sans);
     LIST_FOR_EACH_ENTRY( family, &font_list, Family, entry ) {
         if(!strncmpiW(family->FamilyName, lf.lfFaceName, LF_FACESIZE - 1)) {
             font_link = find_font_link(family->FamilyName);
@@ -5600,6 +5690,12 @@ static HFONT freetype_SelectFont( PHYSDEV dev, HFONT hfont, UINT *aa_flags )
             }
         }
     }
+
+#ifdef SONAME_LIBFONTCONFIG
+    /* Try FontConfig substitutions if the face isn't found */
+    family = get_fontconfig_family(lf.lfPitchAndFamily, &csi);
+    if (family) goto found;
+#endif
 
     last_resort_family = NULL;
     LIST_FOR_EACH_ENTRY( family, &font_list, Family, entry ) {
@@ -7767,7 +7863,7 @@ static BOOL get_outline_text_metrics(GdiFont *font)
     full_nameW = get_face_name( ft_face, TT_NAME_ID_UNIQUE_ID, GetSystemDefaultLangID() );
     if (!full_nameW)
     {
-        WCHAR fake_nameW[] = {'f','a','k','e',' ','n','a','m','e', 0};
+        static const WCHAR fake_nameW[] = {'f','a','k','e',' ','n','a','m','e', 0};
         FIXME("failed to read full_nameW for font %s!\n", wine_dbgstr_w(font->name));
         full_nameW = strdupW(fake_nameW);
     }
@@ -9099,7 +9195,7 @@ BOOL WINAPI GetFontFileData( DWORD instance_id, DWORD unknown, UINT64 offset, vo
 /*************************************************************************
  *             GetFontFileInfo   (GDI32.@)
  */
-BOOL WINAPI GetFontFileInfo( DWORD instance_id, DWORD unknown, struct font_fileinfo *info, DWORD size, DWORD *needed)
+BOOL WINAPI GetFontFileInfo( DWORD instance_id, DWORD unknown, struct font_fileinfo *info, SIZE_T size, SIZE_T *needed)
 {
     *needed = 0;
     return FALSE;

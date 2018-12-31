@@ -3519,9 +3519,9 @@ BOOLEAN CDECL RtlInstallFunctionTableCallback( DWORD64 table, DWORD64 base, DWOR
 DWORD WINAPI RtlAddGrowableFunctionTable( void **table, RUNTIME_FUNCTION *functions, DWORD count, DWORD max_count,
                                           ULONG_PTR base, ULONG_PTR end )
 {
-    FIXME( "(%p, %p, %d, %d, %ld, %ld) stub!\n", table, functions, count, max_count, base, end );
+    FIXME( "(%p, %p, %d, %d, %ld, %ld) semi-stub!\n", table, functions, count, max_count, base, end );
     if (table) *table = NULL;
-    return S_OK;
+    return RtlAddFunctionTable(functions, count, base);
 }
 
 

@@ -47,6 +47,7 @@ static char *server_dir;
 static char *build_dir;
 static char *user_name;
 static char *argv0_name;
+static char *wineserver64;
 
 #ifdef __GNUC__
 static void fatal_error( const char *err, ... )  __attribute__((noreturn,format(printf,1,2)));
@@ -54,9 +55,11 @@ static void fatal_perror( const char *err, ... )  __attribute__((noreturn,format
 #endif
 
 #if defined(__linux__) || defined(__FreeBSD_kernel__ )
-#define EXE_LINK "/proc/self/exe"
+static const char exe_link[] = "/proc/self/exe";
 #elif defined (__FreeBSD__) || defined(__DragonFly__)
-#define EXE_LINK "/proc/curproc/file"
+static const char exe_link[] = "/proc/curproc/file";
+#else
+static const char exe_link[] = "";
 #endif
 
 /* die on a fatal error */
@@ -151,30 +154,42 @@ static char *get_runtime_libdir(void)
     return NULL;
 }
 
-/* return the directory that contains the main exe at run-time */
-static char *get_runtime_exedir(void)
+/* read a symlink and return its directory */
+static char *symlink_dirname( const char *name )
 {
-#ifdef EXE_LINK
-    char *p, *bindir;
-    int size;
+    char *p, *buffer, *absdir = NULL;
+    int ret, size;
 
     for (size = 256; ; size *= 2)
     {
-        int ret;
-        if (!(bindir = malloc( size ))) return NULL;
-        if ((ret = readlink( EXE_LINK, bindir, size )) == -1) break;
+        if (!(buffer = malloc( size ))) return NULL;
+        if ((ret = readlink( name, buffer, size )) == -1) break;
         if (ret != size)
         {
-            bindir[ret] = 0;
-            if (!(p = strrchr( bindir, '/' ))) break;
-            if (p == bindir) p++;
+            buffer[ret] = 0;
+            if (!(p = strrchr( buffer, '/' ))) break;
+            if (p == buffer) p++;
             *p = 0;
-            return bindir;
+            if (buffer[0] == '/') return buffer;
+            /* make it absolute */
+            absdir = xmalloc( strlen(name) + strlen(buffer) + 1 );
+            strcpy( absdir, name );
+            if (!(p = strrchr( absdir, '/' ))) break;
+            strcpy( p + 1, buffer );
+            free( buffer );
+            return absdir;
         }
-        free( bindir );
+        free( buffer );
     }
-    free( bindir );
-#endif
+    free( buffer );
+    free( absdir );
+    return NULL;
+}
+
+/* return the directory that contains the main exe at run-time */
+static char *get_runtime_exedir(void)
+{
+    if (exe_link[0]) return symlink_dirname( exe_link );
     return NULL;
 }
 
@@ -440,6 +455,16 @@ done:
     if (build_dir)
     {
         argv0_name = build_path( "loader/", basename );
+        if (sizeof(int) == sizeof(void *))
+        {
+            char *loader, *linkname = build_path( build_dir, "loader/wine64" );
+            if ((loader = symlink_dirname( linkname )))
+            {
+                wineserver64 = build_path( loader, "../server/wineserver" );
+                free( loader );
+            }
+            free( linkname );
+        }
     }
     else
     {
@@ -635,12 +660,13 @@ wine_patch_data[] =
 {
     { "Alexander E. Patrakov", "dsound: Add a linear resampler for use with a large number of mixing buffers.", 2 },
     { "Alex Henrie", "mountmgr.sys: Do a device check before returning a default serial port name.", 1 },
-    { "Alex Henrie", "ntdll: Add RtlGrowFunctionTable stub.", 1 },
     { "Alistair Leslie-Hughes", "d3dx9_36: ID3DXFont_DrawText calc_rect can be null.", 1 },
     { "Alistair Leslie-Hughes", "d3dx9_36: Support NULL terminated strings in ID3DXFont_DrawText.", 1 },
     { "Alistair Leslie-Hughes", "d3dx9: Implement D3DXComputeTangent.", 1 },
     { "Alistair Leslie-Hughes", "hid: Implement HidD_FlushQueue.", 1 },
     { "Alistair Leslie-Hughes", "libs: Generated make_unicode files.", 1 },
+    { "Alistair Leslie-Hughes", "mf: Implement MFCreateSequencerSource.", 1 },
+    { "Alistair Leslie-Hughes", "mfplat: Implement MFGetSystemTime.", 1 },
     { "Alistair Leslie-Hughes", "oleaut32: Implement semi-stub for CreateTypeLib.", 1 },
     { "Alistair Leslie-Hughes", "setupapi: Added CM_Request_Device_EjectA/W stub.", 1 },
     { "Alistair Leslie-Hughes", "setupapi: Add SetupDiInstallDeviceInterfaces.", 1 },
@@ -657,7 +683,10 @@ wine_patch_data[] =
     { "Alistair Leslie-Hughes", "wintrust: Add parameter check in WTHelperGetProvCertFromChain.", 1 },
     { "André Hentschel", "ntdll: Support ISOLATIONAWARE_MANIFEST_RESOURCE_ID range.", 1 },
     { "André Hentschel", "wpcap: Load libpcap dynamically.", 1 },
+    { "Andrew Eikum", "winepulse: Account for PA devices that fall way behind.", 1 },
+    { "Andrew Eikum", "winepulse: Don't fake being one period behind in GetPosition.", 1 },
     { "Andrew Eikum", "winepulse: Don't rely on pulseaudio callbacks for timing.", 1 },
+    { "Andrew Eikum", "winepulse: Fix local buffer offset wrapping.", 1 },
     { "Andrew Eikum", "winepulse: Fix up recording.", 1 },
     { "Andrew Eikum", "winepulse: Update last time on underrun.", 1 },
     { "Andrew Eikum", "xaudio2: Use ffmpeg to convert WMA formats.", 1 },
@@ -669,7 +698,6 @@ wine_patch_data[] =
     { "Andrew Wesie", "wined3d: Use glReadPixels for RT texture download.", 1 },
     { "Andrey Gusev", "wmvcore: Implement WMCreateSyncReaderPriv.", 1 },
     { "Austin English", "advapi32: Add RegLoadAppKeyA/RegLoadAppKeyW stubs.", 1 },
-    { "Austin English", "ntdll: Add RtlAddGrowableFunctionTable stub.", 1 },
     { "Bernhard Reiter", "imagehlp: Implement parts of BindImageEx to make freezing Python scripts work.", 1 },
     { "Charles Davis", "crypt32: Skip unknown item when decoding a CMS certificate.", 1 },
     { "Christian Costa", "d3d9/tests: Avoid crash when surface and texture creation fails.", 1 },
@@ -700,12 +728,6 @@ wine_patch_data[] =
     { "Daniel Jelinski", "wine.inf: Add registry keys for Windows Performance Library.", 1 },
     { "David Adam", "d3dx9_36/tests: Fix D3DXMatrixTransformation when the scaling matrix is NULL.", 1 },
     { "Dmitry Timoshkov", "comdlg32: Postpone setting ofn->lpstrFileTitle to work around an application bug.", 1 },
-    { "Dmitry Timoshkov", "gdi32: ExtTextOut on a path with bitmap font selected shouldn't fail.", 1 },
-    { "Dmitry Timoshkov", "gdi32: Improve detection of symbol charset for old truetype fonts.", 1 },
-    { "Dmitry Timoshkov", "gdi32/tests: Add a simple test for printing to a PostScript device.", 1 },
-    { "Dmitry Timoshkov", "gdi32/tests: Add some additional tests for ExtExtOut on a path for an EMF DC.", 2 },
-    { "Dmitry Timoshkov", "gdi32/tests: Explicitly test BeginPath() return value in the metafile path tests.", 1 },
-    { "Dmitry Timoshkov", "gdi32: Trace full contents of DOCINFO in StartDoc.", 1 },
     { "Dmitry Timoshkov", "gdiplus: Add support for more image color formats.", 1 },
     { "Dmitry Timoshkov", "gdiplus: Change multiplications by additions in the x/y scaler loops.", 1 },
     { "Dmitry Timoshkov", "gdiplus: Change the order of x/y loops in the scaler.", 1 },
@@ -730,7 +752,6 @@ wine_patch_data[] =
     { "Dmitry Timoshkov", "ole32: Add a wrapper for memory block managed by HGLOBAL based IStream.", 1 },
     { "Dmitry Timoshkov", "ole32: Allow moving a being reallocated block of memory managed by HGLOBAL based IStream.", 1 },
     { "Dmitry Timoshkov", "ole32/tests: Add a bunch of tests for HGLOBAL based IStream::Clone.", 1 },
-    { "Dmitry Timoshkov", "oleaut32: Accept DISP_E_PARAMNOTFOUND for missing optional parameters in ITypeInfo::Invoke implementation.", 3 },
     { "Dmitry Timoshkov", "oleaut32: Add support for decoding SLTG function help strings.", 1 },
     { "Dmitry Timoshkov", "oleaut32: Add support for decoding SLTG variable help strings.", 1 },
     { "Dmitry Timoshkov", "oleaut32: Add support for loading and saving EMF to IPicture interface.", 1 },
@@ -752,20 +773,12 @@ wine_patch_data[] =
     { "Dmitry Timoshkov", "shell32: Add toolbar bitmaps compatible with IE6.", 1 },
     { "Dmitry Timoshkov", "user32: Add a check if the menu text is a valid string.", 1 },
     { "Dmitry Timoshkov", "user32: Add a workaround for Windows 3.1 apps which call LoadImage(LR_LOADFROMFILE) with a resource id.", 2 },
-    { "Dmitry Timoshkov", "user32: Add support for navigating a group of radio buttons using a keyboard.", 1 },
     { "Dmitry Timoshkov", "user32: Before asking a WM to activate a window make sure that the window is in foreground and not minimized.", 1 },
     { "Dmitry Timoshkov", "user32: Do not initialize dialog info for every window passed to DefDlgProc.", 1 },
-    { "Dmitry Timoshkov", "user32: Don't force a combobox repaint on WM_SIZE.", 1 },
     { "Dmitry Timoshkov", "user32: Fix return value of ScrollWindowEx for invisible windows.", 1 },
-    { "Dmitry Timoshkov", "user32: If there is no dialog controls to set focus to then set focus to dialog itself.", 1 },
     { "Dmitry Timoshkov", "user32: MessageBox should be topmost when MB_SYSTEMMODAL style is set.", 1 },
-    { "Dmitry Timoshkov", "user32: Move the auto radio button group logic from BM_SETCHECK to WM_LBUTTONUP handler.", 1 },
     { "Dmitry Timoshkov", "user32/tests: Add a bunch of tests for DM_SETDEFID/DM_GETDEFID handling by a DefDlgProc.", 1 },
-    { "Dmitry Timoshkov", "user32/tests: Add a focus test for an empty dialog that returns TRUE in WM_INITDIALOG.", 1 },
-    { "Dmitry Timoshkov", "user32/tests: Add a message test for group of radio buttons.", 1 },
-    { "Dmitry Timoshkov", "user32/tests: Add a test for navigating a group of buttons using keyboard events.", 1 },
     { "Dmitry Timoshkov", "user32/tests: Add some tests to see when MessageBox gains WS_EX_TOPMOST style.", 1 },
-    { "Dmitry Timoshkov", "user32/tests: Simplify the test for BM_CLICK on autoradio button by using a dialog.", 1 },
     { "Dmitry Timoshkov", "user32: Try harder to find a target for mouse messages.", 1 },
     { "Dmitry Timoshkov", "user32: Use root dialog for DM_SETDEFID/DM_GETDEFID in DefDlgProc.", 1 },
     { "Dmitry Timoshkov", "uxtheme: Protect CloseThemeData() from invalid input.", 1 },
@@ -791,7 +804,6 @@ wine_patch_data[] =
     { "Dmitry Timoshkov", "widl: Write correct typekind to the SLTG typeinfo block.", 1 },
     { "Dmitry Timoshkov", "widl: Write SLTG blocks according to the index order.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Add initial implementation of the GIF encoder.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs: Add registration for GUID_WICPixelFormat32bppGrayFloat pixel format.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Add registration of the GIF encoder.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Add some tests for various TIFF color formats.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Add support for 128bppRGBAFloat format to TIFF decoder.", 1 },
@@ -805,42 +817,26 @@ wine_patch_data[] =
     { "Dmitry Timoshkov", "windowscodecs: Add support for CMYK to BGR conversion.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Add support for converting to 8bppIndexed format to IWICFormatConverter.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Add support for IMILBitmapScaler interface.", 2 },
-    { "Dmitry Timoshkov", "windowscodecs: Add support for palette image formats to BMP encoder.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs: Add support for palette image formats to TIFF encoder.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Avoid redundant checks when reading a TIFF tile.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Better follow the GIF spec and don't specify the local color table size if there is no local palette.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Correctly indicate that the global info was written even without the global palette.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Fail earlier in TIFF decoder's Initialize method for unsupported pixel formats.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs: Find_decoder() should return an error it received from the decoder.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Fix 32bppRGB to 32bppRGBA conversion.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Fix behaviour of format converter for indexed formats when NULL or empty palette has been provided.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Fix IWICBitmapDecoder::CopyPalette for a not initialized case in the GIF decoder.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Fix the buffer size check in the TIFF decoder's IWICBitmapFrameDecode::CopyPixels implementation.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Fix the SupportsTransparency flag value for various pixel formats.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs: Implement IWICBitmapDecoder::GetMetadataQueryReader in the TIFF decoder.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs: Implement IWICBitmapEncoder::GetEncoderInfo in BMP encoder.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs: Implement IWICBitmapEncoder::GetEncoderInfo in JPEG encoder.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs: Implement IWICBitmapEncoder::GetEncoderInfo in the JPEG encoder.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs: Implement IWICBitmapEncoder::GetEncoderInfo in the PNG encoder.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs: Implement IWICBitmapEncoder::GetEncoderInfo in TIFF encoder.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs: Implement IWICBitmapEncoderInfo::GetFileExtensions.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Implement IWICPalette::InitializeFromBitmap.", 5 },
     { "Dmitry Timoshkov", "windowscodecs: Improve compatibility of IMILBitmapSource interface.", 3 },
-    { "Dmitry Timoshkov", "windowscodecs: Improve stub for IWICBitmapDecoder::GetMetadataQueryReader in the PNG decoder.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Initialize empty property bag in GIF encoder's CreateNewFrame implementation.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs: Limit number of colors in a palette in BMP decoder.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Move JPEG frame image data initialization from Frame::CopyPixels to Decoder::Initialize.", 2 },
-    { "Dmitry Timoshkov", "windowscodecs: PNG decoder should return WINCODEC_ERR_UNKNOWNIMAGEFORMAT when image loading fails.", 1 },
     { "Dmitry Timoshkov", "windowscodecs/tests: Add a bunch of new tests for indexed format conversions.", 1 },
     { "Dmitry Timoshkov", "windowscodecs/tests: Add a missing check for IWICBitmapFrameDecode::GetPixelFormat return value.", 1 },
     { "Dmitry Timoshkov", "windowscodecs/tests: Add a test for 8bpp indexed TIFF format.", 1 },
     { "Dmitry Timoshkov", "windowscodecs/tests: Add some tests for converting 24bppBGR to 8bppIndexed format.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs/tests: Add some tests for IWICPalette::InitializeFromBitmap.", 2 },
-    { "Dmitry Timoshkov", "windowscodecs/tests: Add tests for encoding 2bpp/4bpp images with a palette.", 1 },
     { "Dmitry Timoshkov", "windowscodecs/tests: Add the tests for GIF encoder and decoder.", 1 },
     { "Dmitry Timoshkov", "windowscodecs/tests: Make the test for 8bpp indexed TIFF format run under XP.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Tolerate partial reads in the IFD metadata loader.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs: Use V_UI1() instead of V_UNION() to assign a VT_UI1 variant member.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: WICConvertBitmapSource should ask IWICFormatConverter::Initialize to use an optimized palette.", 1 },
     { "Dmitry Timoshkov", "wine.inf: Add 'Counters' to the perflib key as an alias for 'Counter'.", 1 },
     { "Dmitry Timoshkov", "wine.inf: Add \"ProfileImagePath\" with the user's profile directory under ProfileList key.", 1 },
@@ -852,6 +848,7 @@ wine_patch_data[] =
     { "Dmitry Timoshkov", "winex11.drv: Don't use MWM_DECOR_RESIZEH, window resizing is controlled by MWM_FUNC_RESIZE.", 1 },
     { "Dmitry Timoshkov", "winex11.drv: Send WM_WINDOWPOSCHANGING/WM_WINDOWPOSCHANGED messages to a being deactivated topmost window.", 1 },
     { "Dmitry Timoshkov", "winex11: Fix handling of window attributes for WS_EX_LAYERED | WS_EX_COMPOSITED.", 1 },
+    { "Enrico Horn", "winex11.drv: Handle missing thread data in X11DRV_get_ic.", 1 },
     { "Erich E. Hoover", "advapi32: Fix the initialization of combined DACLs when the new DACL is empty.", 1 },
     { "Erich E. Hoover", "advapi32: Move the DACL combining code into a separate routine.", 1 },
     { "Erich E. Hoover", "dsound: Add stub support for DSPROPSETID_EAX20_BufferProperties.", 1 },
@@ -903,8 +900,12 @@ wine_patch_data[] =
     { "Erich E. Hoover", "ws2_32: Add support for TF_DISCONNECT to TransmitFile.", 1 },
     { "Erich E. Hoover", "ws2_32: Add support for TF_REUSE_SOCKET to TransmitFile.", 1 },
     { "Eriks Dobelis", "winex11: Implement PK_CHANGE for wintab.", 1 },
+    { "Fabian Maurer", "api-ms-win-crt-private-l1-1-0: Update to 10.0.17134.12 (WinBuild.160101.0800).", 1 },
+    { "Fabian Maurer", "ucrtbase: Forward a few functions for dxil.dll and pkgmgr.exe.", 1 },
     { "Felix Yan", "winex11.drv: Update a candidate window's position with over-the-spot style.", 2 },
     { "Firerat", "winecfg: Toggle upstream CSMT implementation.", 1},
+    { "Gabriel Ivăncescu", "shell32/iconcache: Generate icons from available icons if some icon sizes failed to load.", 1 },
+    { "Gijs Vermeulen", "imm32: Only generate 'WM_IME_SETCONTEXT' message if window has focus.", 1 },
     { "Gijs Vermeulen", "qwave: Added QOSCreateHandle stub.", 1 },
     { "Hao Peng", "winecfg: Double click in dlls list to edit item's overides.", 3 },
     { "Henri Verbeet", "ddraw: Implement ddraw7_FlipToGDISurface.", 2 },
@@ -947,11 +948,13 @@ wine_patch_data[] =
     { "Johannes Specht", "d3d11: Implement SetResourceMinLOD for deferred contexts.", 1 },
     { "Johannes Specht", "d3d11: Implement SOSetTargets for deferred contexts.", 1 },
     { "Jordan Galby", "winex11: Don't react to small slow mouse movements.", 1 },
+    { "Józef Kucia", "wined3d: Multiple games need WINED3D_TEXF_ANISOTROPIC filter mode.", 1 },
     { "katahiromz", "user32: Implement CascadeWindows.", 1 },
     { "Ken Thomases", "gdi32: Also accept \"\\\\.\\DISPLAY<n>\" devices names with <n> other than 1 as display devices.", 1 },
     { "Ken Thomases", "user32: Implement EnumDisplayDevicesW() based on EnumDisplayMonitors() and GetMonitorInfoW().", 1 },
     { "Ken Thomases", "winemac: Make GetMonitorInfo() give a different device name (\\\\.\\DISPLAY<n>) to each monitor.", 1 },
     { "Ken Thomases", "winex11: Make GetMonitorInfo() give a different device name (\\.\\DISPLAY<n>) to each monitor.", 1 },
+    { "Ken Thomases", "winex11: Match keyboard in Unicode.", 1 },
     { "Kimmo Myllyvirta", "d3d11: Add stub deferred rendering context.", 1 },
     { "Kimmo Myllyvirta", "d3d11: Correctly align map info buffer.", 1 },
     { "Kimmo Myllyvirta", "d3d11: Implement Begin and End for deferred contexts.", 1 },
@@ -966,12 +969,21 @@ wine_patch_data[] =
     { "Kimmo Myllyvirta", "d3d11: Implement VSSetSamplers for deferred contexts.", 1 },
     { "Kimmo Myllyvirta", "d3d11: Implement VSSetShaderResources for deferred contexts.", 1 },
     { "Kimmo Myllyvirta", "user32: ShowWindow should not send message when window is already visible.", 1 },
+    { "Louis Lenders", "dwampi: Add initial tests.", 1 },
+    { "Louis Lenders", "dwmapi: Return DWM_E_COMPOSITIONDISABLED instead of E_NOTIMPL in DwmGetTransportAttributes.", 1 },
     { "Louis Lenders", "shell32: Improve semi-stub SHGetStockIconInfo, try find existing iconhandle.", 1 },
     { "Louis Lenders", "uianimation: Add stub dll.", 1 },
     { "Louis Lenders", "uianimation.idl: Add more interfaces.", 1 },
+    { "Louis Lenders", "uianimation: Implement IUIAnimationManager CreateAnimationVariable.", 1 },
+    { "Louis Lenders", "uianimation: Implement IUIAnimationManager CreateStoryboard.", 1 },
     { "Louis Lenders", "user32: Added GetPointerType stub.", 1 },
     { "Louis Lenders", "virtdisk: Add stub for OpenVirtualDisk.", 1 },
     { "Lucian Poston", "d2d1: Use ID2D1Factory1 in d2d_geometry.", 1 },
+    { "Lucian Poston", "dwrite: Test GetMetrics with custom fontcollection.", 1 },
+    { "Lucian Poston", "dwrite: Test IDWriteTextFormat with nonexistent font.", 1 },
+    { "Lucian Poston", "dwrite: Use font fallback when mapping characters.", 1 },
+    { "Lucian Poston", "dwrite: Use MapCharacters for dummy line metrics.", 1 },
+    { "Lucian Poston", "dwrite: Use MapCharacters for non-visual characters.", 1 },
     { "Mark Harmstone", "dsound: Add delay line EAX functions.", 1 },
     { "Mark Harmstone", "dsound: Add EAX init and free stubs.", 1 },
     { "Mark Harmstone", "dsound: Add EAX presets.", 1 },
@@ -1033,6 +1045,7 @@ wine_patch_data[] =
     { "Michael Müller", "d3dx9_36: Return dummy skininfo interface in D3DXLoadSkinMeshFromXof when skin information is unavailable.", 1 },
     { "Michael Müller", "d3dx9_36/tests: Add initial tests for dummy skininfo interface.", 1 },
     { "Michael Müller", "ddraw: Allow size and format conversions in IDirect3DTexture2::Load.", 1 },
+    { "Michael Müller", "ddraw: Create rendering targets in video memory if possible.", 1 },
     { "Michael Müller", "ddraw: Don't set HWTRANSFORMANDLIGHT flag on d3d7 RGB device.", 1 },
     { "Michael Müller", "ddraw: Implement DDENUMSURFACES_CANBECREATED flag in ddraw7_EnumSurfaces.", 1 },
     { "Michael Müller", "ddraw: Remove const from ddraw1_vtbl and ddraw_surface1_vtbl.", 1 },
@@ -1042,7 +1055,6 @@ wine_patch_data[] =
     { "Michael Müller", "ddraw/tests: Add more tests for IDirectDraw7::EnumSurfaces.", 1 },
     { "Michael Müller", "dxdiagn: Calling GetChildContainer with an empty string on a leaf container returns the object itself.", 1 },
     { "Michael Müller", "dxdiagn: Enumerate DirectSound devices and add some basic properties.", 1 },
-    { "Michael Müller", "dxgi: Implement setting and querying the gamma value of an output.", 1 },
     { "Michael Müller", "dxgi: Improve stubs for MakeWindowAssociation and GetWindowAssociation.", 1 },
     { "Michael Müller", "dxgkrnl.sys: Add stub driver.", 1 },
     { "Michael Müller", "dxgmms1.sys: Add stub driver.", 1 },
@@ -1077,12 +1089,9 @@ wine_patch_data[] =
     { "Michael Müller", "kernel32: Strip invalid characters from mask in FindFirstFileExW.", 1 },
     { "Michael Müller", "kernel32/tests: Add basic tests for fake dlls.", 1 },
     { "Michael Müller", "kernel32/tests: Add tests for FindFirstFileA with invalid characters.", 1 },
-    { "Michael Müller", "kernelbase: Add semi-stub for PathCchCombineEx.", 1 },
-    { "Michael Müller", "krnl386.exe16: Do not reassign default handles after they got closed.", 1 },
     { "Michael Müller", "krnl386.exe16: Emulate GDT and LDT access.", 1 },
     { "Michael Müller", "krnl386.exe16: Really translate all invalid console handles into usable DOS handles.", 1 },
     { "Michael Müller", "l3codeca.acm: Check input format in MPEG3_StreamOpen.", 1 },
-    { "Michael Müller", "libs/wine: Do not restrict base address of main thread on 64 bit mac os.", 1 },
     { "Michael Müller", "libs/wine: Use same file alignment for fake and builtin DLLs.", 1 },
     { "Michael Müller", "libwine: Add process specific debug channels.", 1 },
     { "Michael Müller", "loader: Add commandline option --check-libs.", 1 },
@@ -1097,7 +1106,6 @@ wine_patch_data[] =
     { "Michael Müller", "ntdll: Add dummy apiset to PEB.", 1 },
     { "Michael Müller", "ntdll: Add function to create new tokens for elevation purposes.", 1 },
     { "Michael Müller", "ntdll: Add stub for NtContinue.", 1 },
-    { "Michael Müller", "ntdll: Add stub for RtlGetUnloadEventTraceEx.", 1 },
     { "Michael Müller", "ntdll: Allow special characters in pipe names.", 1 },
     { "Michael Müller", "ntdll: Catch windows int 0x2e syscall on i386.", 1 },
     { "Michael Müller", "ntdll: Check architecture before loading module.", 1 },
@@ -1193,7 +1201,6 @@ wine_patch_data[] =
     { "Michael Müller", "setupapi: Implement SetupQueryDrivesInDiskSpaceList.", 1 },
     { "Michael Müller", "setupapi: Implement SP_COPY_IN_USE_NEEDS_REBOOT.", 1 },
     { "Michael Müller", "setupapi: Rewrite DiskSpaceList logic using lists.", 1 },
-    { "Michael Müller", "setupapi: SetupDiGetDeviceInterfaceDetail should fill out DeviceInfoData even if the buffer for DeviceInterfaceData is too small.", 1 },
     { "Michael Müller", "setupapi/tests: Add test for IDF_CHECKFIRST and SetupPromptForDiskA/W.", 1 },
     { "Michael Müller", "shell32: Add parameter to ISFHelper::DeleteItems to allow deleting files without confirmation.", 1 },
     { "Michael Müller", "shell32: Add security property tab.", 1 },
@@ -1263,6 +1270,8 @@ wine_patch_data[] =
     { "Michael Müller", "wusa: Implement WOW64 support.", 1 },
     { "Michael Müller", "wusa: Print warning when encountering msdelta compressed files.", 1 },
     { "Michael Müller", "wusa: Treat empty update list as error.", 1 },
+    { "Ondrej Kraus", "winex11.drv: Fix main Russian keyboard layout.", 1 },
+    { "Philippe Valembois", "winex11: Fix more key translation.", 1 },
     { "Qian Hong", "advapi32: Fallback to Sid string when LookupAccountSid fails.", 1 },
     { "Qian Hong", "advapi32: Fix name and use of DOMAIN_GROUP_RID_USERS.", 1 },
     { "Qian Hong", "advapi32: Initialize buffer length to zero in LsaLookupSids to prevent crash.", 2 },
@@ -1278,11 +1287,11 @@ wine_patch_data[] =
     { "Qian Hong", "ntdll/tests: Added tests to set disposition on file which is mapped to memory.", 1 },
     { "Qian Hong", "server: Create primary group using DOMAIN_GROUP_RID_USERS.", 1 },
     { "Qian Hong", "server: Do not allow to set disposition on file which has a file mapping.", 1 },
+    { "Robert Walker", "winex11: Use active owner when sending messages.", 1 },
     { "Sebastian Lackner", "advapi32/tests: Add ACL inheritance tests for creating subdirectories with NtCreateFile.", 1 },
     { "Sebastian Lackner", "advapi32/tests: Add tests for ACL inheritance in CreateDirectoryA.", 1 },
     { "Sebastian Lackner", "advapi: Trigger write watches before passing userdata pointer to read syscall.", 1 },
     { "Sebastian Lackner", "amstream: Avoid implicit cast of interface pointer.", 1 },
-    { "Sebastian Lackner", "appwiz.cpl: Copy addons to cache instead of moving.", 1 },
     { "Sebastian Lackner", "configure: Also add the absolute RPATH when linking against libwine.", 1 },
     { "Sebastian Lackner", "d2d1: Avoid implicit cast of interface pointer.", 1 },
     { "Sebastian Lackner", "d3d11: Avoid implicit cast of interface pointer.", 1 },
@@ -1316,7 +1325,6 @@ wine_patch_data[] =
     { "Sebastian Lackner", "kernel32: Always start debugger on WinSta0.", 1 },
     { "Sebastian Lackner", "krnl386.exe16: Do not abuse WOW32Reserved field for 16-bit stack address.", 1 },
     { "Sebastian Lackner", "loader: Add commandline option --patches to show the patch list.", 1 },
-    { "Sebastian Lackner", "loader: Implement preloader for Mac OS.", 1 },
     { "Sebastian Lackner", "msvcrt: Calculate sinh/cosh/exp/pow with higher precision.", 2 },
     { "Sebastian Lackner", "msxml3: Avoid implicit cast of interface pointer.", 1 },
     { "Sebastian Lackner", "ntdll: Add back SS segment prefixes in set_full_cpu_context.", 1 },
@@ -1395,7 +1403,6 @@ wine_patch_data[] =
     { "Sebastian Lackner", "shlwapi/tests: Add additional tests for UrlCombine and UrlCanonicalize.", 1 },
     { "Sebastian Lackner", "shlwapi: UrlCombineW workaround for relative paths.", 1 },
     { "Sebastian Lackner", "stdole32.tlb: Compile typelib with --oldtlb.", 1 },
-    { "Sebastian Lackner", "urlmon/tests: Add test for opening cache file with DELETE access.", 1 },
     { "Sebastian Lackner", "user32: Avoid unnecessary wineserver calls in PeekMessage/GetMessage.", 1 },
     { "Sebastian Lackner", "user32: Call UpdateWindow() during DIALOG_CreateIndirect.", 1 },
     { "Sebastian Lackner", "user32: Fix handling of invert_y in DrawTextExW.", 1 },
@@ -1428,7 +1435,6 @@ wine_patch_data[] =
     { "Sebastian Lackner", "winex11: Fix alpha blending in X11DRV_UpdateLayeredWindow.", 1 },
     { "Sebastian Lackner", "winex11: Forward all clipping requests to the right thread (including fullscreen clipping).", 1 },
     { "Sebastian Lackner", "winex11: Implement X11DRV_FLUSH_GDI_DISPLAY ExtEscape command.", 1 },
-    { "Sebastian Lackner", "winhttp: Fix handling of Accept headers.", 1 },
     { "Sebastian Lackner", "wintrust/tests: Add some additional tests.", 1 },
     { "Sebastian Lackner", "ws2_32: Divide values returned by SO_RCVBUF and SO_SNDBUF getsockopt options by two.", 1 },
     { "Sebastian Lackner", "ws2_32: Fix handling of empty string in WS_getaddrinfo.", 1 },
@@ -1452,23 +1458,21 @@ wine_patch_data[] =
     { "Zebediah Figura", "ntdll: Add a futex-based condition variable implementation.", 1 },
     { "Zebediah Figura", "ntdll: Add a stub implementation of Wow64Transition.", 1 },
     { "Zebediah Figura", "ntdll: Don't call LdrQueryProcessModuleInformation in NtQuerySystemInformation(SystemModuleInformation).", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeCancelTimer().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeClearEvent().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeDelayExecutionThread().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeInitializeEvent().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeInitializeMutex().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeInitializeSemaphore().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeInitializeTimerEx().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeReleaseMutex() and waiting on mutexes.", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeReleaseSemaphore() and waiting on semaphores.", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeResetEvent().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeSetEvent().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeSetTimerEx() and waiting on timers.", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeWaitForMultipleObjects().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeWaitForMutexObject().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement KeWaitForSingleObject().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe/tests: Add some tests for synchronization functions.", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe/tests: Add tests for waiting on timers.", 1 },
+    { "Zebediah Figura", "user32: AdjustWindowRect() shouldn't ignore WS_MINIMIZE.", 1 },
+    { "Zebediah Figura", "user32: Allow clicking the restore and maximize boxes for on minimized windows.", 1 },
+    { "Zebediah Figura", "user32: Correctly calculate the client size of a minimized window.", 1 },
+    { "Zebediah Figura", "user32: Correctly place minimized windows.", 1 },
+    { "Zebediah Figura", "user32: Get rid of icon titles.", 1 },
+    { "Zebediah Figura", "user32: Move iconic windows as their border instead of their icon.", 1 },
+    { "Zebediah Figura", "user32: Paint title bars for minimized windows.", 1 },
+    { "Zebediah Figura", "user32: Reimplement ArrangeIconicWindows() using minimized metrics.", 1 },
+    { "Zebediah Figura", "user32: SetWindowPos() shouldn't change the client rect of a minimized window.", 1 },
+    { "Zebediah Figura", "user32/tests: Add tests for ArrangeIconicWindows().", 1 },
+    { "Zebediah Figura", "user32/tests: Add tests for GetWindowPlacement() and SetWindowPlacement().", 1 },
+    { "Zebediah Figura", "user32/tests: Add tests for maximizing and minimizing child windows.", 1 },
+    { "Zebediah Figura", "user32/tests: Add tests for maximizing and minimizing MDI child windows.", 1 },
+    { "Zebediah Figura", "user32/tests: Add tests for maximizing and minimizing owned windows.", 1 },
+    { "Zebediah Figura", "user32: Use the C[XY]MINIMIZED rather than C[XY]ICON size for minimized windows.", 1 },
     { "Zebediah Figura", "wow64cpu: Add stub dll.", 1 },
     { "Zhenbo Li", "mshtml: Add IHTMLLocation::hash property's getter implementation.", 1 },
     { "Zhenbo Li", "shell32: Fix SHFileOperation(FO_MOVE) for creating subdirectories.", 1 },
@@ -1540,7 +1544,10 @@ void wine_exec_wine_binary( const char *name, char **argv, const char *env_var )
         /* if we are in build dir and name contains a path, try that */
         if (build_dir)
         {
-            argv[0] = build_path( build_dir, name );
+            if (wineserver64 && !strcmp( name, "server/wineserver" ))
+                argv[0] = xstrdup( wineserver64 );
+            else
+                argv[0] = build_path( build_dir, name );
             preloader_exec( argv, use_preloader );
             free( argv[0] );
         }

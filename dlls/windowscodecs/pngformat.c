@@ -844,7 +844,7 @@ static HRESULT WINAPI PngDecoder_CopyPalette(IWICBitmapDecoder *iface,
 static HRESULT WINAPI PngDecoder_GetMetadataQueryReader(IWICBitmapDecoder *iface,
     IWICMetadataQueryReader **reader)
 {
-    FIXME("(%p,%p): stub\n", iface, reader);
+    TRACE("(%p,%p)\n", iface, reader);
 
     if (!reader) return E_INVALIDARG;
 
@@ -1972,11 +1972,15 @@ static HRESULT WINAPI PngEncoder_Initialize(IWICBitmapEncoder *iface,
     return S_OK;
 }
 
-static HRESULT WINAPI PngEncoder_GetContainerFormat(IWICBitmapEncoder *iface,
-    GUID *pguidContainerFormat)
+static HRESULT WINAPI PngEncoder_GetContainerFormat(IWICBitmapEncoder *iface, GUID *format)
 {
-    FIXME("(%p,%s): stub\n", iface, debugstr_guid(pguidContainerFormat));
-    return E_NOTIMPL;
+    TRACE("(%p,%p)\n", iface, format);
+
+    if (!format)
+        return E_INVALIDARG;
+
+    memcpy(format, &GUID_ContainerFormatPng, sizeof(*format));
+    return S_OK;
 }
 
 static HRESULT WINAPI PngEncoder_GetEncoderInfo(IWICBitmapEncoder *iface, IWICBitmapEncoderInfo **info)
