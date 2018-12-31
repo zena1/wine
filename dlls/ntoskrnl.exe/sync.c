@@ -18,8 +18,6 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "config.h"
-#include "wine/port.h"
 #include <stdarg.h>
 
 #include "ntstatus.h"
@@ -137,6 +135,8 @@ NTSTATUS WINAPI KeWaitForMultipleObjects(ULONG count, void *pobjs[],
                 objs[i]->WaitListHead.Blink = NULL;
                 break;
             case TYPE_MUTEX:
+                /* Native will panic if a mutex is destroyed while held, so we
+                 * don't have to worry about leaking the handle here. */
                 if (objs[i]->SignalState == 1)
                 {
                     CloseHandle(objs[i]->WaitListHead.Blink);
@@ -194,7 +194,7 @@ LONG WINAPI KeSetEvent( PRKEVENT event, KPRIORITY increment, BOOLEAN wait )
     TRACE("event %p, increment %d, wait %u.\n", event, increment, wait);
 
     EnterCriticalSection( &sync_cs );
-    ret = interlocked_xchg( &event->Header.SignalState, TRUE );
+    ret = InterlockedExchange( &event->Header.SignalState, TRUE );
     if (handle)
         SetEvent( handle );
     LeaveCriticalSection( &sync_cs );
@@ -213,7 +213,7 @@ LONG WINAPI KeResetEvent( PRKEVENT event )
     TRACE("event %p.\n", event);
 
     EnterCriticalSection( &sync_cs );
-    ret = interlocked_xchg( &event->Header.SignalState, FALSE );
+    ret = InterlockedExchange( &event->Header.SignalState, FALSE );
     if (handle)
         ResetEvent( handle );
     LeaveCriticalSection( &sync_cs );
@@ -256,7 +256,7 @@ LONG WINAPI KeReleaseSemaphore( PRKSEMAPHORE semaphore, KPRIORITY increment,
         semaphore, increment, count, wait);
 
     EnterCriticalSection( &sync_cs );
-    ret = interlocked_xchg_add( &semaphore->Header.SignalState, count );
+    ret = InterlockedExchangeAdd( &semaphore->Header.SignalState, count );
     if (handle)
         ReleaseSemaphore( handle, count, NULL );
     LeaveCriticalSection( &sync_cs );

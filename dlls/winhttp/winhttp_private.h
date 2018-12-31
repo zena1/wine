@@ -286,9 +286,8 @@ void destroy_cookies( struct session * ) DECLSPEC_HIDDEN;
 BOOL set_server_for_hostname( struct connect *, const WCHAR *, INTERNET_PORT ) DECLSPEC_HIDDEN;
 void destroy_authinfo( struct authinfo * ) DECLSPEC_HIDDEN;
 
-void release_host( struct hostdata *host ) DECLSPEC_HIDDEN;
-
-BOOL process_header( struct request *request, LPCWSTR field, LPCWSTR value, DWORD flags, BOOL request_only ) DECLSPEC_HIDDEN;
+void release_host( struct hostdata * ) DECLSPEC_HIDDEN;
+BOOL process_header( struct request *, const WCHAR *, const WCHAR *, DWORD, BOOL ) DECLSPEC_HIDDEN;
 
 extern HRESULT WinHttpRequest_create( void ** ) DECLSPEC_HIDDEN;
 void release_typelib( void ) DECLSPEC_HIDDEN;

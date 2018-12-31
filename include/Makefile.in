@@ -476,6 +476,7 @@ SOURCES = \
 	ntddndis.h \
 	ntddscsi.h \
 	ntddstor.h \
+	ntddvdeo.h \
 	ntdef.h \
 	ntdsapi.h \
 	ntlsa.h \

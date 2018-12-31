@@ -695,7 +695,7 @@ static BOOL request_query_option( struct object_header *hdr, DWORD option, void 
     {
     case WINHTTP_OPTION_SECURITY_FLAGS:
     {
-        DWORD flags = 0;
+        DWORD flags;
         int bits;
 
         if (!buffer || *buflen < sizeof(flags))
@@ -705,9 +705,7 @@ static BOOL request_query_option( struct object_header *hdr, DWORD option, void 
             return FALSE;
         }
 
-        flags = 0;
-        if (hdr->flags & WINHTTP_FLAG_SECURE) flags |= SECURITY_FLAG_SECURE;
-        flags |= request->security_flags;
+        flags = request->security_flags;
         if (request->netconn)
         {
             bits = netconn_get_cipher_strength( request->netconn );
@@ -929,6 +927,10 @@ static BOOL request_set_option( struct object_header *hdr, DWORD option, void *b
     case WINHTTP_OPTION_SECURITY_FLAGS:
     {
         DWORD flags;
+        static const DWORD accepted = SECURITY_FLAG_IGNORE_CERT_CN_INVALID   |
+                                      SECURITY_FLAG_IGNORE_CERT_DATE_INVALID |
+                                      SECURITY_FLAG_IGNORE_UNKNOWN_CA        |
+                                      SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
 
         if (buflen < sizeof(DWORD))
         {
@@ -937,10 +939,7 @@ static BOOL request_set_option( struct object_header *hdr, DWORD option, void *b
         }
         flags = *(DWORD *)buffer;
         TRACE("0x%x\n", flags);
-        if (!(flags & (SECURITY_FLAG_IGNORE_CERT_CN_INVALID   |
-                       SECURITY_FLAG_IGNORE_CERT_DATE_INVALID |
-                       SECURITY_FLAG_IGNORE_UNKNOWN_CA        |
-                       SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE)))
+        if (flags && (flags & ~accepted))
         {
             SetLastError( ERROR_INVALID_PARAMETER );
             return FALSE;
@@ -1040,16 +1039,15 @@ static const struct object_vtbl request_vtbl =
     request_set_option
 };
 
-static BOOL store_accept_types( struct request *request, const WCHAR **accept_types )
+static BOOL add_accept_types_header( struct request *request, const WCHAR **types )
 {
-    static const WCHAR attr_accept[] = {'A','c','c','e','p','t',0};
+    static const WCHAR acceptW[] = {'A','c','c','e','p','t',0};
     static const DWORD flags = WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_COALESCE_WITH_COMMA;
-    const WCHAR **types = accept_types;
 
     if (!types) return TRUE;
     while (*types)
     {
-        process_header( request, attr_accept, *types, flags, TRUE );
+        if (!process_header( request, acceptW, *types, flags, TRUE )) return FALSE;
         types++;
     }
     return TRUE;
@@ -1131,7 +1129,7 @@ HINTERNET WINAPI WinHttpOpenRequest( HINTERNET hconnect, LPCWSTR verb, LPCWSTR o
 
     if (!version || !version[0]) version = http1_1;
     if (!(request->version = strdupW( version ))) goto end;
-    if (!(store_accept_types( request, types ))) goto end;
+    if (!(add_accept_types_header( request, types ))) goto end;
 
     if (!(hrequest = alloc_handle( &request->hdr ))) goto end;
     request->hdr.handle = hrequest;

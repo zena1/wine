@@ -1372,15 +1372,15 @@ static NTSTATUS create_device_symlink( DEVICE_OBJECT *device, UNICODE_STRING *sy
  */
 NTSTATUS WINAPI IoSetDeviceInterfaceState( UNICODE_STRING *name, BOOLEAN enable )
 {
-    const WCHAR DeviceClassesW[] = {'\\','R','E','G','I','S','T','R','Y','\\',
+    static const WCHAR DeviceClassesW[] = {'\\','R','E','G','I','S','T','R','Y','\\',
         'M','a','c','h','i','n','e','\\','S','y','s','t','e','m','\\',
         'C','u','r','r','e','n','t','C','o','n','t','r','o','l','S','e','t','\\',
         'C','o','n','t','r','o','l','\\',
         'D','e','v','i','c','e','C','l','a','s','s','e','s','\\',0};
-    const WCHAR controlW[] = {'C','o','n','t','r','o','l',0};
-    const WCHAR linkedW[] = {'L','i','n','k','e','d',0};
-    const WCHAR slashW[] = {'\\',0};
-    const WCHAR hashW[] = {'#',0};
+    static const WCHAR controlW[] = {'C','o','n','t','r','o','l',0};
+    static const WCHAR linkedW[] = {'L','i','n','k','e','d',0};
+    static const WCHAR slashW[] = {'\\',0};
+    static const WCHAR hashW[] = {'#',0};
 
     size_t namelen = name->Length / sizeof(WCHAR);
     DEV_BROADCAST_DEVICEINTERFACE_W *broadcast;
@@ -3410,8 +3410,7 @@ static HMODULE load_driver_module( const WCHAR *name )
 
         if ((rel = RtlImageDirectoryEntryToData( module, TRUE, IMAGE_DIRECTORY_ENTRY_BASERELOC, &size )))
         {
-            WINE_TRACE( "%s: relocating from %p to %p\n",
-                        wine_dbgstr_w(name), (char *)module - delta, module );
+            TRACE( "%s: relocating from %p to %p\n", wine_dbgstr_w(name), (char *)module - delta, module );
             end = (IMAGE_BASE_RELOCATION *)((char *)rel + size);
             while (rel < end - 1 && rel->SizeOfBlock)
             {
@@ -3470,7 +3469,7 @@ static HMODULE load_driver( const WCHAR *driver_name, const UNICODE_STRING *keyn
 
     if (RegOpenKeyW( HKEY_LOCAL_MACHINE, keyname->Buffer + 18 /* skip \registry\machine */, &driver_hkey ))
     {
-        WINE_ERR( "cannot open key %s, err=%u\n", wine_dbgstr_w(keyname->Buffer), GetLastError() );
+        ERR( "cannot open key %s, err=%u\n", wine_dbgstr_w(keyname->Buffer), GetLastError() );
         return NULL;
     }
 
@@ -3526,7 +3525,7 @@ static HMODULE load_driver( const WCHAR *driver_name, const UNICODE_STRING *keyn
     }
     RegCloseKey( driver_hkey );
 
-    WINE_TRACE( "loading driver %s\n", wine_dbgstr_w(str) );
+    TRACE( "loading driver %s\n", wine_dbgstr_w(str) );
 
     module = load_driver_module( str );
     HeapFree( GetProcessHeap(), 0, path );
@@ -3564,12 +3563,12 @@ static NTSTATUS WINAPI init_driver( DRIVER_OBJECT *driver_object, UNICODE_STRING
     TRACE_(relay)( "\1Ret  driver init %p (obj=%p,str=%s) retval=%08x\n",
                    driver_object->DriverInit, driver_object, wine_dbgstr_w(keyname->Buffer), status );
 
-    WINE_TRACE( "init done for %s obj %p\n", wine_dbgstr_w(driver_name), driver_object );
-    WINE_TRACE( "- DriverInit = %p\n", driver_object->DriverInit );
-    WINE_TRACE( "- DriverStartIo = %p\n", driver_object->DriverStartIo );
-    WINE_TRACE( "- DriverUnload = %p\n", driver_object->DriverUnload );
+    TRACE( "init done for %s obj %p\n", wine_dbgstr_w(driver_name), driver_object );
+    TRACE( "- DriverInit = %p\n", driver_object->DriverInit );
+    TRACE( "- DriverStartIo = %p\n", driver_object->DriverStartIo );
+    TRACE( "- DriverUnload = %p\n", driver_object->DriverUnload );
     for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-        WINE_TRACE( "- MajorFunction[%d] = %p\n", i, driver_object->MajorFunction[i] );
+        TRACE( "- MajorFunction[%d] = %p\n", i, driver_object->MajorFunction[i] );
 
     return status;
 }
@@ -3609,6 +3608,13 @@ NTSTATUS WINAPI ZwLoadDriver( const UNICODE_STRING *service_name )
     {
         CloseServiceHandle( (void *)service_handle );
         return STATUS_NO_MEMORY;
+    }
+
+    if (wine_rb_get( &wine_drivers, &drv_name ))
+    {
+        TRACE( "driver %s already loaded\n", debugstr_us(&drv_name) );
+        RtlFreeUnicodeString( &drv_name );
+        return STATUS_IMAGE_ALREADY_LOADED;
     }
 
     set_service_status( service_handle, SERVICE_START_PENDING, 0 );
@@ -3841,7 +3847,10 @@ static void handle_bus_relations( DEVICE_OBJECT *device )
     strcpyW( buffer, servicesW );
     strcatW( buffer, driver );
     RtlInitUnicodeString( &string, buffer );
-    if (ZwLoadDriver( &string ) != STATUS_SUCCESS)
+    status = ZwLoadDriver( &string );
+    if (status == STATUS_IMAGE_ALREADY_LOADED)
+        return;
+    else if (status != STATUS_SUCCESS)
     {
         ERR_(plugplay)( "Failed to load driver %s\n", debugstr_w(driver) );
         return;
