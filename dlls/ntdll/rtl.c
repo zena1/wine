@@ -1680,19 +1680,9 @@ RTL_UNLOAD_EVENT_TRACE * WINAPI RtlGetUnloadEventTrace(void)
 }
 
 /*********************************************************************
- *           RtlQueryPackageIdentity [NTDLL.@]
- */
-NTSTATUS WINAPI RtlQueryPackageIdentity(HANDLE token, WCHAR *fullname, SIZE_T *fullname_size,
-                                        WCHAR *appid, SIZE_T *appid_size, BOOLEAN *packaged)
-{
-    FIXME("(%p, %p, %p, %p, %p, %p): stub\n", token, fullname, fullname_size, appid, appid_size, packaged);
-    return STATUS_NOT_FOUND;
-}
-
-/*********************************************************************
  *           RtlGetUnloadEventTraceEx [NTDLL.@]
  */
-void WINAPI RtlGetUnloadEventTraceEx(ULONG **size, ULONG **count, VOID **trace)
+void WINAPI RtlGetUnloadEventTraceEx(ULONG **size, ULONG **count, void **trace)
 {
     static ULONG dummy_size, dummy_count;
 
@@ -1701,4 +1691,14 @@ void WINAPI RtlGetUnloadEventTraceEx(ULONG **size, ULONG **count, VOID **trace)
     if (size)  *size  = &dummy_size;
     if (count) *count = &dummy_count;
     if (trace) *trace = NULL;
+}
+
+/*********************************************************************
+ *           RtlQueryPackageIdentity [NTDLL.@]
+ */
+NTSTATUS WINAPI RtlQueryPackageIdentity(HANDLE token, WCHAR *fullname, SIZE_T *fullname_size,
+                                        WCHAR *appid, SIZE_T *appid_size, BOOLEAN *packaged)
+{
+    FIXME("(%p, %p, %p, %p, %p, %p): stub\n", token, fullname, fullname_size, appid, appid_size, packaged);
+    return STATUS_NOT_FOUND;
 }

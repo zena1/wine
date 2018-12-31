@@ -71,8 +71,9 @@
  *
  *      Linker Options
  *          object-file-name  -llibrary -nostartfiles  -nodefaultlibs
- *          -nostdlib -s  -static  -static-libgcc  -shared  -shared-libgcc
- *          -symbolic -Wl,option  -Xlinker option -u symbol --image-base
+ *          -nostdlib -s  -static  -static-libgcc  -static-libstdc++
+ *          -shared  -shared-libgcc  -symbolic  -Wl,option
+ *          -Xlinker option -u symbol --image-base
  *
  *      Directory Options
  *          -Bprefix  -Idir  -I-  -Ldir  -specs=file
@@ -694,10 +695,11 @@ no_compat_defines:
     {
         if (opts->use_msvcrt)
         {
-            strarray_add(comp_args, gcc_defs ? "-isystem" INCLUDEDIR "/msvcrt" : "-I" INCLUDEDIR "/msvcrt" );
+            strarray_add(comp_args, gcc_defs ? "-isystem" INCLUDEDIR "/wine/msvcrt" : "-I" INCLUDEDIR "/wine/msvcrt" );
             strarray_add(comp_args, "-D__MSVCRT__");
         }
-        strarray_add(comp_args, gcc_defs ? "-isystem" INCLUDEDIR "/windows" : "-I" INCLUDEDIR "/windows" );
+        strarray_add(comp_args, "-I" INCLUDEDIR );
+        strarray_add(comp_args, gcc_defs ? "-isystem" INCLUDEDIR "/wine/windows" : "-I" INCLUDEDIR "/wine/windows" );
     }
     else if (opts->wine_objdir)
         strarray_add(comp_args, strmake("-I%s/include", opts->wine_objdir) );
@@ -1287,8 +1289,9 @@ static int is_linker_arg(const char* arg)
 {
     static const char* link_switches[] = 
     {
-	"-nostdlib", "-s", "-static", "-static-libgcc", "-shared", "-shared-libgcc", "-symbolic",
-	"-framework", "--coverage", "-fprofile-generate", "-fprofile-use"
+	"-nostdlib", "-s", "-static", "-static-libgcc", "-static-libstdc++",
+	"-shared", "-shared-libgcc", "-symbolic", "-framework", "--coverage",
+	"-fprofile-generate", "-fprofile-use"
     };
     unsigned int j;
 

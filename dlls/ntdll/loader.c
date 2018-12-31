@@ -2136,12 +2136,8 @@ static BOOL is_valid_binary( HMODULE module, const pe_image_info_t *info )
     if (info->machine == IMAGE_FILE_MACHINE_ARM64) return TRUE;
 #endif
     if (!info->contains_code) return TRUE;
-    if (info->image_flags & IMAGE_FLAGS_ComPlusNativeReady)
-    {
-        if (!convert_to_pe64( module, info )) return FALSE;
-    }
-    if (info->image_flags & IMAGE_FLAGS_ComPlusILOnly) return TRUE;
-    return FALSE;
+    if (!(info->image_flags & IMAGE_FLAGS_ComPlusNativeReady)) return FALSE;
+    return convert_to_pe64( module, info );
 #else
     return FALSE;  /* no wow64 support on other platforms */
 #endif
@@ -3981,16 +3977,17 @@ void __wine_process_init(void)
     /* setup the load callback and create ntdll modref */
     wine_dll_set_callback( load_builtin_callback );
 
-    if ((status = load_builtin_dll( NULL, wow64cpuW, NULL, 0, 0, &wow64cpu_wm )) == STATUS_SUCCESS)
-        Wow64Transition = wow64cpu_wm->ldr.BaseAddress;
-    else
-        WARN( "could not load wow64cpu.dll, status %#x\n", status );
-
     if ((status = load_builtin_dll( NULL, kernel32W, NULL, 0, 0, &wm )) != STATUS_SUCCESS)
     {
         MESSAGE( "wine: could not load kernel32.dll, status %x\n", status );
         exit(1);
     }
+
+    if ((status = load_builtin_dll( NULL, wow64cpuW, NULL, 0, 0, &wow64cpu_wm )) == STATUS_SUCCESS)
+        Wow64Transition = wow64cpu_wm->ldr.BaseAddress;
+    else
+        WARN( "could not load wow64cpu.dll, status %#x\n", status );
+
     RtlInitAnsiString( &func_name, "__wine_kernel_init" );
     if ((status = LdrGetProcedureAddress( wm->ldr.BaseAddress, &func_name,
                                           0, (void **)&init_func )) != STATUS_SUCCESS)

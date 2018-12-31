@@ -2506,10 +2506,18 @@ void virtual_release_address_space(void)
     if (range.limit > range.base)
     {
         while (wine_mmap_enum_reserved_areas( free_reserved_memory, &range, 1 )) /* nothing */;
+#ifdef __APPLE__
+        /* On macOS, we still want to free some of low memory, for OpenGL resources */
+        range.base  = (char *)0x40000000;
+#else
+        range.base  = NULL;
+#endif
     }
     else
+        range.base = (char *)0x20000000;
+
+    if (range.base)
     {
-        range.base  = (char *)0x20000000;
         range.limit = (char *)0x7f000000;
         while (wine_mmap_enum_reserved_areas( free_reserved_memory, &range, 0 )) /* nothing */;
     }
