@@ -1854,7 +1854,7 @@ static HRESULT d3d_device7_SetRenderTarget(IDirect3DDevice7 *iface,
         return DDERR_INVALIDCAPS;
     }
 
-    if (!(target_impl->surface_desc.ddsCaps.dwCaps & DDSCAPS_VIDEOMEMORY))
+    if (device->hw && !(target_impl->surface_desc.ddsCaps.dwCaps & DDSCAPS_VIDEOMEMORY))
     {
         WARN("Surface %p is not in video memory.\n", target_impl);
         wined3d_mutex_unlock();
@@ -1930,7 +1930,7 @@ static HRESULT WINAPI d3d_device3_SetRenderTarget(IDirect3DDevice3 *iface,
         return DDERR_INVALIDPIXELFORMAT;
     }
 
-    if (!(target_impl->surface_desc.ddsCaps.dwCaps & DDSCAPS_VIDEOMEMORY))
+    if (device->hw && !(target_impl->surface_desc.ddsCaps.dwCaps & DDSCAPS_VIDEOMEMORY))
     {
         WARN("Surface %p is not in video memory.\n", target_impl);
         IDirectDrawSurface4_AddRef(target);
@@ -1979,7 +1979,7 @@ static HRESULT WINAPI d3d_device2_SetRenderTarget(IDirect3DDevice2 *iface,
         return DDERR_INVALIDPIXELFORMAT;
     }
 
-    if (!(target_impl->surface_desc.ddsCaps.dwCaps & DDSCAPS_VIDEOMEMORY))
+    if (device->hw && !(target_impl->surface_desc.ddsCaps.dwCaps & DDSCAPS_VIDEOMEMORY))
     {
         WARN("Surface %p is not in video memory.\n", target_impl);
         IDirectDrawSurface_AddRef(target);
@@ -4275,8 +4275,11 @@ static HRESULT d3d_device7_DrawPrimitiveVB(IDirect3DDevice7 *iface, D3DPRIMITIVE
 {
     struct d3d_device *device = impl_from_IDirect3DDevice7(iface);
     struct d3d_vertex_buffer *vb_impl = unsafe_impl_from_IDirect3DVertexBuffer7(vb);
-    HRESULT hr;
+    struct wined3d_resource *wined3d_resource;
+    struct wined3d_map_desc wined3d_map_desc;
+    struct wined3d_box wined3d_box = {0};
     DWORD stride;
+    HRESULT hr;
 
     TRACE("iface %p, primitive_type %#x, vb %p, start_vertex %u, vertex_count %u, flags %#x.\n",
             iface, primitive_type, vb, start_vertex, vertex_count, flags);
@@ -4288,6 +4291,26 @@ static HRESULT d3d_device7_DrawPrimitiveVB(IDirect3DDevice7 *iface, D3DPRIMITIVE
     }
 
     stride = get_flexible_vertex_size(vb_impl->fvf);
+
+    if (vb_impl->Caps & D3DVBCAPS_SYSTEMMEMORY)
+    {
+        TRACE("Drawing from D3DVBCAPS_SYSTEMMEMORY vertex buffer, forwarding to DrawPrimitive().\n");
+        wined3d_mutex_lock();
+        wined3d_resource = wined3d_buffer_get_resource(vb_impl->wined3d_buffer);
+        wined3d_box.left = start_vertex * stride;
+        wined3d_box.right = wined3d_box.left + vertex_count * stride;
+        if (FAILED(hr = wined3d_resource_map(wined3d_resource, 0, &wined3d_map_desc,
+                &wined3d_box, WINED3D_MAP_READ)))
+        {
+            wined3d_mutex_unlock();
+            return D3DERR_VERTEXBUFFERLOCKED;
+        }
+        hr = d3d_device7_DrawPrimitive(iface, primitive_type, vb_impl->fvf, wined3d_map_desc.data,
+                vertex_count, flags);
+        wined3d_resource_unmap(wined3d_resource, 0);
+        wined3d_mutex_unlock();
+        return hr;
+    }
 
     wined3d_mutex_lock();
     wined3d_device_set_vertex_declaration(device->wined3d_device, vb_impl->wined3d_declaration);
@@ -4366,6 +4389,7 @@ static HRESULT d3d_device7_DrawIndexedPrimitiveVB(IDirect3DDevice7 *iface,
     struct d3d_device *device = impl_from_IDirect3DDevice7(iface);
     struct d3d_vertex_buffer *vb_impl = unsafe_impl_from_IDirect3DVertexBuffer7(vb);
     DWORD stride = get_flexible_vertex_size(vb_impl->fvf);
+    struct wined3d_resource *wined3d_resource;
     struct wined3d_map_desc wined3d_map_desc;
     struct wined3d_box wined3d_box = {0};
     struct wined3d_resource *ib;
@@ -4380,6 +4404,24 @@ static HRESULT d3d_device7_DrawIndexedPrimitiveVB(IDirect3DDevice7 *iface,
     {
         WARN("0 vertex or index count.\n");
         return D3D_OK;
+    }
+
+    if (vb_impl->Caps & D3DVBCAPS_SYSTEMMEMORY)
+    {
+        TRACE("Drawing from D3DVBCAPS_SYSTEMMEMORY vertex buffer, forwarding to DrawIndexedPrimitive().\n");
+        wined3d_mutex_lock();
+        wined3d_resource = wined3d_buffer_get_resource(vb_impl->wined3d_buffer);
+        if (FAILED(hr = wined3d_resource_map(wined3d_resource, 0, &wined3d_map_desc,
+                &wined3d_box, WINED3D_MAP_READ)))
+        {
+            wined3d_mutex_unlock();
+            return D3DERR_VERTEXBUFFERLOCKED;
+        }
+        hr = d3d_device7_DrawIndexedPrimitive(iface, primitive_type, vb_impl->fvf, wined3d_map_desc.data,
+                start_vertex + vertex_count, indices, index_count, flags);
+        wined3d_resource_unmap(wined3d_resource, 0);
+        wined3d_mutex_unlock();
+        return hr;
     }
 
     /* Steps:
@@ -6891,7 +6933,7 @@ enum wined3d_depth_buffer_type d3d_device_update_depth_stencil(struct d3d_device
     return WINED3D_ZB_TRUE;
 }
 
-static HRESULT d3d_device_init(struct d3d_device *device, struct ddraw *ddraw,
+static HRESULT d3d_device_init(struct d3d_device *device, struct ddraw *ddraw, BOOL hw,
         struct ddraw_surface *target, IUnknown *rt_iface, UINT version, IUnknown *outer_unknown)
 {
     static const D3DMATRIX ident =
@@ -6914,6 +6956,7 @@ static HRESULT d3d_device_init(struct d3d_device *device, struct ddraw *ddraw,
     device->IUnknown_inner.lpVtbl = &d3d_device_inner_vtbl;
     device->ref = 1;
     device->version = version;
+    device->hw = hw;
 
     if (outer_unknown)
         device->outer_unknown = outer_unknown;
@@ -6964,14 +7007,18 @@ static HRESULT d3d_device_init(struct d3d_device *device, struct ddraw *ddraw,
     return D3D_OK;
 }
 
-HRESULT d3d_device_create(struct ddraw *ddraw, struct ddraw_surface *target, IUnknown *rt_iface,
+HRESULT d3d_device_create(struct ddraw *ddraw, const GUID *guid, struct ddraw_surface *target, IUnknown *rt_iface,
         UINT version, struct d3d_device **device, IUnknown *outer_unknown)
 {
     struct d3d_device *object;
+    BOOL hw = TRUE;
     HRESULT hr;
 
-    TRACE("ddraw %p, target %p, version %u, device %p, outer_unknown %p.\n",
-            ddraw, target, version, device, outer_unknown);
+    TRACE("ddraw %p, guid %s, target %p, version %u, device %p, outer_unknown %p.\n",
+            ddraw, debugstr_guid(guid), target, version, device, outer_unknown);
+
+    if (IsEqualGUID(guid, &IID_IDirect3DRGBDevice))
+        hw = FALSE;
 
     if (!(target->surface_desc.ddsCaps.dwCaps & DDSCAPS_3DDEVICE)
             || (target->surface_desc.ddsCaps.dwCaps & DDSCAPS_ZBUFFER))
@@ -6994,7 +7041,7 @@ HRESULT d3d_device_create(struct ddraw *ddraw, struct ddraw_surface *target, IUn
         return DDERR_OUTOFMEMORY;
     }
 
-    if (!(target->surface_desc.ddsCaps.dwCaps & DDSCAPS_VIDEOMEMORY))
+    if (hw && !(target->surface_desc.ddsCaps.dwCaps & DDSCAPS_VIDEOMEMORY))
     {
         WARN("Surface %p is not in video memory.\n", target);
         return D3DERR_SURFACENOTINVIDMEM;
@@ -7012,7 +7059,7 @@ HRESULT d3d_device_create(struct ddraw *ddraw, struct ddraw_surface *target, IUn
         return DDERR_OUTOFMEMORY;
     }
 
-    if (FAILED(hr = d3d_device_init(object, ddraw, target, rt_iface, version, outer_unknown)))
+    if (FAILED(hr = d3d_device_init(object, ddraw, hw, target, rt_iface, version, outer_unknown)))
     {
         WARN("Failed to initialize device, hr %#x.\n", hr);
         heap_free(object);
