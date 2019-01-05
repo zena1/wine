@@ -2258,6 +2258,7 @@ enum wined3d_pci_vendor
     HW_VENDOR_AMD                   = 0x1002,
     HW_VENDOR_NVIDIA                = 0x10de,
     HW_VENDOR_VMWARE                = 0x15ad,
+    HW_VENDOR_REDHAT                = 0x1af4,
     HW_VENDOR_INTEL                 = 0x8086,
 };
 
@@ -2440,6 +2441,8 @@ enum wined3d_pci_device
     CARD_NVIDIA_GEFORCE_GTX1080TI   = 0x1b06,
     CARD_NVIDIA_TITANX_PASCAL       = 0x1b00,
     CARD_NVIDIA_TITANV              = 0x1d81,
+
+    CARD_REDHAT_VIRGL               = 0x1010,
 
     CARD_VMWARE_SVGA3D              = 0x0405,
 
@@ -2630,6 +2633,7 @@ enum wined3d_display_driver
     DRIVER_NVIDIA_GEFORCEFX,
     DRIVER_NVIDIA_GEFORCE6,
     DRIVER_NVIDIA_GEFORCE8,
+    DRIVER_REDHAT_VIRGL,
     DRIVER_VMWARE,
     DRIVER_WINE,
     DRIVER_UNKNOWN,
