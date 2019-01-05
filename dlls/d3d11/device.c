@@ -6562,7 +6562,7 @@ static HRESULT STDMETHODCALLTYPE d3d11_device_CreateDeferredContext(ID3D11Device
 
     list_init(&object->commands);
 
-    ID3D11Device_AddRef(iface);
+    ID3D11Device2_AddRef(iface);
     wined3d_private_store_init(&object->private_store);
 
     *context = &object->ID3D11DeviceContext_iface;
