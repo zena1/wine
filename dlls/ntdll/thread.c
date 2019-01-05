@@ -1231,7 +1231,7 @@ NTSTATUS get_thread_context( HANDLE handle, context_t *context, unsigned int fla
 
     if (ret == STATUS_PENDING)
     {
-        for (i = 0; i < 1000; i++)
+        for (i = 0; i < 100; i++)
         {
             SERVER_START_REQ( get_thread_context )
             {
