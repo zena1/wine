@@ -2719,7 +2719,7 @@ static void test_multiframegif(void)
     expect(Ok, stat);
 
     color = 0xdeadbeef;
-    GdipBitmapGetPixel(bmp, 0, 0, &color);
+    stat = GdipBitmapGetPixel(bmp, 0, 0, &color);
     expect(Ok, stat);
     expect(0xff000000, color);
 
