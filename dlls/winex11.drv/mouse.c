@@ -551,8 +551,10 @@ BOOL clip_fullscreen_window( HWND hwnd, BOOL reset )
     release_win_data( data );
     if (!fullscreen) return FALSE;
     if (!(thread_data = x11drv_thread_data())) return FALSE;
-    if (GetTickCount() - thread_data->clip_reset < 1000) return FALSE;
-    if (!reset && clipping_cursor && thread_data->clip_hwnd) return FALSE;  /* already clipping */
+    if (!reset) {
+        if (GetTickCount() - thread_data->clip_reset < 1000) return FALSE;
+        if (clipping_cursor && thread_data->clip_hwnd) return FALSE;  /* already clipping */
+    }
     rect = get_primary_monitor_rect();
     if (!grab_fullscreen)
     {
@@ -1537,12 +1539,12 @@ BOOL CDECL X11DRV_ClipCursor( LPCRECT clip )
         {
             if (grab_clipping_window( clip )) return TRUE;
         }
-        else /* if currently clipping, check if we should switch to fullscreen clipping */
+        else /* check if we should switch to fullscreen clipping */
         {
             struct x11drv_thread_data *data = x11drv_thread_data();
-            if (data && data->clip_hwnd)
+            if (data)
             {
-                if (EqualRect( clip, &clip_rect ) || clip_fullscreen_window( foreground, TRUE ))
+                if ((data->clip_hwnd && EqualRect( clip, &clip_rect )) || clip_fullscreen_window( foreground, TRUE ))
                     return TRUE;
             }
         }

@@ -45,7 +45,6 @@
 #include "x11drv.h"
 #include "wine/debug.h"
 #include "wine/server.h"
-#include "mwm.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(x11drv);
 
@@ -101,6 +100,41 @@ static CRITICAL_SECTION_DEBUG critsect_debug =
       0, 0, { (DWORD_PTR)(__FILE__ ": win_data_section") }
 };
 static CRITICAL_SECTION win_data_section = { &critsect_debug, -1, 0, 0, 0, 0 };
+
+
+/* enable workarounds for mutter bugs */
+static BOOL wm_is_mutter(Display *display)
+{
+    Window root = DefaultRootWindow(display), *wm_check;
+    Atom type;
+    int format;
+    unsigned long count, remaining;
+    static int cached = -1;
+    char *wm_name;
+
+    if(cached < 0){
+        if (XGetWindowProperty( display, root, x11drv_atom(_NET_SUPPORTING_WM_CHECK), 0,
+                                 sizeof(*wm_check)/sizeof(CARD32), False, x11drv_atom(WINDOW),
+                                 &type, &format, &count, &remaining, (unsigned char **)&wm_check ) == Success){
+            if (type == x11drv_atom(WINDOW) &&
+                    XGetWindowProperty( display, *wm_check, x11drv_atom(_NET_WM_NAME), 0,
+                        256/sizeof(CARD32), False, x11drv_atom(UTF8_STRING),
+                        &type, &format, &count, &remaining, (unsigned char **)&wm_name) == Success){
+                if(type == x11drv_atom(UTF8_STRING)){
+                    TRACE("Got WM name %s\n", wm_name);
+                    cached = (strcmp(wm_name, "GNOME Shell") == 0) ||
+                        (strcmp(wm_name, "Mutter") == 0);
+                }
+                XFree(wm_name);
+            }else
+                cached = 0;
+            XFree(wm_check);
+        }else
+            cached = 0;
+    }
+
+    return cached;
+}
 
 
 /***********************************************************************
@@ -731,12 +765,15 @@ static void set_mwm_hints( struct x11drv_win_data *data, DWORD style, DWORD ex_s
                      x11drv_atom(_MOTIF_WM_HINTS), 32, PropModeReplace,
                      (unsigned char*)&mwm_hints, sizeof(mwm_hints)/sizeof(long) );
 
-    if (GetFocus() == data->hwnd)
+    if (wm_is_mutter(data->display) && GetFocus() == data->hwnd &&
+            !!data->prev_hints.decorations != !!mwm_hints.decorations)
     {
         /* workaround for mutter gitlab bug #273 */
         TRACE("workaround mutter bug, setting take_focus_back\n");
         data->take_focus_back = GetTickCount64();
     }
+
+    data->prev_hints = mwm_hints;
 }
 
 
@@ -964,7 +1001,12 @@ void update_net_wm_states( struct x11drv_win_data *data )
         new_state |= (1 << NET_WM_STATE_MAXIMIZED);
 
     ex_style = GetWindowLongW( data->hwnd, GWL_EXSTYLE );
-    if (ex_style & WS_EX_TOPMOST)
+    if ((ex_style & WS_EX_TOPMOST) &&
+            /* mutter < 3.31 has a bug where a FULLSCREEN and ABOVE window when
+             * minimized will incorrectly show a black window.  this workaround
+             * should be removed when the fix is widely distributed.  see
+             * mutter issue #306. */
+            !(wm_is_mutter(data->display) && (new_state & (1 << NET_WM_STATE_FULLSCREEN))))
         new_state |= (1 << NET_WM_STATE_ABOVE);
     if (ex_style & (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE))
         new_state |= (1 << NET_WM_STATE_SKIP_TASKBAR) | (1 << NET_WM_STATE_SKIP_PAGER);
@@ -2556,7 +2598,7 @@ void CDECL X11DRV_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags
     }
 
     /* don't change position if we are about to minimize or maximize a managed window */
-    if (!event_type &&
+    if ((!event_type || event_type == PropertyNotify) &&
         !(data->managed && (swp_flags & SWP_STATECHANGED) && (new_style & (WS_MINIMIZE|WS_MAXIMIZE))))
         sync_window_position( data, swp_flags, &old_window_rect, &old_whole_rect, &old_client_rect );
 
@@ -2590,7 +2632,7 @@ void CDECL X11DRV_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags
         else
         {
             if (swp_flags & (SWP_FRAMECHANGED|SWP_STATECHANGED)) set_wm_hints( data );
-            if (!event_type) update_net_wm_states( data );
+            if (!event_type || event_type == PropertyNotify) update_net_wm_states( data );
         }
     }
 

@@ -59,6 +59,8 @@ typedef int Status;
 #include "wine/gdi_driver.h"
 #include "wine/list.h"
 
+#include "mwm.h"
+
 #define MAX_DASHLEN 16
 
 #define WINE_XDND_VERSION 5
@@ -442,6 +444,7 @@ enum x11drv_atoms
     XATOM__NET_STARTUP_INFO_BEGIN,
     XATOM__NET_STARTUP_INFO,
     XATOM__NET_SUPPORTED,
+    XATOM__NET_SUPPORTING_WM_CHECK,
     XATOM__NET_SYSTEM_TRAY_OPCODE,
     XATOM__NET_SYSTEM_TRAY_S0,
     XATOM__NET_SYSTEM_TRAY_VISUAL,
@@ -492,6 +495,7 @@ enum x11drv_atoms
     XATOM_WCF_SYLK,
     XATOM_WCF_TIFF,
     XATOM_WCF_WAVE,
+    XATOM_WINDOW,
     XATOM_image_bmp,
     XATOM_image_gif,
     XATOM_image_jpeg,
@@ -585,6 +589,7 @@ struct x11drv_win_data
     Pixmap         icon_mask;
     unsigned long *icon_bits;
     unsigned int   icon_size;
+    MwmHints prev_hints;
 };
 
 extern struct x11drv_win_data *get_win_data( HWND hwnd ) DECLSPEC_HIDDEN;
