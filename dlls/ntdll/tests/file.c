@@ -3747,6 +3747,8 @@ static void test_file_mode(void)
         if (option_tests[i].file_name == &file_name)
             DeleteFileW(dos_file_name);
     }
+
+    pRtlFreeUnicodeString(&file_name);
 }
 
 static void test_query_volume_information_file(void)
