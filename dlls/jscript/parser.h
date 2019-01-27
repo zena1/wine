@@ -358,17 +358,16 @@ typedef struct {
     int length;
 } array_literal_expression_t;
 
-typedef struct _property_definition_t {
-    unsigned type;
+typedef struct _prop_val_t {
     literal_t *name;
     expression_t *value;
 
-    struct _property_definition_t *next;
-} property_definition_t;
+    struct _prop_val_t *next;
+} prop_val_t;
 
 typedef struct {
     expression_t expr;
-    property_definition_t *property_list;
+    prop_val_t *property_list;
 } property_value_expression_t;
 
 BOOL try_parse_ccval(parser_ctx_t*,ccval_t*) DECLSPEC_HIDDEN;

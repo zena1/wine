@@ -288,7 +288,7 @@ LPITEMIDLIST SHELL32_CreatePidlFromBindCtx(IBindCtx *pbc, LPCWSTR path)
 *  Now we can parse into namespaces implemented by shell extensions
 *
 *  Behaviour on win98: lpszDisplayName=NULL -> crash
-*                      lpszDisplayName="" -> returns mycomputer-pidl
+*                      lpszDisplayName="" -> returns mycoputer-pidl
 *
 * FIXME
 *    pdwAttributes is not set

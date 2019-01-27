@@ -380,7 +380,7 @@ BOOL ME_InternalDeleteText(ME_TextEditor *editor, ME_Cursor *start,
 
       c.nOffset -= nCharsToDelete;
 
-      mark_para_rewrap(editor, ME_FindItemBack(c.pRun, diParagraph));
+      ME_FindItemBack(c.pRun, diParagraph)->member.para.nFlags |= MEPF_REWRAP;
 
       cursor = c;
       /* nChars is the number of characters that should be deleted from the

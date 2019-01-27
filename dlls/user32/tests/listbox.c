@@ -90,6 +90,7 @@ struct listbox_stat {
 };
 
 struct listbox_test {
+  struct listbox_prop prop;
   struct listbox_stat  init,  init_todo;
   struct listbox_stat click, click_todo;
   struct listbox_stat  step,  step_todo;
@@ -129,7 +130,8 @@ keypress (HWND handle, WPARAM keycode, BYTE scancode, BOOL extended)
 
 #define listbox_field_ok(t, s, f, got) \
   ok (t.s.f==got.f, "style %#x, step " #s ", field " #f \
-      ": expected %d, got %d\n", style, t.s.f, got.f)
+      ": expected %d, got %d\n", (unsigned int)t.prop.add_style, \
+      t.s.f, got.f)
 
 #define listbox_todo_field_ok(t, s, f, got) \
   todo_wine_if (t.s##_todo.f) { listbox_field_ok(t, s, f, got); }
@@ -141,15 +143,13 @@ keypress (HWND handle, WPARAM keycode, BYTE scancode, BOOL extended)
   listbox_todo_field_ok(t, s, selcount, got)
 
 static void
-check (DWORD style, const struct listbox_test test)
+check (const struct listbox_test test)
 {
   struct listbox_stat answer;
+  HWND hLB=create_listbox (test.prop.add_style, 0);
   RECT second_item;
   int i;
   int res;
-  HWND hLB;
-
-  hLB = create_listbox (style, 0);
 
   listbox_query (hLB, &answer);
   listbox_ok (test, init, answer);
@@ -166,13 +166,13 @@ check (DWORD style, const struct listbox_test test)
   listbox_ok (test, step, answer);
 
   DestroyWindow (hLB);
-  hLB = create_listbox(style, 0);
+  hLB=create_listbox (test.prop.add_style, 0);
 
   SendMessageA(hLB, LB_SELITEMRANGE, TRUE, MAKELPARAM(1, 2));
   listbox_query (hLB, &answer);
   listbox_ok (test, sel, answer);
 
-  for (i = 0; i < 4 && !(style & LBS_NODATA); i++) {
+  for (i=0;i<4;i++) {
 	DWORD size = SendMessageA(hLB, LB_GETTEXTLEN, i, 0);
 	CHAR *txt;
 	WCHAR *txtw;
@@ -184,9 +184,13 @@ check (DWORD style, const struct listbox_test test)
 
 	txtw = HeapAlloc (GetProcessHeap(), HEAP_ZERO_MEMORY, 2*size+2);
 	resW=SendMessageW(hLB, LB_GETTEXT, i, (LPARAM)txtw);
-	ok(resA == resW, "Unexpected text length.\n");
-	WideCharToMultiByte( CP_ACP, 0, txtw, -1, txt, size, NULL, NULL );
-        ok(!strcmp (txt, strings[i]), "returned string for item %d does not match %s vs %s\n", i, txt, strings[i]);
+	if (resA != resW) {
+            trace("SendMessageW(LB_GETTEXT) not supported on this platform (resA=%d resW=%d), skipping...\n",
+                resA, resW);
+	} else {
+	    WideCharToMultiByte( CP_ACP, 0, txtw, -1, txt, size, NULL, NULL );
+            ok(!strcmp (txt, strings[i]), "returned string for item %d does not match %s vs %s\n", i, txt, strings[i]);
+	}
 
 	HeapFree (GetProcessHeap(), 0, txtw);
 	HeapFree (GetProcessHeap(), 0, txt);
@@ -338,73 +342,35 @@ static HWND create_parent( void )
 
 static void test_ownerdraw(void)
 {
-    static const DWORD styles[] =
-    {
-        0,
-        LBS_NODATA
-    };
     HWND parent, hLB;
     INT ret;
     RECT rc;
-    UINT i;
 
     parent = create_parent();
     assert(parent);
 
-    for (i = 0; i < ARRAY_SIZE(styles); i++)
-    {
-        hLB = create_listbox(LBS_OWNERDRAWFIXED | WS_CHILD | WS_VISIBLE | styles[i], parent);
-        assert(hLB);
+    hLB = create_listbox(LBS_OWNERDRAWFIXED | WS_CHILD | WS_VISIBLE, parent);
+    assert(hLB);
 
-        SetForegroundWindow(hLB);
-        UpdateWindow(hLB);
+    SetForegroundWindow(hLB);
+    UpdateWindow(hLB);
 
-        /* make height short enough */
-        SendMessageA(hLB, LB_GETITEMRECT, 0, (LPARAM)&rc);
-        SetWindowPos(hLB, 0, 0, 0, 100, rc.bottom - rc.top + 1,
-                     SWP_NOZORDER | SWP_NOMOVE);
+    /* make height short enough */
+    SendMessageA(hLB, LB_GETITEMRECT, 0, (LPARAM)&rc);
+    SetWindowPos(hLB, 0, 0, 0, 100, rc.bottom - rc.top + 1,
+                 SWP_NOZORDER | SWP_NOMOVE);
 
-        /* make 0 item invisible */
-        SendMessageA(hLB, LB_SETTOPINDEX, 1, 0);
-        ret = SendMessageA(hLB, LB_GETTOPINDEX, 0, 0);
-        ok(ret == 1, "wrong top index %d\n", ret);
+    /* make 0 item invisible */
+    SendMessageA(hLB, LB_SETTOPINDEX, 1, 0);
+    ret = SendMessageA(hLB, LB_GETTOPINDEX, 0, 0);
+    ok(ret == 1, "wrong top index %d\n", ret);
 
-        SendMessageA(hLB, LB_GETITEMRECT, 0, (LPARAM)&rc);
-        trace("item 0 rect %s\n", wine_dbgstr_rect(&rc));
-        ok(!IsRectEmpty(&rc), "empty item rect\n");
-        ok(rc.top < 0, "rc.top is not negative (%d)\n", rc.top);
+    SendMessageA(hLB, LB_GETITEMRECT, 0, (LPARAM)&rc);
+    trace("item 0 rect %s\n", wine_dbgstr_rect(&rc));
+    ok(!IsRectEmpty(&rc), "empty item rect\n");
+    ok(rc.top < 0, "rc.top is not negative (%d)\n", rc.top);
 
-        DestroyWindow(hLB);
-
-        /* Both FIXED and VARIABLE, FIXED should override VARIABLE. */
-        hLB = CreateWindowA("listbox", "TestList", LBS_OWNERDRAWFIXED | LBS_OWNERDRAWVARIABLE | styles[i],
-            0, 0, 100, 100, NULL, NULL, NULL, 0);
-        ok(hLB != NULL, "last error 0x%08x\n", GetLastError());
-
-        ok(GetWindowLongA(hLB, GWL_STYLE) & LBS_OWNERDRAWVARIABLE, "Unexpected window style.\n");
-
-        ret = SendMessageA(hLB, LB_INSERTSTRING, -1, 0);
-        ok(ret == 0, "Unexpected return value %d.\n", ret);
-        ret = SendMessageA(hLB, LB_INSERTSTRING, -1, 0);
-        ok(ret == 1, "Unexpected return value %d.\n", ret);
-
-        ret = SendMessageA(hLB, LB_SETITEMHEIGHT, 0, 13);
-        ok(ret == LB_OKAY, "Failed to set item height, %d.\n", ret);
-
-        ret = SendMessageA(hLB, LB_GETITEMHEIGHT, 0, 0);
-        ok(ret == 13, "Unexpected item height %d.\n", ret);
-
-        ret = SendMessageA(hLB, LB_SETITEMHEIGHT, 1, 42);
-        ok(ret == LB_OKAY, "Failed to set item height, %d.\n", ret);
-
-        ret = SendMessageA(hLB, LB_GETITEMHEIGHT, 0, 0);
-        ok(ret == 42, "Unexpected item height %d.\n", ret);
-
-        ret = SendMessageA(hLB, LB_GETITEMHEIGHT, 1, 0);
-        ok(ret == 42, "Unexpected item height %d.\n", ret);
-
-        DestroyWindow (hLB);
-    }
+    DestroyWindow(hLB);
     DestroyWindow(parent);
 }
 
@@ -775,7 +741,6 @@ static void test_listbox_item_data(void)
 
 static void test_listbox_LB_DIR(void)
 {
-    char path[MAX_PATH], curdir[MAX_PATH];
     HWND hList;
     int res, itemCount;
     int itemCount_justFiles;
@@ -788,16 +753,6 @@ static void test_listbox_LB_DIR(void)
     char driveletter;
     const char *wildcard = "*";
     HANDLE file;
-    BOOL ret;
-
-    GetCurrentDirectoryA(ARRAY_SIZE(curdir), curdir);
-
-    GetTempPathA(ARRAY_SIZE(path), path);
-    ret = SetCurrentDirectoryA(path);
-    ok(ret, "Failed to set current directory.\n");
-
-    ret = CreateDirectoryA("lb_dir_test", NULL);
-    ok(ret, "Failed to create test directory.\n");
 
     file = CreateFileA( "wtest1.tmp.c", GENERIC_READ|GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL );
     ok(file != INVALID_HANDLE_VALUE, "Error creating the test file: %d\n", GetLastError());
@@ -1129,11 +1084,11 @@ static void test_listbox_LB_DIR(void)
         itemCount, itemCount_allDirs);
     ok(res + 1 == itemCount, "SendMessage(LB_DIR, DDL_DIRECTORY|DDL_EXCLUSIVE, *) returned incorrect index!\n");
 
-    if (itemCount)
+    if (itemCount && GetCurrentDirectoryA( MAX_PATH, pathBuffer ) > 3)  /* there's no [..] in drive root */
     {
         memset(pathBuffer, 0, MAX_PATH);
         SendMessageA(hList, LB_GETTEXT, 0, (LPARAM)pathBuffer);
-        ok( !strcmp(pathBuffer, "[..]"), "First element is %s, not [..]\n", pathBuffer);
+        ok( !strcmp(pathBuffer, "[..]"), "First element is not [..]\n");
     }
 
     /* This tests behavior when no files match the wildcard */
@@ -1217,9 +1172,6 @@ static void test_listbox_LB_DIR(void)
     DestroyWindow(hList);
 
     DeleteFileA( "wtest1.tmp.c" );
-    RemoveDirectoryA("lb_dir_test");
-
-    SetCurrentDirectoryA(curdir);
 }
 
 static HWND g_listBox;
@@ -1729,13 +1681,7 @@ static void test_listbox_dlgdir(void)
 
 static void test_set_count( void )
 {
-    static const DWORD styles[] =
-    {
-        LBS_OWNERDRAWFIXED,
-        LBS_HASSTRINGS,
-    };
     HWND parent, listbox;
-    unsigned int i;
     LONG ret;
     RECT r;
 
@@ -1765,19 +1711,6 @@ static void test_set_count( void )
     ok( !IsRectEmpty( &r ), "got empty rect\n");
 
     DestroyWindow( listbox );
-
-    for (i = 0; i < ARRAY_SIZE(styles); ++i)
-    {
-        listbox = create_listbox( styles[i] | WS_CHILD | WS_VISIBLE, parent );
-
-        SetLastError( 0xdeadbeef );
-        ret = SendMessageA( listbox, LB_SETCOUNT, 100, 0 );
-        ok( ret == LB_ERR, "expected %d, got %d\n", LB_ERR, ret );
-        ok( GetLastError() == ERROR_SETCOUNT_ON_BAD_LB, "Unexpected error %d.\n", GetLastError() );
-
-        DestroyWindow( listbox );
-    }
-
     DestroyWindow( parent );
 }
 
@@ -2047,199 +1980,75 @@ static void test_WM_MEASUREITEM(void)
     DestroyWindow(parent);
 }
 
-static void test_LBS_NODATA(void)
-{
-    static const DWORD invalid_styles[] =
-    {
-        0,
-        LBS_OWNERDRAWVARIABLE,
-        LBS_SORT,
-        LBS_HASSTRINGS,
-        LBS_OWNERDRAWFIXED | LBS_SORT,
-        LBS_OWNERDRAWFIXED | LBS_HASSTRINGS,
-    };
-    static const UINT invalid_idx[] = { -2, 2 };
-    static const UINT valid_idx[] = { 0, 1 };
-    static const ULONG_PTR zero_data;
-    HWND listbox, parent;
-    unsigned int i;
-    ULONG_PTR data;
-    INT ret;
-
-    listbox = CreateWindowA("listbox", "TestList", LBS_NODATA | LBS_OWNERDRAWFIXED | WS_VISIBLE,
-        0, 0, 100, 100, NULL, NULL, NULL, 0);
-    ok(listbox != NULL, "Failed to create ListBox window.\n");
-
-    ret = SendMessageA(listbox, LB_INSERTSTRING, -1, 0);
-    ok(ret == 0, "Unexpected return value %d.\n", ret);
-    ret = SendMessageA(listbox, LB_INSERTSTRING, -1, 0);
-    ok(ret == 1, "Unexpected return value %d.\n", ret);
-    ret = SendMessageA(listbox, LB_GETCOUNT, 0, 0);
-    ok(ret == 2, "Unexpected return value %d.\n", ret);
-
-    /* Invalid indices. */
-    for (i = 0; i < ARRAY_SIZE(invalid_idx); ++i)
-    {
-        ret = SendMessageA(listbox, LB_SETITEMDATA, invalid_idx[i], 42);
-        ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
-        ret = SendMessageA(listbox, LB_GETTEXTLEN, invalid_idx[i], 0);
-        ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
-        if (ret == LB_ERR)
-        {
-            ret = SendMessageA(listbox, LB_GETTEXT, invalid_idx[i], (LPARAM)&data);
-            ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
-        }
-        ret = SendMessageA(listbox, LB_GETITEMDATA, invalid_idx[i], 0);
-        ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
-    }
-
-    /* Valid indices. */
-    for (i = 0; i < ARRAY_SIZE(valid_idx); ++i)
-    {
-        ret = SendMessageA(listbox, LB_SETITEMDATA, valid_idx[i], 42);
-        ok(ret == TRUE, "Unexpected return value %d.\n", ret);
-        ret = SendMessageA(listbox, LB_GETTEXTLEN, valid_idx[i], 0);
-        ok(ret == sizeof(data), "Unexpected return value %d.\n", ret);
-
-        memset(&data, 0xee, sizeof(data));
-        ret = SendMessageA(listbox, LB_GETTEXT, valid_idx[i], (LPARAM)&data);
-        ok(ret == sizeof(data), "Unexpected return value %d.\n", ret);
-        ok(!memcmp(&data, &zero_data, sizeof(data)), "Unexpected item data.\n");
-
-        ret = SendMessageA(listbox, LB_GETITEMDATA, valid_idx[i], 0);
-        ok(ret == 0, "Unexpected return value %d.\n", ret);
-    }
-
-    /* More messages that don't work with LBS_NODATA. */
-    SetLastError(0xdeadbeef);
-    ret = SendMessageA(listbox, LB_FINDSTRING, 1, 0);
-    ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
-    ok(GetLastError() == ERROR_INVALID_PARAMETER, "GetLastError should return 0x57, got 0x%X\n", GetLastError());
-    SetLastError(0xdeadbeef);
-    ret = SendMessageA(listbox, LB_FINDSTRING, 1, 42);
-    ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
-    ok(GetLastError() == ERROR_INVALID_PARAMETER, "GetLastError should return 0x57, got 0x%X\n", GetLastError());
-    SetLastError(0xdeadbeef);
-    ret = SendMessageA(listbox, LB_FINDSTRINGEXACT, 1, 0);
-    ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
-    ok(GetLastError() == ERROR_INVALID_PARAMETER, "GetLastError should return 0x57, got 0x%X\n", GetLastError());
-    SetLastError(0xdeadbeef);
-    ret = SendMessageA(listbox, LB_FINDSTRINGEXACT, 1, 42);
-    ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
-    ok(GetLastError() == ERROR_INVALID_PARAMETER, "GetLastError should return 0x57, got 0x%X\n", GetLastError());
-    SetLastError(0xdeadbeef);
-    ret = SendMessageA(listbox, LB_SELECTSTRING, 1, 0);
-    ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
-    ok(GetLastError() == ERROR_INVALID_PARAMETER, "GetLastError should return 0x57, got 0x%X\n", GetLastError());
-    SetLastError(0xdeadbeef);
-    ret = SendMessageA(listbox, LB_SELECTSTRING, 1, 42);
-    ok(ret == LB_ERR, "Unexpected return value %d.\n", ret);
-    ok(GetLastError() == ERROR_INVALID_PARAMETER, "GetLastError should return 0x57, got 0x%X\n", GetLastError());
-
-    DestroyWindow(listbox);
-
-    /* Invalid window style combinations. */
-    parent = create_parent();
-    ok(parent != NULL, "Failed to create parent window.\n");
-
-    for (i = 0; i < ARRAY_SIZE(invalid_styles); ++i)
-    {
-        DWORD style;
-
-        listbox = CreateWindowA("listbox", "TestList", LBS_NODATA | WS_CHILD | invalid_styles[i],
-                0, 0, 100, 100, parent, (HMENU)1, NULL, 0);
-        ok(listbox != NULL, "Failed to create a listbox.\n");
-
-        style = GetWindowLongA(listbox, GWL_STYLE);
-        ok((style & invalid_styles[i]) == invalid_styles[i], "%u: unexpected window styles %#x.\n", i, style);
-        ret = SendMessageA(listbox, LB_SETCOUNT, 100, 0);
-        ok(ret == LB_ERR, "%u: unexpected return value %d.\n", i, ret);
-        DestroyWindow(listbox);
-    }
-
-    DestroyWindow(parent);
-}
-
 START_TEST(listbox)
 {
   const struct listbox_test SS =
 /*   {add_style} */
-    {{LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0},
+    {{0},
+     {LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0},
      {     1,      1,      1, LB_ERR}, {0,0,0,0},
      {     2,      2,      2, LB_ERR}, {0,0,0,0},
      {LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0}};
 /* {selected, anchor,  caret, selcount}{TODO fields} */
   const struct listbox_test SS_NS =
-    {{LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0},
+    {{LBS_NOSEL},
+     {LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0},
      {     1,      1,      1, LB_ERR}, {0,0,0,0},
      {     2,      2,      2, LB_ERR}, {0,0,0,0},
      {LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0}};
   const struct listbox_test MS =
-    {{     0, LB_ERR,      0,      0}, {0,0,0,0},
+    {{LBS_MULTIPLESEL},
+     {     0, LB_ERR,      0,      0}, {0,0,0,0},
      {     1,      1,      1,      1}, {0,0,0,0},
      {     2,      1,      2,      1}, {0,0,0,0},
      {     0, LB_ERR,      0,      2}, {0,0,0,0}};
   const struct listbox_test MS_NS =
-    {{LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0},
+    {{LBS_MULTIPLESEL | LBS_NOSEL},
+     {LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0},
      {     1,      1,      1, LB_ERR}, {0,0,0,0},
      {     2,      2,      2, LB_ERR}, {0,0,0,0},
      {LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0}};
   const struct listbox_test ES =
-    {{     0, LB_ERR,      0,      0}, {0,0,0,0},
+    {{LBS_EXTENDEDSEL},
+     {     0, LB_ERR,      0,      0}, {0,0,0,0},
      {     1,      1,      1,      1}, {0,0,0,0},
      {     2,      2,      2,      1}, {0,0,0,0},
      {     0, LB_ERR,      0,      2}, {0,0,0,0}};
   const struct listbox_test ES_NS =
-    {{LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0},
+    {{LBS_EXTENDEDSEL | LBS_NOSEL},
+     {LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0},
      {     1,      1,      1, LB_ERR}, {0,0,0,0},
      {     2,      2,      2, LB_ERR}, {0,0,0,0},
      {LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0}};
   const struct listbox_test EMS =
-    {{     0, LB_ERR,      0,      0}, {0,0,0,0},
+    {{LBS_EXTENDEDSEL | LBS_MULTIPLESEL},
+     {     0, LB_ERR,      0,      0}, {0,0,0,0},
      {     1,      1,      1,      1}, {0,0,0,0},
      {     2,      2,      2,      1}, {0,0,0,0},
      {     0, LB_ERR,      0,      2}, {0,0,0,0}};
   const struct listbox_test EMS_NS =
-    {{LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0},
+    {{LBS_EXTENDEDSEL | LBS_MULTIPLESEL | LBS_NOSEL},
+     {LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0},
      {     1,      1,      1, LB_ERR}, {0,0,0,0},
      {     2,      2,      2, LB_ERR}, {0,0,0,0},
      {LB_ERR, LB_ERR,      0, LB_ERR}, {0,0,0,0}};
 
   trace (" Testing single selection...\n");
-  check (0, SS);
+  check (SS);
   trace (" ... with NOSEL\n");
-  check (LBS_NOSEL, SS_NS);
-  trace (" ... LBS_NODATA variant ...\n");
-  check (LBS_NODATA | LBS_OWNERDRAWFIXED, SS);
-  trace (" ... with NOSEL\n");
-  check (LBS_NODATA | LBS_OWNERDRAWFIXED | LBS_NOSEL, SS_NS);
-
+  check (SS_NS);
   trace (" Testing multiple selection...\n");
-  check (LBS_MULTIPLESEL, MS);
+  check (MS);
   trace (" ... with NOSEL\n");
-  check (LBS_MULTIPLESEL | LBS_NOSEL, MS_NS);
-  trace (" ... LBS_NODATA variant ...\n");
-  check (LBS_NODATA | LBS_OWNERDRAWFIXED | LBS_MULTIPLESEL, MS);
-  trace (" ... with NOSEL\n");
-  check (LBS_NODATA | LBS_OWNERDRAWFIXED | LBS_MULTIPLESEL | LBS_NOSEL, MS_NS);
-
+  check (MS_NS);
   trace (" Testing extended selection...\n");
-  check (LBS_EXTENDEDSEL, ES);
+  check (ES);
   trace (" ... with NOSEL\n");
-  check (LBS_EXTENDEDSEL | LBS_NOSEL, ES_NS);
-  trace (" ... LBS_NODATA variant ...\n");
-  check (LBS_NODATA | LBS_OWNERDRAWFIXED | LBS_EXTENDEDSEL, ES);
-  trace (" ... with NOSEL\n");
-  check (LBS_NODATA | LBS_OWNERDRAWFIXED | LBS_EXTENDEDSEL | LBS_NOSEL, ES_NS);
-
+  check (ES_NS);
   trace (" Testing extended and multiple selection...\n");
-  check (LBS_EXTENDEDSEL | LBS_MULTIPLESEL, EMS);
+  check (EMS);
   trace (" ... with NOSEL\n");
-  check (LBS_EXTENDEDSEL | LBS_MULTIPLESEL | LBS_NOSEL, EMS_NS);
-  trace (" ... LBS_NODATA variant ...\n");
-  check (LBS_NODATA | LBS_OWNERDRAWFIXED | LBS_EXTENDEDSEL | LBS_MULTIPLESEL, EMS);
-  trace (" ... with NOSEL\n");
-  check (LBS_NODATA | LBS_OWNERDRAWFIXED | LBS_EXTENDEDSEL | LBS_MULTIPLESEL | LBS_NOSEL, EMS_NS);
+  check (EMS_NS);
 
   check_item_height();
   test_ownerdraw();
@@ -2256,5 +2065,4 @@ START_TEST(listbox)
   test_extents();
   test_WM_MEASUREITEM();
   test_LB_SETSEL();
-  test_LBS_NODATA();
 }

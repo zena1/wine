@@ -76,7 +76,6 @@
 #define ARCH "none"
 #endif
 
-static void (WINAPI *pGetCurrentThreadStackLimits)(PULONG_PTR,PULONG_PTR);
 static BOOL (WINAPI *pGetThreadPriorityBoost)(HANDLE,PBOOL);
 static HANDLE (WINAPI *pOpenThread)(DWORD,BOOL,DWORD);
 static BOOL (WINAPI *pQueueUserWorkItem)(LPTHREAD_START_ROUTINE,PVOID,ULONG);
@@ -992,29 +991,6 @@ static VOID test_thread_processor(void)
     }
     else
         win_skip("Get/SetThreadGroupAffinity not available\n");
-}
-
-static VOID test_GetCurrentThreadStackLimits(void)
-{
-    ULONG_PTR low = 0, high = 0;
-
-    if (!pGetCurrentThreadStackLimits)
-    {
-        win_skip("GetCurrentThreadStackLimits not available.\n");
-        return;
-    }
-
-    if (0)
-    {
-        /* crashes on native */
-        pGetCurrentThreadStackLimits(NULL, NULL);
-        pGetCurrentThreadStackLimits(NULL, &high);
-        pGetCurrentThreadStackLimits(&low, NULL);
-    }
-
-    pGetCurrentThreadStackLimits(&low, &high);
-    ok(low == (ULONG_PTR)NtCurrentTeb()->DeallocationStack, "expected %p, got %lx\n", NtCurrentTeb()->DeallocationStack, low);
-    ok(high == (ULONG_PTR)NtCurrentTeb()->Tib.StackBase, "expected %p, got %lx\n", NtCurrentTeb()->Tib.StackBase, high);
 }
 
 static VOID test_GetThreadExitCode(void)
@@ -2096,7 +2072,6 @@ static void init_funcs(void)
    so that the compile passes */
 
 #define X(f) p##f = (void*)GetProcAddress(hKernel32, #f)
-    X(GetCurrentThreadStackLimits);
     X(GetThreadPriorityBoost);
     X(OpenThread);
     X(QueueUserWorkItem);
@@ -2183,7 +2158,6 @@ START_TEST(thread)
    test_TerminateThread();
    test_CreateThread_stack();
    test_thread_priority();
-   test_GetCurrentThreadStackLimits();
    test_GetThreadTimes();
    test_thread_processor();
    test_GetThreadExitCode();

@@ -807,7 +807,7 @@ static WCHAR *build_signature_table_name( const WCHAR *class, const WCHAR *metho
     static const WCHAR fmtW[] = {'_','_','%','s','_','%','s','_','%','s',0};
     static const WCHAR outW[] = {'O','U','T',0};
     static const WCHAR inW[] = {'I','N',0};
-    UINT len = ARRAY_SIZE(fmtW) + ARRAY_SIZE(outW) + strlenW( class ) + strlenW( method );
+    UINT len = SIZEOF(fmtW) + SIZEOF(outW) + strlenW( class ) + strlenW( method );
     WCHAR *ret;
 
     if (!(ret = heap_alloc( len * sizeof(WCHAR) ))) return NULL;
@@ -826,7 +826,7 @@ HRESULT create_signature( const WCHAR *class, const WCHAR *method, enum param_di
          'D','i','r','e','c','t','i','o','n','%','s',0};
     static const WCHAR geW[] = {'>','=','0',0};
     static const WCHAR leW[] = {'<','=','0',0};
-    UINT len = ARRAY_SIZE(selectW) + ARRAY_SIZE(geW);
+    UINT len = SIZEOF(selectW) + SIZEOF(geW);
     IEnumWbemClassObject *iter;
     WCHAR *query, *name;
     HRESULT hr;
@@ -838,13 +838,6 @@ HRESULT create_signature( const WCHAR *class, const WCHAR *method, enum param_di
     hr = exec_query( query, &iter );
     heap_free( query );
     if (hr != S_OK) return hr;
-
-    if (!count_instances( iter ))
-    {
-        *sig = NULL;
-        IEnumWbemClassObject_Release( iter );
-        return S_OK;
-    }
 
     if (!(name = build_signature_table_name( class, method, dir )))
     {
@@ -880,9 +873,9 @@ static HRESULT WINAPI class_object_GetMethod(
     if (hr == S_OK)
     {
         if (ppInSignature) *ppInSignature = in;
-        else if (in) IWbemClassObject_Release( in );
+        else IWbemClassObject_Release( in );
         if (ppOutSignature) *ppOutSignature = out;
-        else if (out) IWbemClassObject_Release( out );
+        else IWbemClassObject_Release( out );
     }
     else IWbemClassObject_Release( in );
     return hr;
@@ -946,8 +939,7 @@ static HRESULT WINAPI class_object_NextMethod(
     if (hr != S_OK)
     {
         SysFreeString( method );
-        if (*ppInSignature)
-            IWbemClassObject_Release( *ppInSignature );
+        IWbemClassObject_Release( *ppInSignature );
     }
     else
     {

@@ -24,6 +24,8 @@
 IClientSecurity client_security DECLSPEC_HIDDEN;
 struct list *table_list DECLSPEC_HIDDEN;
 
+#define SIZEOF(array) (sizeof(array)/sizeof((array)[0]))
+
 enum param_direction
 {
     PARAM_OUT   = -1,

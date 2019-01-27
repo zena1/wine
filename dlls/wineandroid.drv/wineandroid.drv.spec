@@ -9,7 +9,6 @@
 @ cdecl MapVirtualKeyEx(long long long) ANDROID_MapVirtualKeyEx
 @ cdecl ToUnicodeEx(long long ptr ptr long long long) ANDROID_ToUnicodeEx
 @ cdecl VkKeyScanEx(long long) ANDROID_VkKeyScanEx
-@ cdecl SetCursor(long) ANDROID_SetCursor
 @ cdecl ChangeDisplaySettingsEx(ptr ptr long long long) ANDROID_ChangeDisplaySettingsEx
 @ cdecl EnumDisplayMonitors(long ptr ptr long) ANDROID_EnumDisplayMonitors
 @ cdecl EnumDisplaySettingsEx(ptr long ptr long) ANDROID_EnumDisplaySettingsEx
@@ -22,6 +21,7 @@
 @ cdecl SetParent(long long long) ANDROID_SetParent
 @ cdecl SetWindowRgn(long long long) ANDROID_SetWindowRgn
 @ cdecl SetWindowStyle(ptr long ptr) ANDROID_SetWindowStyle
+@ cdecl ShowWindow(long long ptr long) ANDROID_ShowWindow
 @ cdecl UpdateLayeredWindow(long ptr ptr) ANDROID_UpdateLayeredWindow
 @ cdecl WindowMessage(long long long long) ANDROID_WindowMessage
 @ cdecl WindowPosChanging(long long long ptr ptr ptr ptr) ANDROID_WindowPosChanging

@@ -265,7 +265,6 @@ static int           proximity_in_type;
 static int           proximity_out_type;
 
 static HWND          hwndTabletDefault;
-static HWND          gActiveOwner;
 static WTPACKET      gMsgPacket;
 static DWORD         gSerial;
 static DWORD         lastX = 0xffff;
@@ -493,9 +492,9 @@ static void disable_system_cursors(void)
  */
 BOOL CDECL X11DRV_LoadTabletInfo(HWND hwnddefault)
 {
-    static const WCHAR SZ_CONTEXT_NAME[] = {'W','i','n','e',' ','T','a','b','l','e','t',' ','C','o','n','t','e','x','t',0};
-    static const WCHAR SZ_DEVICE_NAME[] = {'W','i','n','e',' ','T','a','b','l','e','t',' ','D','e','v','i','c','e',0};
-    static const WCHAR SZ_NON_PLUG_N_PLAY[] = {'n','o','n','-','p','l','u','g','-','n','-','p','l','a','y',0};
+    const WCHAR SZ_CONTEXT_NAME[] = {'W','i','n','e',' ','T','a','b','l','e','t',' ','C','o','n','t','e','x','t',0};
+    const WCHAR SZ_DEVICE_NAME[] = {'W','i','n','e',' ','T','a','b','l','e','t',' ','D','e','v','i','c','e',0};
+    const WCHAR SZ_NON_PLUGINPLAY[] = {'n','o','n','-','p','l','u','g','i','n','p','l','a','y',0};
 
     struct x11drv_thread_data *data = x11drv_init_thread_data();
     int num_devices;
@@ -557,7 +556,7 @@ BOOL CDECL X11DRV_LoadTabletInfo(HWND hwnddefault)
     gSysDevice.PKTDATA =
         PK_CONTEXT | PK_STATUS | PK_SERIAL_NUMBER| PK_TIME | PK_CURSOR |
         PK_BUTTONS |  PK_X | PK_Y | PK_NORMAL_PRESSURE | PK_ORIENTATION;
-    strcpyW(gSysDevice.PNPID, SZ_NON_PLUG_N_PLAY);
+    strcpyW(gSysDevice.PNPID, SZ_NON_PLUGINPLAY);
 
     devices = pXListInputDevices(data->display, &num_devices);
     if (!devices)
@@ -769,14 +768,14 @@ BOOL CDECL X11DRV_LoadTabletInfo(HWND hwnddefault)
     } /* for XListInputDevices */
     pXFreeDeviceList(devices);
 
-    if (!axis_read_complete)
+    if (axis_read_complete)
+        gSysDevice.NCSRTYPES = gNumCursors;
+    else
     {
         disable_system_cursors();
         WARN("Did not find a valid stylus, unable to determine system context parameters. Wintab is disabled.\n");
-        return FALSE;
     }
 
-    gSysDevice.NCSRTYPES = gNumCursors;
     return TRUE;
 }
 
@@ -929,7 +928,7 @@ static BOOL motion_event( HWND hwnd, XEvent *event )
     gMsgPacket.pkNormalPressure = motion->axis_data[2];
     gMsgPacket.pkButtons = get_button_state(curnum);
     gMsgPacket.pkChanged = get_changed_state(&gMsgPacket);
-    SendMessageW(hwndTabletDefault,WT_PACKET,gMsgPacket.pkSerialNumber,(LPARAM)gActiveOwner);
+    SendMessageW(hwndTabletDefault,WT_PACKET,gMsgPacket.pkSerialNumber,(LPARAM)hwnd);
     return TRUE;
 }
 
@@ -966,7 +965,7 @@ static BOOL button_event( HWND hwnd, XEvent *event )
     gMsgPacket.pkNormalPressure = button->axis_data[2];
     gMsgPacket.pkButtons = get_button_state(curnum);
     gMsgPacket.pkChanged = get_changed_state(&gMsgPacket);
-    SendMessageW(hwndTabletDefault,WT_PACKET,gMsgPacket.pkSerialNumber,(LPARAM)gActiveOwner);
+    SendMessageW(hwndTabletDefault,WT_PACKET,gMsgPacket.pkSerialNumber,(LPARAM)hwnd);
     return TRUE;
 }
 
@@ -1022,7 +1021,7 @@ static BOOL proximity_event( HWND hwnd, XEvent *event )
      */
     proximity_info = MAKELPARAM((event->type == proximity_in_type),
                      (event->type == proximity_in_type) || (event->type == proximity_out_type));
-    SendMessageW(hwndTabletDefault, WT_PROXIMITY, (WPARAM)gActiveOwner, proximity_info);
+    SendMessageW(hwndTabletDefault, WT_PROXIMITY, (WPARAM)hwnd, proximity_info);
     return TRUE;
 }
 
@@ -1039,11 +1038,11 @@ int CDECL X11DRV_AttachEventQueueToTablet(HWND hOwner)
     XDeviceInfo     *target = NULL;
     XDevice         *the_device;
     XEventClass     event_list[7];
-    Window          win = X11DRV_get_whole_window(GetDesktopWindow());
+    Window          win = X11DRV_get_whole_window( hOwner );
+
+    if (!win || !xinput_handle) return 0;
 
     TRACE("Creating context for window %p (%lx)  %i cursors\n", hOwner, win, gNumCursors);
-
-    gActiveOwner = hOwner;
 
     devices = pXListInputDevices(data->display, &num_devices);
 

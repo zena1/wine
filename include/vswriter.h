@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Daniel Lehman
+ * Copyright 2014 Hans Leidekker for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -16,19 +16,32 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#ifndef _SYNCHAPI_H
-#define _SYNCHAPI_H
+#ifndef __WINE_VSWRITER_H
+#define __WINE_VSWRITER_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+typedef enum
+{
+    VSS_UT_UNDEFINED,
+    VSS_UT_BOOTABLESYSTEMSTATE,
+    VSS_UT_SYSTEMSERVICE,
+    VSS_UT_USERDATA,
+    VSS_UT_OTHER
+} VSS_USAGE_TYPE;
 
-BOOL WINAPI WaitOnAddress(volatile void*, void*, SIZE_T, DWORD);
-void WINAPI WakeByAddressAll(void*);
-void WINAPI WakeByAddressSingle(void*);
+typedef enum
+{
+    VSS_ST_UNDEFINED,
+    VSS_ST_TRANSACTEDDB,
+    VSS_ST_NONTRANSACTEDDB,
+    VSS_ST_OTHER
+} VSS_SOURCE_TYPE;
 
-#ifdef __cplusplus
-}
-#endif
+typedef enum
+{
+    VSS_AWS_UNDEFINED,
+    VSS_AWS_NO_ALTERNATE_WRITER,
+    VSS_AWS_ALTERNATE_WRITER_EXISTS,
+    VSS_AWS_THIS_IS_ALTERNATE_WRITER
+} VSS_ALTERNATE_WRITER_STATE;
 
-#endif  /* _SYNCHAPI_H */
+#endif /* ___WINE_VSWRITER_H */

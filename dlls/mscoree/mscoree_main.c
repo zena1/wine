@@ -75,8 +75,8 @@ char *WtoA(LPCWSTR wstr)
 
 static BOOL get_install_root(LPWSTR install_dir)
 {
-    static const WCHAR dotnet_key[] = {'S','O','F','T','W','A','R','E','\\','M','i','c','r','o','s','o','f','t','\\','.','N','E','T','F','r','a','m','e','w','o','r','k','\\',0};
-    static const WCHAR install_root[] = {'I','n','s','t','a','l','l','R','o','o','t',0};
+    const WCHAR dotnet_key[] = {'S','O','F','T','W','A','R','E','\\','M','i','c','r','o','s','o','f','t','\\','.','N','E','T','F','r','a','m','e','w','o','r','k','\\',0};
+    const WCHAR install_root[] = {'I','n','s','t','a','l','l','R','o','o','t',0};
 
     DWORD len;
     HKEY key;
@@ -635,7 +635,7 @@ BOOL WINAPI StrongNameSignatureVerificationEx(LPCWSTR filename, BOOL forceVerifi
 
 HRESULT WINAPI CreateDebuggingInterfaceFromVersion(int nDebugVersion, LPCWSTR version, IUnknown **ppv)
 {
-    static const WCHAR v2_0[] = {'v','2','.','0','.','5','0','7','2','7',0};
+    const WCHAR v2_0[] = {'v','2','.','0','.','5','0','7','2','7',0};
     HRESULT hr = E_FAIL;
     ICLRRuntimeInfo *runtimeinfo;
 
@@ -753,7 +753,7 @@ static BOOL install_wine_mono(void)
     LONG len;
     BOOL ret;
 
-    static const char* mono_version = "4.7.5";
+    static const char* mono_version = "4.7.3";
     static const char* mono_upgrade_code = "{DE624609-C6B5-486A-9274-EF0B854F6BC5}";
 
     static const WCHAR controlW[] = {'\\','c','o','n','t','r','o','l','.','e','x','e',0};

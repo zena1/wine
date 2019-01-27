@@ -1315,19 +1315,21 @@ static inline void iterator_destroy(const ITERATOR *i)
 /***
  * Create an empty iterator.
  */
-static inline void iterator_empty(ITERATOR* i)
+static inline BOOL iterator_empty(ITERATOR* i)
 {
     ZeroMemory(i, sizeof(*i));
     i->nItem = i->nSpecial = i->range.lower = i->range.upper = -1;
+    return TRUE;
 }
 
 /***
  * Create an iterator over a range.
  */
-static inline void iterator_rangeitems(ITERATOR* i, RANGE range)
+static inline BOOL iterator_rangeitems(ITERATOR* i, RANGE range)
 {
     iterator_empty(i);
     i->range = range;
+    return TRUE;
 }
 
 /***
@@ -1335,10 +1337,11 @@ static inline void iterator_rangeitems(ITERATOR* i, RANGE range)
  * Please note that the iterator will take ownership of the ranges,
  * and will free them upon destruction.
  */
-static inline void iterator_rangesitems(ITERATOR* i, RANGES ranges)
+static inline BOOL iterator_rangesitems(ITERATOR* i, RANGES ranges)
 {
     iterator_empty(i);
     i->ranges = ranges;
+    return TRUE;
 }
 
 /***
@@ -1348,15 +1351,11 @@ static inline void iterator_rangesitems(ITERATOR* i, RANGES ranges)
 static BOOL iterator_frameditems_absolute(ITERATOR* i, const LISTVIEW_INFO* infoPtr, const RECT *frame)
 {
     RECT rcItem, rcTemp;
-    RANGES ranges;
+    
+    /* in case we fail, we want to return an empty iterator */
+    if (!iterator_empty(i)) return FALSE;
 
     TRACE("(frame=%s)\n", wine_dbgstr_rect(frame));
-
-    /* in case we fail, we want to return an empty iterator */
-    iterator_empty(i);
-
-    if (infoPtr->nItemCount == 0)
-        return TRUE;
 
     if (infoPtr->uView == LV_VIEW_ICON || infoPtr->uView == LV_VIEW_SMALLICON)
     {
@@ -1368,8 +1367,7 @@ static BOOL iterator_frameditems_absolute(ITERATOR* i, const LISTVIEW_INFO* info
 	    if (IntersectRect(&rcTemp, &rcItem, frame))
 		i->nSpecial = infoPtr->nFocusedItem;
 	}
-	if (!(ranges = ranges_create(50))) return FALSE;
-	iterator_rangesitems(i, ranges);
+	if (!(iterator_rangesitems(i, ranges_create(50)))) return FALSE;
 	/* to do better here, we need to have PosX, and PosY sorted */
 	TRACE("building icon ranges:\n");
 	for (nItem = 0; nItem < infoPtr->nItemCount; nItem++)
@@ -1393,7 +1391,7 @@ static BOOL iterator_frameditems_absolute(ITERATOR* i, const LISTVIEW_INFO* info
 	range.lower = max(frame->top / infoPtr->nItemHeight, 0);
 	range.upper = min((frame->bottom - 1) / infoPtr->nItemHeight, infoPtr->nItemCount - 1) + 1;
 	if (range.upper <= range.lower) return TRUE;
-	iterator_rangeitems(i, range);
+	if (!iterator_rangeitems(i, range)) return FALSE;
 	TRACE("    report=%s\n", debugrange(&i->range));
     }
     else
@@ -1425,8 +1423,7 @@ static BOOL iterator_frameditems_absolute(ITERATOR* i, const LISTVIEW_INFO* info
 	
 	if (nLastCol < nFirstCol || nLastRow < nFirstRow) return TRUE;
 
-	if (!(ranges = ranges_create(nLastCol - nFirstCol + 1))) return FALSE;
-	iterator_rangesitems(i, ranges);
+	if (!(iterator_rangesitems(i, ranges_create(nLastCol - nFirstCol + 1)))) return FALSE;
 	TRACE("building list ranges:\n");
 	for (nCol = nFirstCol; nCol <= nLastCol; nCol++)
 	{
@@ -1467,11 +1464,7 @@ static BOOL iterator_visibleitems(ITERATOR *i, const LISTVIEW_INFO *infoPtr, HDC
     INT rgntype;
     
     rgntype = GetClipBox(hdc, &rcClip);
-    if (rgntype == NULLREGION)
-    {
-        iterator_empty(i);
-        return TRUE;
-    }
+    if (rgntype == NULLREGION) return iterator_empty(i);
     if (!iterator_frameditems(i, infoPtr, &rcClip)) return FALSE;
     if (rgntype == SIMPLEREGION) return TRUE;
 
@@ -1812,7 +1805,7 @@ static inline INT LISTVIEW_GetCountPerColumn(const LISTVIEW_INFO *infoPtr)
 {
     INT nListHeight = infoPtr->rcList.bottom - infoPtr->rcList.top;
 
-    return infoPtr->nItemHeight ? max(nListHeight / infoPtr->nItemHeight, 1) : 0;
+    return max(nListHeight / infoPtr->nItemHeight, 1);
 }
 
 
@@ -10236,9 +10229,7 @@ static LRESULT LISTVIEW_LButtonDown(LISTVIEW_INFO *infoPtr, WORD wKey, INT x, IN
   {
     if ((infoPtr->dwLvExStyle & LVS_EX_CHECKBOXES) && (lvHitTestInfo.flags & LVHT_ONITEMSTATEICON))
     {
-        notify_click(infoPtr, NM_CLICK, &lvHitTestInfo);
         toggle_checkbox_state(infoPtr, nItem);
-        infoPtr->bLButtonDown = FALSE;
         return 0;
     }
 

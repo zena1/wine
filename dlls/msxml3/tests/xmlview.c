@@ -206,7 +206,7 @@ static void test_Load(void)
     BSTR source;
 
     lstrcpyW(buf, res);
-    GetModuleFileNameW(NULL, buf+lstrlenW(buf), ARRAY_SIZE(buf)-ARRAY_SIZE(res));
+    GetModuleFileNameW(NULL, buf+lstrlenW(buf), (sizeof(buf)-sizeof(res))/sizeof(WCHAR));
     lstrcatW(buf, xmlview_xmlW);
 
     if(!pCreateURLMoniker) {

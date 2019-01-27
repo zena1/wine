@@ -507,8 +507,6 @@ HRESULT WINAPI MFCreateTopology(IMFTopology **topology)
 {
     mftopology *object;
 
-    TRACE("(%p)\n", topology);
-
     if (!topology)
         return E_POINTER;
 

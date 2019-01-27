@@ -56,8 +56,6 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(richedit_lists);
 
-static const WCHAR cr_lf[] = {'\r', '\n', 0};
-
 static ME_DisplayItem* ME_InsertEndParaFromCursor(ME_TextEditor *editor,
                                                   int nCursor,
                                                   const WCHAR *eol_str, int eol_len,
@@ -79,6 +77,7 @@ static ME_DisplayItem* ME_InsertEndParaFromCursor(ME_TextEditor *editor,
 ME_DisplayItem* ME_InsertTableRowStartFromCursor(ME_TextEditor *editor)
 {
   ME_DisplayItem *para;
+  WCHAR cr_lf[] = {'\r', '\n', 0};
   para = ME_InsertEndParaFromCursor(editor, 0, cr_lf, 2, MEPF_ROWSTART);
   return para->member.para.prev_para;
 }
@@ -129,6 +128,7 @@ ME_DisplayItem* ME_InsertTableCellFromCursor(ME_TextEditor *editor)
 ME_DisplayItem* ME_InsertTableRowEndFromCursor(ME_TextEditor *editor)
 {
   ME_DisplayItem *para;
+  WCHAR cr_lf[] = {'\r', '\n', 0};
   para = ME_InsertEndParaFromCursor(editor, 0, cr_lf, 2, MEPF_ROWEND);
   return para->member.para.prev_para;
 }

@@ -1539,7 +1539,8 @@ static BOOL create_context(struct wgl_context *context, CGLContextObj share, uns
     }
     context->major = major;
 
-    InterlockedExchange(&context->update_swap_interval, TRUE);
+    if (allow_vsync)
+        InterlockedExchange(&context->update_swap_interval, TRUE);
 
     TRACE("created context %p/%p/%p\n", context, context->context, context->cglcontext);
 
@@ -1741,9 +1742,7 @@ static void sync_swap_interval(struct wgl_context *context)
     {
         int interval;
 
-        if (!allow_vsync)
-            interval = 0;
-        else if (context->draw_hwnd)
+        if (context->draw_hwnd)
         {
             struct macdrv_win_data *data = get_win_data(context->draw_hwnd);
             if (data)
@@ -3479,7 +3478,7 @@ static int macdrv_wglGetSwapIntervalEXT(void)
         release_win_data(data);
 
         if (InterlockedCompareExchange(&context->update_swap_interval, FALSE, TRUE))
-            set_swap_interval(context, allow_vsync ? value : 0);
+            set_swap_interval(context, value);
     }
     else
     {
@@ -3544,8 +3543,8 @@ static BOOL macdrv_wglMakeContextCurrentARB(HDC draw_hdc, HDC read_hdc, struct w
             return FALSE;
         }
 
-        if (InterlockedCompareExchange(&context->update_swap_interval, FALSE, TRUE) || hwnd != context->draw_hwnd)
-            set_swap_interval(context, allow_vsync ? data->swap_interval : 0);
+        if (allow_vsync && (InterlockedCompareExchange(&context->update_swap_interval, FALSE, TRUE) || hwnd != context->draw_hwnd))
+            set_swap_interval(context, data->swap_interval);
 
         context->draw_hwnd = hwnd;
         context->draw_view = data->client_cocoa_view;
@@ -3570,7 +3569,8 @@ static BOOL macdrv_wglMakeContextCurrentARB(HDC draw_hdc, HDC read_hdc, struct w
                 return FALSE;
             }
 
-            if (InterlockedCompareExchange(&context->update_swap_interval, FALSE, TRUE) || pbuffer != context->draw_pbuffer)
+            if (allow_vsync &&
+                (InterlockedCompareExchange(&context->update_swap_interval, FALSE, TRUE) || pbuffer != context->draw_pbuffer))
                 set_swap_interval(context, 0);
         }
         else
@@ -4113,9 +4113,6 @@ static BOOL macdrv_wglSwapIntervalEXT(int interval)
         }
     }
     else /* pbuffer */
-        interval = 0;
-
-    if (!allow_vsync)
         interval = 0;
 
     InterlockedExchange(&context->update_swap_interval, FALSE);

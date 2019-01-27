@@ -59,8 +59,7 @@ static const char tmpfilename[] = ".\\tmp.inf";
              "aaaaaaaaaaaaaaaa" A256
 #define A1200 A400 A400 A400
 #define A511 A255 A256
-#define A4096 A256 A256 A256 A256 A256 A256 A256 A256 A256 A256 A256 A256 A256 A256 A256 A256
-#define A4097 "a" A4096
+#define A4097 "a" A256 A256 A256 A256 A256 A256 A256 A256 A256 A256 A256 A256 A256 A256 A256 A256
 
 #define STD_HEADER "[Version]\r\nSignature=\"$CHICAGO$\"\r\n"
 
@@ -451,11 +450,6 @@ static void test_key_names(void)
                     if (i == 49)
                         ok( !strcmp( field, key_names[i].fields[index] ) ||
                             !strcmp( field, A1200), /* Vista, W2K8 */
-                            "line %u: bad field %s/%s\n",
-                            i, field, key_names[i].fields[index] );
-                    else if (i == 52)
-                        ok( !strcmp( field, key_names[i].fields[index] ) ||
-                            !strcmp( field, A4096), /* Win10 >= 1709 */
                             "line %u: bad field %s/%s\n",
                             i, field, key_names[i].fields[index] );
                     else  /* don't compare drive letter of paths */

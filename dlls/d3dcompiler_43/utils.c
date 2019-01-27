@@ -557,7 +557,7 @@ HRESULT dxbc_add_section(struct dxbc *dxbc, DWORD tag, const char *data, DWORD d
     return S_OK;
 }
 
-HRESULT dxbc_init(struct dxbc *dxbc, unsigned int size)
+HRESULT dxbc_init(struct dxbc *dxbc, UINT size)
 {
     TRACE("dxbc %p, size %u.\n", dxbc, size);
 
@@ -2138,11 +2138,8 @@ static void debug_dump_ir_constructor(const struct hlsl_ir_constructor *construc
 
 static const char *debug_writemask(DWORD writemask)
 {
-    static const char components[] = {'x', 'y', 'z', 'w'};
-    char string[5];
+    char string[5], components[] = {'x', 'y', 'z', 'w'};
     unsigned int i = 0, pos = 0;
-
-    assert(!(writemask & ~BWRITERSP_WRITEMASK_ALL));
 
     while (writemask)
     {
@@ -2179,7 +2176,7 @@ static void debug_dump_ir_swizzle(const struct hlsl_ir_swizzle *swizzle)
     }
     else
     {
-        static const char c[] = {'x', 'y', 'z', 'w'};
+        char c[] = {'x', 'y', 'z', 'w'};
 
         for (i = 0; i < swizzle->node.data_type->dimx; ++i)
             TRACE("%c", c[(swizzle->swizzle >> i * 2) & 0x3]);

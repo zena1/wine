@@ -938,7 +938,7 @@ static HRESULT WINAPI HTMLTxtRange_get_htmlText(IHTMLTxtRange *iface, BSTR *p)
     }
 
     if(!*p) {
-        static const WCHAR emptyW[] = {0};
+        const WCHAR emptyW[] = {0};
         *p = SysAllocString(emptyW);
     }
 

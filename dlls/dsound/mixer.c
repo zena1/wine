@@ -854,5 +854,6 @@ DWORD CALLBACK DSOUND_mixthread(void *p)
 		DSOUND_PerformMix(dev);
 		RtlReleaseResource(&(dev->buffer_list_lock));
 	}
+	SetEvent(dev->thread_finished);
 	return 0;
 }

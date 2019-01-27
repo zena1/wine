@@ -3,5 +3,3 @@ IMPORTS   = ole32 mfplat
 
 C_SRCS = \
 	mfplat.c
-
-RC_SRCS = resource.rc

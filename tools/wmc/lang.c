@@ -162,12 +162,14 @@ static const language_t languages[] = {
 	{0x500A, 850, 1252, "Spanish", "Puerto Rico"}
 };
 
+#define NLAN	(sizeof(languages)/sizeof(languages[0]))
+
 void show_languages(void)
 {
 	unsigned int i;
 	printf(" Code  | DOS-cp | WIN-cp |   Language   | Country\n");
 	printf("-------+--------+--------+--------------+---------\n");
-	for(i = 0; i < ARRAY_SIZE(languages); i++)
+	for(i = 0; i < NLAN; i++)
 		printf("0x%04x | %5d  | %5d   | %-12s | %s\n",
 			languages[i].id,
 			languages[i].doscp,
@@ -183,8 +185,7 @@ static int langcmp(const void *p1, const void *p2)
 
 const language_t *find_language(unsigned id)
 {
-	return (const language_t *)bsearch(&id, languages, ARRAY_SIZE(languages),
-		sizeof(languages[0]), langcmp);
+	return (const language_t *)bsearch(&id, languages, NLAN, sizeof(languages[0]), langcmp);
 }
 
 void show_codepages(void)

@@ -444,9 +444,6 @@ static HRESULT StdMediaSample2_Construct(BYTE * pbBuffer, LONG cbBuffer, IMemAll
 
 static void StdMediaSample2_Delete(StdMediaSample2 * This)
 {
-    if (This->props.pMediaType)
-        DeleteMediaType(This->props.pMediaType);
-
     /* NOTE: does not remove itself from the list it belongs to */
     CoTaskMemFree(This);
 }
@@ -679,7 +676,7 @@ static HRESULT WINAPI StdMediaSample2_SetMediaType(IMediaSample2 * iface, AM_MED
 
     if (This->props.pMediaType)
     {
-        DeleteMediaType(This->props.pMediaType);
+        FreeMediaType(This->props.pMediaType);
         This->props.pMediaType = NULL;
     }
     if (!pMediaType)

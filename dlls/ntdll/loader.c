@@ -2073,51 +2073,6 @@ static NTSTATUS perform_relocations( void *module, SIZE_T len )
     return STATUS_SUCCESS;
 }
 
-#ifdef _WIN64
-/* convert PE header to 64-bit when loading a 32-bit IL-only module into a 64-bit process */
-static BOOL convert_to_pe64( HMODULE module, const pe_image_info_t *info )
-{
-    static const ULONG copy_dirs[] = { IMAGE_DIRECTORY_ENTRY_RESOURCE,
-                                       IMAGE_DIRECTORY_ENTRY_SECURITY,
-                                       IMAGE_DIRECTORY_ENTRY_BASERELOC,
-                                       IMAGE_DIRECTORY_ENTRY_DEBUG,
-                                       IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR };
-    IMAGE_OPTIONAL_HEADER32 hdr32 = { IMAGE_NT_OPTIONAL_HDR32_MAGIC };
-    IMAGE_OPTIONAL_HEADER64 hdr64 = { IMAGE_NT_OPTIONAL_HDR64_MAGIC };
-    IMAGE_NT_HEADERS *nt = RtlImageNtHeader( module );
-    SIZE_T hdr_size = min( sizeof(hdr32), nt->FileHeader.SizeOfOptionalHeader );
-    IMAGE_SECTION_HEADER *sec = (IMAGE_SECTION_HEADER *)((char *)&nt->OptionalHeader + hdr_size);
-    SIZE_T size = (char *)(nt + 1) + nt->FileHeader.NumberOfSections * sizeof(*sec) - (char *)module;
-    void *addr = module;
-    ULONG i, old_prot;
-
-    TRACE( "%p\n", module );
-
-    if (size > info->header_size) return FALSE;
-    if (NtProtectVirtualMemory( NtCurrentProcess(), &addr, &size, PAGE_READWRITE, &old_prot ))
-        return FALSE;
-
-    memcpy( &hdr32, &nt->OptionalHeader, hdr_size );
-    memcpy( &hdr64, &hdr32, offsetof( IMAGE_OPTIONAL_HEADER64, SizeOfStackReserve ));
-    hdr64.Magic               = IMAGE_NT_OPTIONAL_HDR64_MAGIC;
-    hdr64.AddressOfEntryPoint = 0;
-    hdr64.ImageBase           = hdr32.ImageBase;
-    hdr64.SizeOfStackReserve  = hdr32.SizeOfStackReserve;
-    hdr64.SizeOfStackCommit   = hdr32.SizeOfStackCommit;
-    hdr64.SizeOfHeapReserve   = hdr32.SizeOfHeapReserve;
-    hdr64.SizeOfHeapCommit    = hdr32.SizeOfHeapCommit;
-    hdr64.LoaderFlags         = hdr32.LoaderFlags;
-    hdr64.NumberOfRvaAndSizes = hdr32.NumberOfRvaAndSizes;
-    for (i = 0; i < ARRAY_SIZE( copy_dirs ); i++)
-        hdr64.DataDirectory[copy_dirs[i]] = hdr32.DataDirectory[copy_dirs[i]];
-
-    memmove( nt + 1, sec, nt->FileHeader.NumberOfSections * sizeof(*sec) );
-    nt->FileHeader.SizeOfOptionalHeader = sizeof(hdr64);
-    nt->OptionalHeader = hdr64;
-    NtProtectVirtualMemory( NtCurrentProcess(), &addr, &size, old_prot, &old_prot );
-    return TRUE;
-}
-#endif
 
 /* On WoW64 setups, an image mapping can also be created for the other 32/64 CPU */
 /* but it cannot necessarily be loaded as a dll, so we need some additional checks */
@@ -2129,139 +2084,22 @@ static BOOL is_valid_binary( HMODULE module, const pe_image_info_t *info )
     return info->machine == IMAGE_FILE_MACHINE_ARM ||
            info->machine == IMAGE_FILE_MACHINE_THUMB ||
            info->machine == IMAGE_FILE_MACHINE_ARMNT;
-#elif defined(_WIN64)  /* support 32-bit IL-only images on 64-bit */
+#elif defined(__x86_64__) || defined(__aarch64__)  /* support 32-bit IL-only images on 64-bit */
+    const IMAGE_COR20_HEADER *cor_header;
+    DWORD size;
+
 #ifdef __x86_64__
     if (info->machine == IMAGE_FILE_MACHINE_AMD64) return TRUE;
 #else
     if (info->machine == IMAGE_FILE_MACHINE_ARM64) return TRUE;
 #endif
     if (!info->contains_code) return TRUE;
-    if (!(info->image_flags & IMAGE_FLAGS_ComPlusNativeReady)) return FALSE;
-    return convert_to_pe64( module, info );
+    cor_header = RtlImageDirectoryEntryToData( module, TRUE, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, &size );
+    if (cor_header && (cor_header->Flags & COMIMAGE_FLAGS_ILONLY)) return TRUE;
+    return FALSE;
 #else
     return FALSE;  /* no wow64 support on other platforms */
 #endif
-}
-
-/***************************************************************************
- *	get_basename
- *
- * Return the base name of a file name (i.e. remove the path components).
- */
-static const WCHAR *get_basename( const WCHAR *name )
-{
-    const WCHAR *ptr;
-
-    if (name[0] && name[1] == ':') name += 2;  /* strip drive specification */
-    if ((ptr = strrchrW( name, '\\' ))) name = ptr + 1;
-    if ((ptr = strrchrW( name, '/' ))) name = ptr + 1;
-    return name;
-}
-
-
-/***************************************************************************
- *	large_address_aware_env
- *
- * Checks for override for LARGE_ADDRESS_AWARE bit in environment. Takes
- * precedence over any AppDefaults registry entry.
- *
- * Returns:
- *    -1 if not defined in environment (prefer registry entries)
- *     0 if disabled
- *     1 if enabled
- */
-static int large_address_aware_env( void )
-{
-    static int large_address_aware_cached = -2;
-
-    if (large_address_aware_cached == -2) {
-        const char *envvar = getenv("WINE_LARGE_ADDRESS_AWARE");
-        if (envvar)
-            large_address_aware_cached = atoi(envvar);
-        else
-            large_address_aware_cached = -1;
-    }
-
-    return large_address_aware_cached;
-}
-
-/***************************************************************************
- *	needs_override_large_address_aware
- *
- * Checks for AppDefaults override for LARGE_ADDRESS_AWARE bit.
- *
- * Returns:
- *    TRUE  if override was found in the registry, or environment variable
- *          explicitly enabled this override
- *    FALSE if no override was found in the registry, or environment variable
- *          explicitly disabled this override
- */
-static BOOL needs_override_large_address_aware(const WCHAR *exename)
-{
-    BOOL result;
-    OBJECT_ATTRIBUTES attr;
-    UNICODE_STRING nameW;
-    UNICODE_STRING valueNameW;
-    HANDLE root;
-    WCHAR *str;
-    static const WCHAR AppDefaultsW[] = {'S','o','f','t','w','a','r','e','\\','W','i','n','e','\\',
-                                         'A','p','p','D','e','f','a','u','l','t','s','\\',0};
-    static const WCHAR LargeAddressAwareW[] = {'L','a','r','g','e','A','d','d','r','e','s','s','A','w','a','r','e',0};
-    char tmp[64];
-    KEY_VALUE_PARTIAL_INFORMATION *info = (KEY_VALUE_PARTIAL_INFORMATION *)tmp;
-    DWORD count;
-    int env_override;
-    HANDLE app_key = (HANDLE)-1;
-
-    /* Environment variable takes precedence. */
-    env_override = large_address_aware_env();
-    if (large_address_aware_env() >= 0)
-        return env_override;
-
-    exename = get_basename(exename);
-
-    if (app_key != (HANDLE)-1) return FALSE;
-
-    str = RtlAllocateHeap( GetProcessHeap(), 0,
-                           sizeof(AppDefaultsW) + strlenW(exename) * sizeof(WCHAR) );
-    if (!str) return FALSE;
-    strcpyW( str, AppDefaultsW );
-    strcatW( str, exename );
-
-    RtlOpenCurrentUser( KEY_ALL_ACCESS, &root );
-    attr.Length = sizeof(attr);
-    attr.RootDirectory = root;
-    attr.ObjectName = &nameW;
-    attr.Attributes = 0;
-    attr.SecurityDescriptor = NULL;
-    attr.SecurityQualityOfService = NULL;
-    RtlInitUnicodeString( &nameW, str );
-    RtlInitUnicodeString( &valueNameW, LargeAddressAwareW );
-
-    result = FALSE;
-
-    /* @@ Wine registry key: HKCU\Software\Wine\AppDefaults\app.exe */
-    if (!NtOpenKey( &app_key, KEY_ALL_ACCESS, &attr ))
-    {
-        if (!NtQueryValueKey( app_key, &valueNameW, KeyValuePartialInformation, tmp, sizeof(tmp)-1, &count))
-        {
-            if (info->DataLength >= sizeof(DWORD))
-            {
-                if ((*(DWORD *)info->Data) != 0)
-                    result = TRUE;
-            }
-        }
-        NtClose( app_key );
-    }
-    NtClose( root );
-    RtlFreeHeap( GetProcessHeap(), 0, str );
-    return result;
-}
-
-BOOL CDECL __wine_needs_override_large_address_aware(void)
-{
-    PEB *peb = NtCurrentTeb()->Peb;
-    return needs_override_large_address_aware(peb->ProcessParameters->ImagePathName.Buffer);
 }
 
 
@@ -3382,8 +3220,7 @@ BOOLEAN WINAPI RtlDllShutdownInProgress(void)
  *              LdrResolveDelayLoadedAPI   (NTDLL.@)
  */
 void* WINAPI LdrResolveDelayLoadedAPI( void* base, const IMAGE_DELAYLOAD_DESCRIPTOR* desc,
-                                       PDELAYLOAD_FAILURE_DLL_CALLBACK dllhook,
-                                       PDELAYLOAD_FAILURE_SYSTEM_ROUTINE syshook,
+                                       PDELAYLOAD_FAILURE_DLL_CALLBACK dllhook, void* syshook,
                                        IMAGE_THUNK_DATA* addr, ULONG flags )
 {
     IMAGE_THUNK_DATA *pIAT, *pINT;
@@ -3441,20 +3278,7 @@ fail:
     delayinfo.TargetModuleBase = *phmod;
     delayinfo.Unused = NULL;
     delayinfo.LastError = nts;
-
-    if (dllhook)
-        return dllhook(4, &delayinfo);
-
-    if (IMAGE_SNAP_BY_ORDINAL(pINT[id].u1.Ordinal))
-    {
-        DWORD_PTR ord = LOWORD(pINT[id].u1.Ordinal);
-        return syshook(name, (const char *)ord);
-    }
-    else
-    {
-        const IMAGE_IMPORT_BY_NAME* iibn = get_rva(base, pINT[id].u1.AddressOfData);
-        return syshook(name, (const char *)iibn->Name);
-    }
+    return dllhook(4, &delayinfo);
 }
 
 /******************************************************************
@@ -3888,7 +3712,6 @@ void __wine_ldr_start_process( void *kernel_start )
     ACTIVATION_CONTEXT_RUN_LEVEL_INFORMATION runlevel;
     NTSTATUS status;
     WINE_MODREF *wm;
-    BOOL force_large_address_aware = FALSE;
     PEB *peb = NtCurrentTeb()->Peb;
 
     kernel32_start_process = kernel_start;
@@ -3909,11 +3732,7 @@ void __wine_ldr_start_process( void *kernel_start )
     version_init( wm->ldr.FullDllName.Buffer );
     user_shared_data_init();
     hidden_exports_init( wm->ldr.FullDllName.Buffer );
-
-    if (needs_override_large_address_aware(peb->ProcessParameters->ImagePathName.Buffer) > 0)
-        force_large_address_aware = TRUE;
-
-    virtual_set_large_address_space(force_large_address_aware);
+    virtual_set_large_address_space();
 
     LdrQueryImageFileExecutionOptions( &peb->ProcessParameters->ImagePathName, globalflagW,
                                        REG_DWORD, &peb->NtGlobalFlag, sizeof(peb->NtGlobalFlag), NULL );
@@ -4103,17 +3922,16 @@ void __wine_process_init(void)
     /* setup the load callback and create ntdll modref */
     wine_dll_set_callback( load_builtin_callback );
 
-    if ((status = load_builtin_dll( NULL, kernel32W, NULL, 0, 0, &wm )) != STATUS_SUCCESS)
-    {
-        MESSAGE( "wine: could not load kernel32.dll, status %x\n", status );
-        exit(1);
-    }
-
     if ((status = load_builtin_dll( NULL, wow64cpuW, NULL, 0, 0, &wow64cpu_wm )) == STATUS_SUCCESS)
         Wow64Transition = wow64cpu_wm->ldr.BaseAddress;
     else
         WARN( "could not load wow64cpu.dll, status %#x\n", status );
 
+    if ((status = load_builtin_dll( NULL, kernel32W, NULL, 0, 0, &wm )) != STATUS_SUCCESS)
+    {
+        MESSAGE( "wine: could not load kernel32.dll, status %x\n", status );
+        exit(1);
+    }
     RtlInitAnsiString( &func_name, "__wine_kernel_init" );
     if ((status = LdrGetProcedureAddress( wm->ldr.BaseAddress, &func_name,
                                           0, (void **)&init_func )) != STATUS_SUCCESS)

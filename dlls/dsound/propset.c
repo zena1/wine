@@ -81,7 +81,7 @@ static ULONG WINAPI IKsPrivatePropertySetImpl_AddRef(LPKSPROPERTYSET iface)
 {
     IKsPrivatePropertySetImpl *This = impl_from_IKsPropertySet(iface);
     ULONG ref = InterlockedIncrement(&(This->ref));
-    TRACE("(%p) ref %d\n", This, ref);
+    TRACE("(%p) ref was %d\n", This, ref - 1);
     return ref;
 }
 
@@ -89,7 +89,7 @@ static ULONG WINAPI IKsPrivatePropertySetImpl_Release(LPKSPROPERTYSET iface)
 {
     IKsPrivatePropertySetImpl *This = impl_from_IKsPropertySet(iface);
     ULONG ref = InterlockedDecrement(&(This->ref));
-    TRACE("(%p) ref %d\n", This, ref);
+    TRACE("(%p) ref was %d\n", This, ref + 1);
 
     if (!ref) {
         HeapFree(GetProcessHeap(), 0, This);

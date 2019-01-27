@@ -165,7 +165,7 @@
  173 stdcall -ordinal SHValidateUNC(long wstr long)
  174 stdcall -ordinal SHCreateShellFolderViewEx(ptr ptr)
  175 stdcall -noname SHGetSpecialFolderPath(long long long long) SHGetSpecialFolderPathAW
- 176 stdcall -ordinal SHSetInstanceExplorer(ptr) shcore.SetProcessReference
+ 176 stdcall -ordinal SHSetInstanceExplorer(ptr)
  177 stub DAD_SetDragImageFromListView
  178 stdcall -ordinal SHObjectProperties(long long wstr wstr)
  179 stdcall -ordinal SHGetNewLinkInfoA(str str ptr ptr long)
@@ -271,7 +271,7 @@
 
 @ stdcall CheckEscapesA(str long)
 @ stdcall CheckEscapesW(wstr long)
-@ stdcall CommandLineToArgvW(wstr ptr) shcore.CommandLineToArgvW
+@ stdcall CommandLineToArgvW(wstr ptr)
 @ stdcall Control_FillCache_RunDLL(long long long long) Control_FillCache_RunDLLA
 @ stdcall Control_FillCache_RunDLLA(long long long long)
 @ stdcall Control_FillCache_RunDLLW(long long long long)
@@ -312,7 +312,7 @@
 @ stdcall FindExecutableW(wstr wstr ptr)
 @ stub FixupOptionalComponents
 @ stdcall FreeIconList(long)
-@ stdcall GetCurrentProcessExplicitAppUserModelID(ptr) shcore.GetCurrentProcessExplicitAppUserModelID
+@ stdcall GetCurrentProcessExplicitAppUserModelID(ptr)
 @ stdcall InitNetworkAddressControl()
 @ stub InternalExtractIconListA
 @ stub InternalExtractIconListW
@@ -328,7 +328,7 @@
 @ stub RealShellExecuteExW
 @ stub RealShellExecuteW
 @ stdcall RegenerateUserEnvironment(ptr long)
-@ stdcall SetCurrentProcessExplicitAppUserModelID(wstr) shcore.SetCurrentProcessExplicitAppUserModelID
+@ stdcall SetCurrentProcessExplicitAppUserModelID(wstr)
 @ stdcall SHAddToRecentDocs (long ptr)
 @ stdcall SHAppBarMessage(long ptr)
 @ stdcall SHAssocEnumHandlers(wstr long ptr)
@@ -380,7 +380,7 @@
 @ stdcall SHGetIconOverlayIndexA(str long)
 @ stdcall SHGetIconOverlayIndexW(wstr long)
 @ stdcall SHGetIDListFromObject(ptr ptr)
-@ stdcall SHGetInstanceExplorer(ptr) shcore.GetProcessReference
+@ stdcall SHGetInstanceExplorer(ptr)
 @ stdcall SHGetItemFromDataObject(ptr long ptr ptr)
 @ stdcall SHGetItemFromObject(ptr ptr ptr)
 @ stdcall SHGetKnownFolderIDList(ptr long ptr ptr)

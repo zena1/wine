@@ -476,13 +476,6 @@ struct d3d_material
 void material_activate(struct d3d_material *material) DECLSPEC_HIDDEN;
 struct d3d_material *d3d_material_create(struct ddraw *ddraw) DECLSPEC_HIDDEN;
 
-enum ddraw_viewport_version
-{
-    DDRAW_VIEWPORT_VERSION_NONE,
-    DDRAW_VIEWPORT_VERSION_1,
-    DDRAW_VIEWPORT_VERSION_2,
-};
-
 /*****************************************************************************
  * IDirect3DViewport - Wraps to D3D7
  *****************************************************************************/
@@ -500,7 +493,7 @@ struct d3d_viewport
     DWORD                     num_lights;
     DWORD                     map_lights;
 
-    enum ddraw_viewport_version version;
+    int                       use_vp2;
 
     union
     {

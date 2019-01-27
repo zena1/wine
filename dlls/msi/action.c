@@ -160,7 +160,7 @@ static const WCHAR szINSTALL[] =
 
 static INT ui_actionstart(MSIPACKAGE *package, LPCWSTR action, LPCWSTR description, LPCWSTR template)
 {
-    static const WCHAR query[] = {'S','E','L','E','C','T',' ','*',' ','F','R','O','M',' ',
+    WCHAR query[] = {'S','E','L','E','C','T',' ','*',' ','F','R','O','M',' ',
         '`','A','c','t','i','o','n','T','e','x','t','`',' ','W','H','E','R','E',' ',
         '`','A','c','t','i','o','n','`',' ','=',' ','\'','%','s','\'',0};
     MSIRECORD *row, *textrow;
@@ -3546,7 +3546,7 @@ static WCHAR *build_full_keypath( MSIPACKAGE *package, MSICOMPONENT *comp )
 {
     if (comp->assembly)
     {
-        static const WCHAR prefixW[] = {'<','\\',0};
+        const WCHAR prefixW[] = {'<','\\',0};
         DWORD len = strlenW( prefixW ) + strlenW( comp->assembly->display_name );
         WCHAR *keypath = msi_alloc( (len + 1) * sizeof(WCHAR) );
 

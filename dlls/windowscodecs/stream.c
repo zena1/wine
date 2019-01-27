@@ -101,8 +101,7 @@ static HRESULT WINAPI StreamOnMemory_Read(IStream *iface,
 {
     StreamOnMemory *This = StreamOnMemory_from_IStream(iface);
     ULONG uBytesRead;
-
-    TRACE("(%p, %p, %u, %p)\n", This, pv, cb, pcbRead);
+    TRACE("(%p)\n", This);
 
     if (!pv) return E_INVALIDARG;
 
@@ -122,8 +121,7 @@ static HRESULT WINAPI StreamOnMemory_Write(IStream *iface,
 {
     StreamOnMemory *This = StreamOnMemory_from_IStream(iface);
     HRESULT hr;
-
-    TRACE("(%p, %p, %u, %p)\n", This, pv, cb, pcbWritten);
+    TRACE("(%p)\n", This);
 
     if (!pv) return E_INVALIDARG;
 
@@ -148,8 +146,7 @@ static HRESULT WINAPI StreamOnMemory_Seek(IStream *iface,
     StreamOnMemory *This = StreamOnMemory_from_IStream(iface);
     LARGE_INTEGER NewPosition;
     HRESULT hr=S_OK;
-
-    TRACE("(%p, %s, %d, %p)\n", This, wine_dbgstr_longlong(dlibMove.QuadPart), dwOrigin, plibNewPosition);
+    TRACE("(%p)\n", This);
 
     EnterCriticalSection(&This->lock);
     if (dwOrigin == STREAM_SEEK_SET) NewPosition.QuadPart = dlibMove.QuadPart;
@@ -177,7 +174,7 @@ static HRESULT WINAPI StreamOnMemory_Seek(IStream *iface,
 static HRESULT WINAPI StreamOnMemory_SetSize(IStream *iface,
     ULARGE_INTEGER libNewSize)
 {
-    TRACE("(%p, %s)\n", iface, wine_dbgstr_longlong(libNewSize.QuadPart));
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
@@ -185,7 +182,7 @@ static HRESULT WINAPI StreamOnMemory_SetSize(IStream *iface,
 static HRESULT WINAPI StreamOnMemory_CopyTo(IStream *iface,
     IStream *pstm, ULARGE_INTEGER cb, ULARGE_INTEGER *pcbRead, ULARGE_INTEGER *pcbWritten)
 {
-    TRACE("(%p, %p, %s, %p, %p)\n", iface, pstm, wine_dbgstr_longlong(cb.QuadPart), pcbRead, pcbWritten);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
@@ -193,7 +190,7 @@ static HRESULT WINAPI StreamOnMemory_CopyTo(IStream *iface,
 static HRESULT WINAPI StreamOnMemory_Commit(IStream *iface,
     DWORD grfCommitFlags)
 {
-    TRACE("(%p, %#x)\n", iface, grfCommitFlags);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
@@ -208,8 +205,7 @@ static HRESULT WINAPI StreamOnMemory_Revert(IStream *iface)
 static HRESULT WINAPI StreamOnMemory_LockRegion(IStream *iface,
     ULARGE_INTEGER libOffset, ULARGE_INTEGER cb, DWORD dwLockType)
 {
-    TRACE("(%p, %s, %s, %d)\n", iface, wine_dbgstr_longlong(libOffset.QuadPart),
-        wine_dbgstr_longlong(cb.QuadPart), dwLockType);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
@@ -217,8 +213,7 @@ static HRESULT WINAPI StreamOnMemory_LockRegion(IStream *iface,
 static HRESULT WINAPI StreamOnMemory_UnlockRegion(IStream *iface,
     ULARGE_INTEGER libOffset, ULARGE_INTEGER cb, DWORD dwLockType)
 {
-    TRACE("(%p, %s, %s, %d)\n", iface, wine_dbgstr_longlong(libOffset.QuadPart),
-        wine_dbgstr_longlong(cb.QuadPart), dwLockType);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
@@ -226,7 +221,7 @@ static HRESULT WINAPI StreamOnMemory_Stat(IStream *iface,
     STATSTG *pstatstg, DWORD grfStatFlag)
 {
     StreamOnMemory *This = StreamOnMemory_from_IStream(iface);
-    TRACE("(%p, %p, %#x)\n", This, pstatstg, grfStatFlag);
+    TRACE("(%p)\n", This);
 
     if (!pstatstg) return E_INVALIDARG;
 
@@ -241,7 +236,7 @@ static HRESULT WINAPI StreamOnMemory_Stat(IStream *iface,
 static HRESULT WINAPI StreamOnMemory_Clone(IStream *iface,
     IStream **ppstm)
 {
-    TRACE("(%p, %p)\n", iface, ppstm);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
@@ -336,7 +331,7 @@ static HRESULT WINAPI StreamOnFileHandle_Read(IStream *iface,
     void *pv, ULONG cb, ULONG *pcbRead)
 {
     StreamOnFileHandle *This = StreamOnFileHandle_from_IStream(iface);
-    TRACE("(%p, %p, %u, %p)\n", This, pv, cb, pcbRead);
+    TRACE("(%p)\n", This);
 
     return IWICStream_Read(This->stream, pv, cb, pcbRead);
 }
@@ -344,7 +339,7 @@ static HRESULT WINAPI StreamOnFileHandle_Read(IStream *iface,
 static HRESULT WINAPI StreamOnFileHandle_Write(IStream *iface,
     void const *pv, ULONG cb, ULONG *pcbWritten)
 {
-    ERR("(%p, %p, %u, %p)\n", iface, pv, cb, pcbWritten);
+    ERR("(%p)\n", iface);
     return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
 }
 
@@ -352,7 +347,7 @@ static HRESULT WINAPI StreamOnFileHandle_Seek(IStream *iface,
     LARGE_INTEGER dlibMove, DWORD dwOrigin, ULARGE_INTEGER *plibNewPosition)
 {
     StreamOnFileHandle *This = StreamOnFileHandle_from_IStream(iface);
-    TRACE("(%p, %s, %d, %p)\n", This, wine_dbgstr_longlong(dlibMove.QuadPart), dwOrigin, plibNewPosition);
+    TRACE("(%p)\n", This);
 
     return IWICStream_Seek(This->stream, dlibMove, dwOrigin, plibNewPosition);
 }
@@ -360,21 +355,21 @@ static HRESULT WINAPI StreamOnFileHandle_Seek(IStream *iface,
 static HRESULT WINAPI StreamOnFileHandle_SetSize(IStream *iface,
     ULARGE_INTEGER libNewSize)
 {
-    TRACE("(%p, %s)\n", iface, wine_dbgstr_longlong(libNewSize.QuadPart));
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
 static HRESULT WINAPI StreamOnFileHandle_CopyTo(IStream *iface,
     IStream *pstm, ULARGE_INTEGER cb, ULARGE_INTEGER *pcbRead, ULARGE_INTEGER *pcbWritten)
 {
-    TRACE("(%p, %p, %s, %p, %p)\n", iface, pstm, wine_dbgstr_longlong(cb.QuadPart), pcbRead, pcbWritten);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
 static HRESULT WINAPI StreamOnFileHandle_Commit(IStream *iface,
     DWORD grfCommitFlags)
 {
-    TRACE("(%p, %#x)\n", iface, grfCommitFlags);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
@@ -387,16 +382,14 @@ static HRESULT WINAPI StreamOnFileHandle_Revert(IStream *iface)
 static HRESULT WINAPI StreamOnFileHandle_LockRegion(IStream *iface,
     ULARGE_INTEGER libOffset, ULARGE_INTEGER cb, DWORD dwLockType)
 {
-    TRACE("(%p, %s, %s, %d)\n", iface, wine_dbgstr_longlong(libOffset.QuadPart),
-        wine_dbgstr_longlong(cb.QuadPart), dwLockType);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
 static HRESULT WINAPI StreamOnFileHandle_UnlockRegion(IStream *iface,
     ULARGE_INTEGER libOffset, ULARGE_INTEGER cb, DWORD dwLockType)
 {
-    TRACE("(%p, %s, %s, %d)\n", iface, wine_dbgstr_longlong(libOffset.QuadPart),
-        wine_dbgstr_longlong(cb.QuadPart), dwLockType);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
@@ -404,7 +397,7 @@ static HRESULT WINAPI StreamOnFileHandle_Stat(IStream *iface,
     STATSTG *pstatstg, DWORD grfStatFlag)
 {
     StreamOnFileHandle *This = StreamOnFileHandle_from_IStream(iface);
-    TRACE("(%p, %p, %#x)\n", This, pstatstg, grfStatFlag);
+    TRACE("(%p)\n", This);
 
     return IWICStream_Stat(This->stream, pstatstg, grfStatFlag);
 }
@@ -412,9 +405,10 @@ static HRESULT WINAPI StreamOnFileHandle_Stat(IStream *iface,
 static HRESULT WINAPI StreamOnFileHandle_Clone(IStream *iface,
     IStream **ppstm)
 {
-    TRACE("(%p, %p)\n", iface, ppstm);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
+
 
 static const IStreamVtbl StreamOnFileHandle_Vtbl =
 {
@@ -515,8 +509,7 @@ static HRESULT WINAPI StreamOnStreamRange_Read(IStream *iface,
     HRESULT hr;
     ULARGE_INTEGER OldPosition;
     LARGE_INTEGER SetPosition;
-
-    TRACE("(%p, %p, %u, %p)\n", This, pv, cb, pcbRead);
+    TRACE("(%p)\n", This);
 
     if (!pv) return E_INVALIDARG;
 
@@ -559,7 +552,7 @@ static HRESULT WINAPI StreamOnStreamRange_Write(IStream *iface,
     ULARGE_INTEGER OldPosition;
     LARGE_INTEGER SetPosition;
     ULONG uBytesWritten=0;
-    TRACE("(%p, %p, %u, %p)\n", This, pv, cb, pcbWritten);
+    TRACE("(%p)\n", This);
 
     if (!pv) return E_INVALIDARG;
 
@@ -601,7 +594,7 @@ static HRESULT WINAPI StreamOnStreamRange_Seek(IStream *iface,
     ULARGE_INTEGER NewPosition, actual_size;
     HRESULT hr=S_OK;
     STATSTG statstg;
-    TRACE("(%p, %s, %d, %p)\n", This, wine_dbgstr_longlong(dlibMove.QuadPart), dwOrigin, plibNewPosition);
+    TRACE("(%p)\n", This);
 
     EnterCriticalSection(&This->lock);
     actual_size = This->max_size;
@@ -638,7 +631,7 @@ static HRESULT WINAPI StreamOnStreamRange_Seek(IStream *iface,
 static HRESULT WINAPI StreamOnStreamRange_SetSize(IStream *iface,
     ULARGE_INTEGER libNewSize)
 {
-    TRACE("(%p, %s)\n", iface, wine_dbgstr_longlong(libNewSize.QuadPart));
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
@@ -646,8 +639,7 @@ static HRESULT WINAPI StreamOnStreamRange_SetSize(IStream *iface,
 static HRESULT WINAPI StreamOnStreamRange_CopyTo(IStream *iface,
     IStream *pstm, ULARGE_INTEGER cb, ULARGE_INTEGER *pcbRead, ULARGE_INTEGER *pcbWritten)
 {
-    TRACE("(%p, %p, %s, %p, %p)\n", iface, pstm, wine_dbgstr_longlong(cb.QuadPart),
-        pcbRead, pcbWritten);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
@@ -655,7 +647,7 @@ static HRESULT WINAPI StreamOnStreamRange_CopyTo(IStream *iface,
 static HRESULT WINAPI StreamOnStreamRange_Commit(IStream *iface,
     DWORD grfCommitFlags)
 {
-    TRACE("(%p, %#x)\n", iface, grfCommitFlags);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
@@ -670,8 +662,7 @@ static HRESULT WINAPI StreamOnStreamRange_Revert(IStream *iface)
 static HRESULT WINAPI StreamOnStreamRange_LockRegion(IStream *iface,
     ULARGE_INTEGER libOffset, ULARGE_INTEGER cb, DWORD dwLockType)
 {
-    TRACE("(%p, %s, %s, %d)\n", iface, wine_dbgstr_longlong(libOffset.QuadPart),
-        wine_dbgstr_longlong(cb.QuadPart), dwLockType);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
@@ -679,8 +670,7 @@ static HRESULT WINAPI StreamOnStreamRange_LockRegion(IStream *iface,
 static HRESULT WINAPI StreamOnStreamRange_UnlockRegion(IStream *iface,
     ULARGE_INTEGER libOffset, ULARGE_INTEGER cb, DWORD dwLockType)
 {
-    TRACE("(%p, %s, %s, %d)\n", iface, wine_dbgstr_longlong(libOffset.QuadPart),
-        wine_dbgstr_longlong(cb.QuadPart), dwLockType);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
 
@@ -689,7 +679,7 @@ static HRESULT WINAPI StreamOnStreamRange_Stat(IStream *iface,
 {
     StreamOnStreamRange *This = StreamOnStreamRange_from_IStream(iface);
     HRESULT hr;
-    TRACE("(%p, %p, %#x)\n", This, pstatstg, grfStatFlag);
+    TRACE("(%p)\n", This);
 
     if (!pstatstg) return E_INVALIDARG;
 
@@ -711,9 +701,10 @@ static HRESULT WINAPI StreamOnStreamRange_Stat(IStream *iface,
 static HRESULT WINAPI StreamOnStreamRange_Clone(IStream *iface,
     IStream **ppstm)
 {
-    TRACE("(%p, %p)\n", iface, ppstm);
+    TRACE("(%p)\n", iface);
     return E_NOTIMPL;
 }
+
 
 static const IStreamVtbl StreamOnStreamRange_Vtbl =
 {
@@ -804,7 +795,7 @@ static HRESULT WINAPI IWICStreamImpl_Read(IWICStream *iface,
     void *pv, ULONG cb, ULONG *pcbRead)
 {
     IWICStreamImpl *This = impl_from_IWICStream(iface);
-    TRACE("(%p, %p, %u, %p)\n", This, pv, cb, pcbRead);
+    TRACE("(%p): relay\n", This);
 
     if (!This->pStream) return WINCODEC_ERR_NOTINITIALIZED;
     return IStream_Read(This->pStream, pv, cb, pcbRead);
@@ -814,7 +805,7 @@ static HRESULT WINAPI IWICStreamImpl_Write(IWICStream *iface,
     void const *pv, ULONG cb, ULONG *pcbWritten)
 {
     IWICStreamImpl *This = impl_from_IWICStream(iface);
-    TRACE("(%p, %p, %u, %p)\n", This, pv, cb, pcbWritten);
+    TRACE("(%p): relay\n", This);
 
     if (!This->pStream) return WINCODEC_ERR_NOTINITIALIZED;
     return IStream_Write(This->pStream, pv, cb, pcbWritten);
@@ -824,8 +815,7 @@ static HRESULT WINAPI IWICStreamImpl_Seek(IWICStream *iface,
     LARGE_INTEGER dlibMove, DWORD dwOrigin, ULARGE_INTEGER *plibNewPosition)
 {
     IWICStreamImpl *This = impl_from_IWICStream(iface);
-    TRACE("(%p, %s, %d, %p)\n", This, wine_dbgstr_longlong(dlibMove.QuadPart),
-        dwOrigin, plibNewPosition);
+    TRACE("(%p): relay\n", This);
 
     if (!This->pStream) return WINCODEC_ERR_NOTINITIALIZED;
     return IStream_Seek(This->pStream, dlibMove, dwOrigin, plibNewPosition);
@@ -835,7 +825,7 @@ static HRESULT WINAPI IWICStreamImpl_SetSize(IWICStream *iface,
     ULARGE_INTEGER libNewSize)
 {
     IWICStreamImpl *This = impl_from_IWICStream(iface);
-    TRACE("(%p, %s)\n", This, wine_dbgstr_longlong(libNewSize.QuadPart));
+    TRACE("(%p): relay\n", This);
 
     if (!This->pStream) return WINCODEC_ERR_NOTINITIALIZED;
     return IStream_SetSize(This->pStream, libNewSize);
@@ -845,7 +835,7 @@ static HRESULT WINAPI IWICStreamImpl_CopyTo(IWICStream *iface,
     IStream *pstm, ULARGE_INTEGER cb, ULARGE_INTEGER *pcbRead, ULARGE_INTEGER *pcbWritten)
 {
     IWICStreamImpl *This = impl_from_IWICStream(iface);
-    TRACE("(%p, %p, %s, %p, %p)\n", This, pstm, wine_dbgstr_longlong(cb.QuadPart), pcbRead, pcbWritten);
+    TRACE("(%p): relay\n", This);
 
     if (!This->pStream) return WINCODEC_ERR_NOTINITIALIZED;
     return IStream_CopyTo(This->pStream, pstm, cb, pcbRead, pcbWritten);
@@ -855,7 +845,7 @@ static HRESULT WINAPI IWICStreamImpl_Commit(IWICStream *iface,
     DWORD grfCommitFlags)
 {
     IWICStreamImpl *This = impl_from_IWICStream(iface);
-    TRACE("(%p, %#x)\n", This, grfCommitFlags);
+    TRACE("(%p): relay\n", This);
 
     if (!This->pStream) return WINCODEC_ERR_NOTINITIALIZED;
     return IStream_Commit(This->pStream, grfCommitFlags);
@@ -864,7 +854,7 @@ static HRESULT WINAPI IWICStreamImpl_Commit(IWICStream *iface,
 static HRESULT WINAPI IWICStreamImpl_Revert(IWICStream *iface)
 {
     IWICStreamImpl *This = impl_from_IWICStream(iface);
-    TRACE("(%p)\n", This);
+    TRACE("(%p): relay\n", This);
 
     if (!This->pStream) return WINCODEC_ERR_NOTINITIALIZED;
     return IStream_Revert(This->pStream);
@@ -874,8 +864,7 @@ static HRESULT WINAPI IWICStreamImpl_LockRegion(IWICStream *iface,
     ULARGE_INTEGER libOffset, ULARGE_INTEGER cb, DWORD dwLockType)
 {
     IWICStreamImpl *This = impl_from_IWICStream(iface);
-    TRACE("(%p, %s, %s, %d)\n", This, wine_dbgstr_longlong(libOffset.QuadPart),
-        wine_dbgstr_longlong(cb.QuadPart), dwLockType);
+    TRACE("(%p): relay\n", This);
 
     if (!This->pStream) return WINCODEC_ERR_NOTINITIALIZED;
     return IStream_LockRegion(This->pStream, libOffset, cb, dwLockType);
@@ -885,8 +874,7 @@ static HRESULT WINAPI IWICStreamImpl_UnlockRegion(IWICStream *iface,
     ULARGE_INTEGER libOffset, ULARGE_INTEGER cb, DWORD dwLockType)
 {
     IWICStreamImpl *This = impl_from_IWICStream(iface);
-    TRACE("(%p, %s, %s, %d)\n", This, wine_dbgstr_longlong(libOffset.QuadPart),
-        wine_dbgstr_longlong(cb.QuadPart), dwLockType);
+    TRACE("(%p): relay\n", This);
 
     if (!This->pStream) return WINCODEC_ERR_NOTINITIALIZED;
     return IStream_UnlockRegion(This->pStream, libOffset, cb, dwLockType);
@@ -896,7 +884,7 @@ static HRESULT WINAPI IWICStreamImpl_Stat(IWICStream *iface,
     STATSTG *pstatstg, DWORD grfStatFlag)
 {
     IWICStreamImpl *This = impl_from_IWICStream(iface);
-    TRACE("(%p, %p, %#x)\n", This, pstatstg, grfStatFlag);
+    TRACE("(%p): relay\n", This);
 
     if (!This->pStream) return WINCODEC_ERR_NOTINITIALIZED;
     return IStream_Stat(This->pStream, pstatstg, grfStatFlag);
@@ -906,32 +894,22 @@ static HRESULT WINAPI IWICStreamImpl_Clone(IWICStream *iface,
     IStream **ppstm)
 {
     IWICStreamImpl *This = impl_from_IWICStream(iface);
-    TRACE("(%p, %p)\n", This, ppstm);
+    TRACE("(%p): relay\n", This);
 
     if (!This->pStream) return WINCODEC_ERR_NOTINITIALIZED;
     return IStream_Clone(This->pStream, ppstm);
 }
 
-static HRESULT WINAPI IWICStreamImpl_InitializeFromIStream(IWICStream *iface, IStream *stream)
+static HRESULT WINAPI IWICStreamImpl_InitializeFromIStream(IWICStream *iface,
+    IStream *pIStream)
 {
-    IWICStreamImpl *This = impl_from_IWICStream(iface);
-    HRESULT hr = S_OK;
+    ULARGE_INTEGER offset, size;
+    TRACE("(%p): relay\n", iface);
 
-    TRACE("(%p, %p)\n", iface, stream);
-
-    if (!stream) return E_INVALIDARG;
-    if (This->pStream) return WINCODEC_ERR_WRONGSTATE;
-
-    IStream_AddRef(stream);
-
-    if (InterlockedCompareExchangePointer((void **)&This->pStream, stream, NULL))
-    {
-        /* Some other thread set the stream first. */
-        IStream_Release(stream);
-        hr = WINCODEC_ERR_WRONGSTATE;
-    }
-
-    return hr;
+    offset.QuadPart = 0;
+    size.u.LowPart = 0xffffffff;
+    size.u.HighPart = 0xffffffff;
+    return IWICStream_InitializeFromIStreamRegion(iface, pIStream, offset, size);
 }
 
 static HRESULT WINAPI IWICStreamImpl_InitializeFromFilename(IWICStream *iface,
@@ -989,7 +967,7 @@ static HRESULT WINAPI IWICStreamImpl_InitializeFromMemory(IWICStream *iface,
 {
     IWICStreamImpl *This = impl_from_IWICStream(iface);
     StreamOnMemory *pObject;
-    TRACE("(%p, %p, %u)\n", iface, pbBuffer, cbBufferSize);
+    TRACE("(%p,%p)\n", iface, pbBuffer);
 
     if (!pbBuffer) return E_INVALIDARG;
     if (This->pStream) return WINCODEC_ERR_WRONGSTATE;
@@ -1090,9 +1068,7 @@ static HRESULT WINAPI IWICStreamImpl_InitializeFromIStreamRegion(IWICStream *ifa
 {
     IWICStreamImpl *This = impl_from_IWICStream(iface);
     StreamOnStreamRange *pObject;
-
-    TRACE("(%p,%p,%s,%s)\n", iface, pIStream, wine_dbgstr_longlong(ulOffset.QuadPart),
-        wine_dbgstr_longlong(ulMaxSize.QuadPart));
+    TRACE("(%p,%p)\n", iface, pIStream);
 
     if (!pIStream) return E_INVALIDARG;
     if (This->pStream) return WINCODEC_ERR_WRONGSTATE;

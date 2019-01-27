@@ -284,8 +284,7 @@ STATUSBAR_Refresh (STATUS_INFO *infoPtr, HDC hdc)
 
     SelectObject (hdc, hOldFont);
 
-    if ((GetWindowLongW (infoPtr->Self, GWL_STYLE) & SBARS_SIZEGRIP)
-            && !(GetWindowLongW (infoPtr->Notify, GWL_STYLE) & WS_MAXIMIZE))
+    if (GetWindowLongW (infoPtr->Self, GWL_STYLE) & SBARS_SIZEGRIP)
 	    STATUSBAR_DrawSizeGrip (theme, hdc, &rect);
 
     return 0;
@@ -998,8 +997,7 @@ STATUSBAR_WMGetText (const STATUS_INFO *infoPtr, INT size, LPWSTR buf)
 static BOOL
 STATUSBAR_WMNCHitTest (const STATUS_INFO *infoPtr, INT x, INT y)
 {
-    if ((GetWindowLongW (infoPtr->Self, GWL_STYLE) & SBARS_SIZEGRIP)
-            && !(GetWindowLongW (infoPtr->Notify, GWL_STYLE) & WS_MAXIMIZE)) {
+    if (GetWindowLongW (infoPtr->Self, GWL_STYLE) & SBARS_SIZEGRIP) {
 	RECT  rect;
 	POINT pt;
 
@@ -1009,7 +1007,10 @@ STATUSBAR_WMNCHitTest (const STATUS_INFO *infoPtr, INT x, INT y)
 	pt.y = y;
 	ScreenToClient (infoPtr->Self, &pt);
 
-	if (pt.x >= rect.right - GetSystemMetrics(SM_CXVSCROLL))
+	rect.left = rect.right - 13;
+	rect.top += 2;
+
+	if (PtInRect (&rect, pt))
         {
             if (GetWindowLongW( infoPtr->Self, GWL_EXSTYLE ) & WS_EX_LAYOUTRTL) return HTBOTTOMLEFT;
 	    else return HTBOTTOMRIGHT;

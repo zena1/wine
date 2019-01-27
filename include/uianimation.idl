@@ -378,24 +378,24 @@ interface IUIAnimationTimer : IUnknown
 interface IUIAnimationManager : IUnknown
 {
     HRESULT CreateAnimationVariable(
-        [in] UI_ANIMATION_SECONDS initialvalue,
+        [in] double initialvalue,
         [out, retval] IUIAnimationVariable **variable);
 
     HRESULT ScheduleTransition(
         [in] IUIAnimationVariable *variable,
         [in] IUIAnimationTransition *transition,
-        [in] UI_ANIMATION_SECONDS timenow);
+        [in] double timenow);
 
     HRESULT CreateStoryboard(
         [out, retval] IUIAnimationStoryboard **storyboard);
 
     HRESULT FinishAllStoryboards(
-        [in] UI_ANIMATION_SECONDS deadline);
+        [in] double deadline);
 
     HRESULT AbandonAllStoryboards();
 
     HRESULT Update(
-        [in] UI_ANIMATION_SECONDS timenow,
+        [in] double timenow,
         [out, defaultvalue(0)] UI_ANIMATION_UPDATE_RESULT *updateresult);
 
     HRESULT GetVariableFromTag(
@@ -434,7 +434,7 @@ interface IUIAnimationManager : IUnknown
         [in] IUIAnimationPriorityComparison *comparison);
 
     HRESULT SetDefaultLongestAcceptableDelay(
-        [in] UI_ANIMATION_SECONDS delay);
+        [in] double delay);
 
     HRESULT Shutdown();
 }
@@ -479,20 +479,20 @@ interface IUIAnimationInterpolator : IUnknown
         [in] double initialvelocity);
 
     HRESULT SetDuration(
-        [in] UI_ANIMATION_SECONDS duration);
+        [in] double duration);
 
     HRESULT GetDuration(
-        [out, retval] UI_ANIMATION_SECONDS *duration);
+        [out, retval] double *duration);
 
     HRESULT GetFinalValue(
         [out, retval] double *value);
 
     HRESULT InterpolateValue(
-        [in] UI_ANIMATION_SECONDS offset,
+        [in] double offset,
         [out, retval] double *value);
 
     HRESULT InterpolateVelocity(
-        [in] UI_ANIMATION_SECONDS offset,
+        [in] double offset,
         [out, retval] double *velocity);
 
     HRESULT GetDependencies(
@@ -514,17 +514,17 @@ interface IUIAnimationTransitionLibrary : IUnknown
         [out, retval] IUIAnimationTransition **transition);
 
     HRESULT CreateConstantTransition(
-        [in] UI_ANIMATION_SECONDS duration,
+        [in] double duration,
         [out, retval] IUIAnimationTransition **transition);
 
     HRESULT CreateDiscreteTransition(
-        [in] UI_ANIMATION_SECONDS delay,
+        [in] double delay,
         [in] double finalvalue,
-        [in] UI_ANIMATION_SECONDS hold,
+        [in] double hold,
         [out, retval] IUIAnimationTransition **transition);
 
     HRESULT CreateLinearTransition(
-        [in] UI_ANIMATION_SECONDS duration,
+        [in] double duration,
         [in] double finalvalue,
         [out, retval] IUIAnimationTransition **transition);
 
@@ -534,42 +534,42 @@ interface IUIAnimationTransitionLibrary : IUnknown
         [out, retval] IUIAnimationTransition **transition);
 
     HRESULT CreateSinusoidalTransitionFromVelocity(
-        [in] UI_ANIMATION_SECONDS duration,
-        [in] UI_ANIMATION_SECONDS period,
+        [in] double duration,
+        [in] double period,
         [out, retval] IUIAnimationTransition **transition);
 
     HRESULT CreateSinusoidalTransitionFromRange(
-        [in] UI_ANIMATION_SECONDS duration,
+        [in] double duration,
         [in] double minimumvalue,
         [in] double maximumvalue,
-        [in] UI_ANIMATION_SECONDS period,
+        [in] double period,
         [in] UI_ANIMATION_SLOPE slope,
         [out, retval] IUIAnimationTransition **transition);
 
   HRESULT CreateAccelerateDecelerateTransition(
-        [in] UI_ANIMATION_SECONDS duration,
+        [in] double duration,
         [in] double finalvalue,
         [in] double accelerationratio,
         [in] double decelerationratio,
         [out, retval] IUIAnimationTransition **transition);
 
     HRESULT CreateReversalTransition(
-        [in] UI_ANIMATION_SECONDS duration,
+        [in] double duration,
         [out, retval] IUIAnimationTransition **transition);
 
     HRESULT CreateCubicTransition(
-        [in] UI_ANIMATION_SECONDS duration,
+        [in] double duration,
         [in] double finalvalue,
         [in] double finalvelocity,
         [out, retval] IUIAnimationTransition **transition);
 
     HRESULT CreateSmoothStopTransition(
-        [in] UI_ANIMATION_SECONDS maximumduration,
+        [in] double maximumduration,
         [in] double finalvalue,
         [out, retval] IUIAnimationTransition **transition);
 
     HRESULT CreateParabolicTransitionFromAcceleration(
-        [in] UI_ANIMATION_SECONDS finalvalue,
+        [in] double finalvalue,
         [in] double finalvelocity,
         [in] double acceleration,
         [out, retval] IUIAnimationTransition **transition);
@@ -603,7 +603,7 @@ library UIAnimation
         uuid(8a9b1cdd-fcd7-419c-8b44-42fd17db1887),
         threading(both)
     ]
-    coclass UIAnimationTransitionFactory
+   coclass UIAnimationTransitionFactory
     {
         [default] interface IUIAnimationTransitionFactory;
     }
@@ -612,7 +612,7 @@ library UIAnimation
         uuid(1d6322ad-aa85-4ef5-a828-86d71067d145),
         threading(both)
     ]
-    coclass UIAnimationTransitionLibrary
+   coclass UIAnimationTransitionLibrary
     {
         [default] interface IUIAnimationTransitionLibrary;
     }

@@ -152,7 +152,7 @@ cleanup:
 static SearchItem *SearchCHM_Storage(SearchItem *item, IStorage *pStorage,
                                      const char *needle)
 {
-    static const WCHAR szHTMext[] = {'.','h','t','m',0};
+    const WCHAR szHTMext[] = {'.','h','t','m',0};
     IEnumSTATSTG *elem = NULL;
     WCHAR *filename = NULL;
     STATSTG entries;

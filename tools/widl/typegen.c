@@ -208,8 +208,7 @@ unsigned char get_basic_fc(const type_t *type)
     {
     case TYPE_BASIC_INT8: return (sign <= 0 ? FC_SMALL : FC_USMALL);
     case TYPE_BASIC_INT16: return (sign <= 0 ? FC_SHORT : FC_USHORT);
-    case TYPE_BASIC_INT32:
-    case TYPE_BASIC_LONG: return (sign <= 0 ? FC_LONG : FC_ULONG);
+    case TYPE_BASIC_INT32: return (sign <= 0 ? FC_LONG : FC_ULONG);
     case TYPE_BASIC_INT64: return FC_HYPER;
     case TYPE_BASIC_INT: return (sign <= 0 ? FC_LONG : FC_ULONG);
     case TYPE_BASIC_INT3264: return (sign <= 0 ? FC_INT3264 : FC_UINT3264);
@@ -235,7 +234,6 @@ static unsigned char get_basic_fc_signed(const type_t *type)
     case TYPE_BASIC_INT64: return FC_HYPER;
     case TYPE_BASIC_INT: return FC_LONG;
     case TYPE_BASIC_INT3264: return FC_INT3264;
-    case TYPE_BASIC_LONG: return FC_LONG;
     case TYPE_BASIC_BYTE: return FC_BYTE;
     case TYPE_BASIC_CHAR: return FC_CHAR;
     case TYPE_BASIC_WCHAR: return FC_WCHAR;
@@ -1381,7 +1379,6 @@ static void write_proc_func_header( FILE *file, int indent, const type_t *iface,
 
         if (is_attr( func->attrs, ATTR_NOTIFY )) ext_flags |= 0x08;  /* HasNotify */
         if (is_attr( func->attrs, ATTR_NOTIFYFLAG )) ext_flags |= 0x10;  /* HasNotify2 */
-        if (iface == iface->details.iface->async_iface) oi2_flags |= 0x20;
 
         size = get_function_buffer_size( func, PASS_IN );
         print_file( file, indent, "NdrFcShort(0x%x),\t/* client buffer = %u */\n", size, size );
@@ -1466,36 +1463,27 @@ static void write_procformatstring_func( FILE *file, int indent, const type_t *i
     }
 }
 
-static void for_each_iface(const statement_list_t *stmts,
-                           void (*proc)(type_t *iface, FILE *file, int indent, unsigned int *offset),
-                           type_pred_t pred, FILE *file, int indent, unsigned int *offset)
+static void write_procformatstring_stmts(FILE *file, int indent, const statement_list_t *stmts,
+                                         type_pred_t pred, unsigned int *offset)
 {
     const statement_t *stmt;
-    type_t *iface;
-
     if (stmts) LIST_FOR_EACH_ENTRY( stmt, stmts, const statement_t, entry )
     {
-        if (stmt->type != STMT_TYPE || type_get_type(stmt->u.type) != TYPE_INTERFACE)
-            continue;
-        iface = stmt->u.type;
-        if (!pred(iface)) continue;
-        proc(iface, file, indent, offset);
-        if (iface->details.iface->async_iface)
-            proc(iface->details.iface->async_iface, file, indent, offset);
-    }
-}
+        if (stmt->type == STMT_TYPE && type_get_type(stmt->u.type) == TYPE_INTERFACE)
+        {
+            const statement_t *stmt_func;
+            const type_t *iface = stmt->u.type;
+            const type_t *parent = type_iface_get_inherit( iface );
+            int count = parent ? count_methods( parent ) : 0;
 
-static void write_iface_procformatstring(type_t *iface, FILE *file, int indent, unsigned int *offset)
-{
-    const statement_t *stmt;
-    const type_t *parent = type_iface_get_inherit( iface );
-    int count = parent ? count_methods( parent ) : 0;
-
-    STATEMENTS_FOR_EACH_FUNC(stmt, type_iface_get_stmts(iface))
-    {
-        var_t *func = stmt->u.var;
-        if (is_local(func->attrs)) continue;
-        write_procformatstring_func( file, indent, iface, func, offset, count++ );
+            if (!pred(iface)) continue;
+            STATEMENTS_FOR_EACH_FUNC(stmt_func, type_iface_get_stmts(iface))
+            {
+                var_t *func = stmt_func->u.var;
+                if (is_local(func->attrs)) continue;
+                write_procformatstring_func( file, indent, iface, func, offset, count++ );
+            }
+        }
     }
 }
 
@@ -1511,7 +1499,7 @@ void write_procformatstring(FILE *file, const statement_list_t *stmts, type_pred
     print_file(file, indent, "{\n");
     indent++;
 
-    for_each_iface(stmts, write_iface_procformatstring, pred, file, indent, &offset);
+    write_procformatstring_stmts(file, indent, stmts, pred, &offset);
 
     print_file(file, indent, "0x0\n");
     indent--;
@@ -2105,32 +2093,8 @@ static unsigned int write_nonsimple_pointer(FILE *file, const attr_list_t *attrs
     out_attr = is_attr(attrs, ATTR_OUT);
     if (!in_attr && !out_attr) in_attr = 1;
 
-    if (!is_interpreted_func(current_iface, current_func))
-    {
-        if (out_attr && !in_attr && pointer_type == FC_RP)
-            flags |= FC_ALLOCED_ON_STACK;
-    }
-    else if (get_stub_mode() == MODE_Oif)
-    {
-        if (context == TYPE_CONTEXT_TOPLEVELPARAM && is_ptr(type) && pointer_type == FC_RP)
-        {
-            switch (typegen_detect_type(type_pointer_get_ref(type), NULL, TDT_ALL_TYPES))
-            {
-            case TGT_STRING:
-            case TGT_POINTER:
-            case TGT_CTXT_HANDLE:
-            case TGT_CTXT_HANDLE_POINTER:
-                flags |= FC_ALLOCED_ON_STACK;
-                break;
-            case TGT_IFACE_POINTER:
-                if (in_attr && out_attr)
-                    flags |= FC_ALLOCED_ON_STACK;
-                break;
-            default:
-                break;
-            }
-        }
-    }
+    if (out_attr && !in_attr && pointer_type == FC_RP)
+        flags |= FC_ALLOCED_ON_STACK;
 
     if (is_ptr(type))
     {
@@ -2181,16 +2145,8 @@ static unsigned int write_simple_pointer(FILE *file, const attr_list_t *attrs,
     else
         fc = get_basic_fc(ref);
 
-    if (!is_interpreted_func(current_iface, current_func))
-    {
-        if (out_attr && !in_attr && pointer_fc == FC_RP)
-            flags |= FC_ALLOCED_ON_STACK;
-    }
-    else if (get_stub_mode() == MODE_Oif)
-    {
-        if (context == TYPE_CONTEXT_TOPLEVELPARAM && fc == FC_ENUM16 && pointer_fc == FC_RP)
-            flags |= FC_ALLOCED_ON_STACK;
-    }
+    if (out_attr && !in_attr)
+        flags |= FC_ALLOCED_ON_STACK;
 
     print_file(file, 2, "0x%02x, 0x%x,\t/* %s %s[simple_pointer] */\n",
                pointer_fc, flags, string_of_type(pointer_fc),
@@ -3678,64 +3634,52 @@ static int write_embedded_types(FILE *file, const attr_list_t *attrs, type_t *ty
     return write_type_tfs(file, 2, attrs, type, name, write_ptr ? TYPE_CONTEXT_CONTAINER : TYPE_CONTEXT_CONTAINER_NO_POINTERS, tfsoff);
 }
 
-static void process_tfs_iface(type_t *iface, FILE *file, int indent, unsigned int *offset)
+static unsigned int process_tfs_stmts(FILE *file, const statement_list_t *stmts,
+                                      type_pred_t pred, unsigned int *typeformat_offset)
 {
-    const statement_list_t *stmts = type_iface_get_stmts(iface);
-    const statement_t *stmt;
     var_t *var;
+    const statement_t *stmt;
 
-    current_iface = iface;
-    if (stmts) LIST_FOR_EACH_ENTRY( stmt, stmts, statement_t, entry )
+    if (stmts) LIST_FOR_EACH_ENTRY( stmt, stmts, const statement_t, entry )
     {
-        switch(stmt->type)
-        {
-        case STMT_DECLARATION:
-        {
-            const var_t *func = stmt->u.var;
+        const type_t *iface;
+        const statement_t *stmt_func;
 
-            if(stmt->u.var->stgclass != STG_NONE
-               || type_get_type_detect_alias(stmt->u.var->type) != TYPE_FUNCTION)
-                continue;
+        if (stmt->type != STMT_TYPE || type_get_type(stmt->u.type) != TYPE_INTERFACE)
+            continue;
 
+        iface = stmt->u.type;
+        if (!pred(iface))
+            continue;
+
+        current_iface = iface;
+        STATEMENTS_FOR_EACH_FUNC( stmt_func, type_iface_get_stmts(iface) )
+        {
+            const var_t *func = stmt_func->u.var;
             current_func = func;
             if (is_local(func->attrs)) continue;
 
             var = type_function_get_retval(func->type);
             if (!is_void(var->type))
                 var->typestring_offset = write_type_tfs( file, 2, func->attrs, var->type, func->name,
-                                                         TYPE_CONTEXT_PARAM, offset);
+                                                         TYPE_CONTEXT_PARAM, typeformat_offset);
 
             if (type_get_function_args(func->type))
                 LIST_FOR_EACH_ENTRY( var, type_get_function_args(func->type), var_t, entry )
                     var->typestring_offset = write_type_tfs( file, 2, var->attrs, var->type, var->name,
-                                                             TYPE_CONTEXT_TOPLEVELPARAM, offset );
-            break;
-
-        }
-        case STMT_TYPEDEF:
-        {
-            const type_list_t *type_entry;
-            for (type_entry = stmt->u.type_list; type_entry; type_entry = type_entry->next)
-            {
-                if (is_attr(type_entry->type->attrs, ATTR_ENCODE)
-                    || is_attr(type_entry->type->attrs, ATTR_DECODE))
-                    type_entry->type->typestring_offset = write_type_tfs( file, 2,
-                            type_entry->type->attrs, type_entry->type, type_entry->type->name,
-                            TYPE_CONTEXT_CONTAINER, offset);
-            }
-            break;
-        }
-        default:
-            break;
+                                                             TYPE_CONTEXT_TOPLEVELPARAM,
+                                                             typeformat_offset );
         }
     }
+
+    return *typeformat_offset + 1;
 }
 
 static unsigned int process_tfs(FILE *file, const statement_list_t *stmts, type_pred_t pred)
 {
     unsigned int typeformat_offset = 2;
-    for_each_iface(stmts, process_tfs_iface, pred, file, 0, &typeformat_offset);
-    return typeformat_offset + 1;
+
+    return process_tfs_stmts(file, stmts, pred, &typeformat_offset);
 }
 
 
@@ -4569,21 +4513,30 @@ unsigned int get_size_procformatstring_func(const type_t *iface, const var_t *fu
     return offset;
 }
 
-static void get_size_procformatstring_iface(type_t *iface, FILE *file, int indent, unsigned int *size)
-{
-    const statement_t *stmt;
-    STATEMENTS_FOR_EACH_FUNC( stmt, type_iface_get_stmts(iface) )
-    {
-        const var_t *func = stmt->u.var;
-        if (!is_local(func->attrs))
-            *size += get_size_procformatstring_func( iface, func );
-    }
-}
-
 unsigned int get_size_procformatstring(const statement_list_t *stmts, type_pred_t pred)
 {
+    const statement_t *stmt;
     unsigned int size = 1;
-    for_each_iface(stmts, get_size_procformatstring_iface, pred, NULL, 0, &size);
+
+    if (stmts) LIST_FOR_EACH_ENTRY( stmt, stmts, const statement_t, entry )
+    {
+        const type_t *iface;
+        const statement_t *stmt_func;
+
+        if (stmt->type != STMT_TYPE || type_get_type(stmt->u.type) != TYPE_INTERFACE)
+            continue;
+
+        iface = stmt->u.type;
+        if (!pred(iface))
+            continue;
+
+        STATEMENTS_FOR_EACH_FUNC( stmt_func, type_iface_get_stmts(iface) )
+        {
+            const var_t *func = stmt_func->u.var;
+            if (!is_local(func->attrs))
+                size += get_size_procformatstring_func( iface, func );
+        }
+    }
     return size;
 }
 

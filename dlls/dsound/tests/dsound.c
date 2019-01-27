@@ -465,7 +465,6 @@ static HRESULT test_primary(LPGUID lpGuid)
         trace("  No Primary\n");
     else if (rc==DS_OK && primary!=NULL) {
         LONG vol;
-        IDirectSoundNotify *notify;
 
         /* Try to create a second primary buffer */
         /* DSOUND: Error: The primary buffer already exists.
@@ -510,10 +509,8 @@ static HRESULT test_primary(LPGUID lpGuid)
         ok(ref==0,"IDirectSoundBuffer_Release() primary has %d references\n",ref);
 
         ref=IDirectSoundBuffer_Release(primary);
-        ok(ref==0,"IDirectSoundBuffer_Release() primary has %d references\n",ref);
-
-        rc=IDirectSoundBuffer_QueryInterface(primary,&IID_IDirectSoundNotify,(void **)&notify);
-        ok(rc==E_NOINTERFACE,"IDirectSoundBuffer_QueryInterface() failed %08x\n",rc);
+        ok(ref==0,"IDirectSoundBuffer_Release() primary has %d references, "
+           "should have 0\n",ref);
     }
 
     /* Set the CooperativeLevel back to normal */

@@ -212,16 +212,8 @@ NTSTATUS WINAPI PNP_AddDevice(DRIVER_OBJECT *driver, DEVICE_OBJECT *PDO)
 
 NTSTATUS PNP_RemoveDevice(minidriver *minidriver, DEVICE_OBJECT *device, IRP *irp)
 {
-    BASE_DEVICE_EXTENSION *ext = device->DeviceExtension;
     hid_device *hiddev;
     NTSTATUS rc = STATUS_NOT_SUPPORTED;
-
-    rc = IoSetDeviceInterfaceState(&ext->link_name, FALSE);
-    if (rc)
-    {
-        FIXME("failed to disable interface %x\n", rc);
-        return rc;
-    }
 
     if (irp)
         rc = minidriver->PNPDispatch(device, irp);
@@ -294,10 +286,12 @@ NTSTATUS WINAPI HID_PNP_Dispatch(DEVICE_OBJECT *device, IRP *irp)
         case IRP_MN_START_DEVICE:
         {
             BASE_DEVICE_EXTENSION *ext = device->DeviceExtension;
+            UNICODE_STRING linkU;
 
             rc = minidriver->PNPDispatch(device, irp);
 
-            IoSetDeviceInterfaceState(&ext->link_name, TRUE);
+            RtlInitUnicodeString(&linkU, ext->link_name);
+            IoSetDeviceInterfaceState(&linkU, TRUE);
             return rc;
         }
         case IRP_MN_REMOVE_DEVICE:

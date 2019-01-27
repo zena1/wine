@@ -52,7 +52,19 @@ WINE_DEFAULT_DEBUG_CHANNEL(winhttp);
 #define DEFAULT_RECEIVE_TIMEOUT             30000
 #define DEFAULT_RECEIVE_RESPONSE_TIMEOUT    ~0u
 
-void send_callback( struct object_header *hdr, DWORD status, void *info, DWORD buflen )
+void set_last_error( DWORD error )
+{
+    /* FIXME */
+    SetLastError( error );
+}
+
+DWORD get_last_error( void )
+{
+    /* FIXME */
+    return GetLastError();
+}
+
+void send_callback( object_header_t *hdr, DWORD status, LPVOID info, DWORD buflen )
 {
     if (hdr->callback && (hdr->notify_mask & status))
     {
@@ -74,16 +86,22 @@ BOOL WINAPI WinHttpCheckPlatform( void )
 /***********************************************************************
  *          session_destroy (internal)
  */
-static void session_destroy( struct object_header *hdr )
+static void session_destroy( object_header_t *hdr )
 {
-    struct session *session = (struct session *)hdr;
+    session_t *session = (session_t *)hdr;
+    struct list *item, *next;
+    domain_t *domain;
 
     TRACE("%p\n", session);
 
     if (session->unload_event) SetEvent( session->unload_event );
     if (session->cred_handle_initialized) FreeCredentialsHandle( &session->cred_handle );
-    destroy_cookies( session );
 
+    LIST_FOR_EACH_SAFE( item, next, &session->cookie_cache )
+    {
+        domain = LIST_ENTRY( item, domain_t, entry );
+        delete_domain( domain );
+    }
     session->cs.DebugInfo->Spare[0] = 0;
     DeleteCriticalSection( &session->cs );
     heap_free( session->agent );
@@ -94,9 +112,9 @@ static void session_destroy( struct object_header *hdr )
     heap_free( session );
 }
 
-static BOOL session_query_option( struct object_header *hdr, DWORD option, void *buffer, DWORD *buflen )
+static BOOL session_query_option( object_header_t *hdr, DWORD option, LPVOID buffer, LPDWORD buflen )
 {
-    struct session *session = (struct session *)hdr;
+    session_t *session = (session_t *)hdr;
 
     switch (option)
     {
@@ -105,7 +123,7 @@ static BOOL session_query_option( struct object_header *hdr, DWORD option, void 
         if (!buffer || *buflen < sizeof(DWORD))
         {
             *buflen = sizeof(DWORD);
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
 
@@ -140,14 +158,14 @@ static BOOL session_query_option( struct object_header *hdr, DWORD option, void 
 
     default:
         FIXME("unimplemented option %u\n", option);
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
 }
 
-static BOOL session_set_option( struct object_header *hdr, DWORD option, void *buffer, DWORD buflen )
+static BOOL session_set_option( object_header_t *hdr, DWORD option, LPVOID buffer, DWORD buflen )
 {
-    struct session *session = (struct session *)hdr;
+    session_t *session = (session_t *)hdr;
 
     switch (option)
     {
@@ -164,7 +182,7 @@ static BOOL session_set_option( struct object_header *hdr, DWORD option, void *b
 
         if (buflen != sizeof(policy))
         {
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
 
@@ -177,7 +195,7 @@ static BOOL session_set_option( struct object_header *hdr, DWORD option, void *b
     {
         if (buflen != sizeof(session->secure_protocols))
         {
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
         EnterCriticalSection( &session->cs );
@@ -187,7 +205,7 @@ static BOOL session_set_option( struct object_header *hdr, DWORD option, void *b
         return TRUE;
     }
     case WINHTTP_OPTION_DISABLE_FEATURE:
-        SetLastError( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
+        set_last_error( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
         return FALSE;
 
     case WINHTTP_OPTION_RESOLVE_TIMEOUT:
@@ -229,12 +247,12 @@ static BOOL session_set_option( struct object_header *hdr, DWORD option, void *b
 
     default:
         FIXME("unimplemented option %u\n", option);
-        SetLastError( ERROR_WINHTTP_INVALID_OPTION );
+        set_last_error( ERROR_WINHTTP_INVALID_OPTION );
         return FALSE;
     }
 }
 
-static const struct object_vtbl session_vtbl =
+static const object_vtbl_t session_vtbl =
 {
     session_destroy,
     session_query_option,
@@ -246,12 +264,12 @@ static const struct object_vtbl session_vtbl =
  */
 HINTERNET WINAPI WinHttpOpen( LPCWSTR agent, DWORD access, LPCWSTR proxy, LPCWSTR bypass, DWORD flags )
 {
-    struct session *session;
+    session_t *session;
     HINTERNET handle = NULL;
 
     TRACE("%s, %u, %s, %s, 0x%08x\n", debugstr_w(agent), access, debugstr_w(proxy), debugstr_w(bypass), flags);
 
-    if (!(session = heap_alloc_zero( sizeof(struct session) ))) return NULL;
+    if (!(session = heap_alloc_zero( sizeof(session_t) ))) return NULL;
 
     session->hdr.type = WINHTTP_HANDLE_TYPE_SESSION;
     session->hdr.vtbl = &session_vtbl;
@@ -301,16 +319,16 @@ HINTERNET WINAPI WinHttpOpen( LPCWSTR agent, DWORD access, LPCWSTR proxy, LPCWST
 end:
     release_object( &session->hdr );
     TRACE("returning %p\n", handle);
-    if (handle) SetLastError( ERROR_SUCCESS );
+    if (handle) set_last_error( ERROR_SUCCESS );
     return handle;
 }
 
 /***********************************************************************
  *          connect_destroy (internal)
  */
-static void connect_destroy( struct object_header *hdr )
+static void connect_destroy( object_header_t *hdr )
 {
-    struct connect *connect = (struct connect *)hdr;
+    connect_t *connect = (connect_t *)hdr;
 
     TRACE("%p\n", connect);
 
@@ -323,9 +341,9 @@ static void connect_destroy( struct object_header *hdr )
     heap_free( connect );
 }
 
-static BOOL connect_query_option( struct object_header *hdr, DWORD option, void *buffer, DWORD *buflen )
+static BOOL connect_query_option( object_header_t *hdr, DWORD option, LPVOID buffer, LPDWORD buflen )
 {
-    struct connect *connect = (struct connect *)hdr;
+    connect_t *connect = (connect_t *)hdr;
 
     switch (option)
     {
@@ -334,11 +352,11 @@ static BOOL connect_query_option( struct object_header *hdr, DWORD option, void 
         if (!buffer || *buflen < sizeof(HINTERNET))
         {
             *buflen = sizeof(HINTERNET);
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
 
-        *(HINTERNET *)buffer = ((struct object_header *)connect->session)->handle;
+        *(HINTERNET *)buffer = ((object_header_t *)connect->session)->handle;
         *buflen = sizeof(HINTERNET);
         return TRUE;
     }
@@ -369,12 +387,12 @@ static BOOL connect_query_option( struct object_header *hdr, DWORD option, void 
 
     default:
         FIXME("unimplemented option %u\n", option);
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
 }
 
-static const struct object_vtbl connect_vtbl =
+static const object_vtbl_t connect_vtbl =
 {
     connect_destroy,
     connect_query_option,
@@ -435,7 +453,7 @@ static BOOL domain_matches(LPCWSTR server, LPCWSTR domain)
 /* Matches INTERNET_MAX_HOST_NAME_LENGTH in wininet.h, also RFC 1035 */
 #define MAX_HOST_NAME_LENGTH 256
 
-static BOOL should_bypass_proxy(struct session *session, LPCWSTR server)
+static BOOL should_bypass_proxy(session_t *session, LPCWSTR server)
 {
     LPCWSTR ptr;
     BOOL ret = FALSE;
@@ -466,9 +484,9 @@ static BOOL should_bypass_proxy(struct session *session, LPCWSTR server)
     return ret;
 }
 
-BOOL set_server_for_hostname( struct connect *connect, const WCHAR *server, INTERNET_PORT port )
+BOOL set_server_for_hostname( connect_t *connect, LPCWSTR server, INTERNET_PORT port )
 {
-    struct session *session = connect->session;
+    session_t *session = connect->session;
     BOOL ret = TRUE;
 
     if (session->proxy_server && !should_bypass_proxy(session, server))
@@ -533,29 +551,29 @@ end:
  */
 HINTERNET WINAPI WinHttpConnect( HINTERNET hsession, LPCWSTR server, INTERNET_PORT port, DWORD reserved )
 {
-    struct connect *connect;
-    struct session *session;
+    connect_t *connect;
+    session_t *session;
     HINTERNET hconnect = NULL;
 
     TRACE("%p, %s, %u, %x\n", hsession, debugstr_w(server), port, reserved);
 
     if (!server)
     {
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return NULL;
     }
-    if (!(session = (struct session *)grab_object( hsession )))
+    if (!(session = (session_t *)grab_object( hsession )))
     {
-        SetLastError( ERROR_INVALID_HANDLE );
+        set_last_error( ERROR_INVALID_HANDLE );
         return NULL;
     }
     if (session->hdr.type != WINHTTP_HANDLE_TYPE_SESSION)
     {
         release_object( &session->hdr );
-        SetLastError( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
+        set_last_error( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
         return NULL;
     }
-    if (!(connect = heap_alloc_zero( sizeof(struct connect) )))
+    if (!(connect = heap_alloc_zero( sizeof(connect_t) )))
     {
         release_object( &session->hdr );
         return NULL;
@@ -587,25 +605,28 @@ end:
     release_object( &connect->hdr );
     release_object( &session->hdr );
     TRACE("returning %p\n", hconnect);
-    if (hconnect) SetLastError( ERROR_SUCCESS );
+    if (hconnect) set_last_error( ERROR_SUCCESS );
     return hconnect;
 }
 
 /***********************************************************************
  *          request_destroy (internal)
  */
-static void request_destroy( struct object_header *hdr )
+static void request_destroy( object_header_t *hdr )
 {
-    struct request *request = (struct request *)hdr;
+    request_t *request = (request_t *)hdr;
     unsigned int i, j;
 
     TRACE("%p\n", request);
 
-    if (request->task_proc_running)
+    if (request->task_thread)
     {
-        /* Signal to the task proc to quit. It will call this again when it does. */
-        request->task_proc_running = FALSE;
+        /* Signal to the task proc to quit.  It will call
+           this again when it does. */
+        HANDLE thread = request->task_thread;
+        request->task_thread = 0;
         SetEvent( request->task_cancel );
+        CloseHandle( thread );
         return;
     }
     release_object( &request->connect->hdr );
@@ -687,25 +708,27 @@ static BOOL copy_sockaddr( const struct sockaddr *addr, SOCKADDR_STORAGE *addr_s
     }
 }
 
-static BOOL request_query_option( struct object_header *hdr, DWORD option, void *buffer, DWORD *buflen )
+static BOOL request_query_option( object_header_t *hdr, DWORD option, LPVOID buffer, LPDWORD buflen )
 {
-    struct request *request = (struct request *)hdr;
+    request_t *request = (request_t *)hdr;
 
     switch (option)
     {
     case WINHTTP_OPTION_SECURITY_FLAGS:
     {
-        DWORD flags;
+        DWORD flags = 0;
         int bits;
 
         if (!buffer || *buflen < sizeof(flags))
         {
             *buflen = sizeof(flags);
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
 
-        flags = request->security_flags;
+        flags = 0;
+        if (hdr->flags & WINHTTP_FLAG_SECURE) flags |= SECURITY_FLAG_SECURE;
+        flags |= request->security_flags;
         if (request->netconn)
         {
             bits = netconn_get_cipher_strength( request->netconn );
@@ -727,7 +750,7 @@ static BOOL request_query_option( struct object_header *hdr, DWORD option, void 
         if (!buffer || *buflen < sizeof(cert))
         {
             *buflen = sizeof(cert);
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
 
@@ -747,7 +770,7 @@ static BOOL request_query_option( struct object_header *hdr, DWORD option, void 
         if (!buffer || *buflen < sizeof(*ci))
         {
             *buflen = sizeof(*ci);
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
         if (!cert) return FALSE;
@@ -773,7 +796,7 @@ static BOOL request_query_option( struct object_header *hdr, DWORD option, void 
         if (!buffer || *buflen < sizeof(DWORD))
         {
             *buflen = sizeof(DWORD);
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
 
@@ -791,12 +814,12 @@ static BOOL request_query_option( struct object_header *hdr, DWORD option, void 
         if (!buffer || *buflen < sizeof(*info))
         {
             *buflen = sizeof(*info);
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
         if (!request->netconn)
         {
-            SetLastError( ERROR_WINHTTP_INCORRECT_HANDLE_STATE );
+            set_last_error( ERROR_WINHTTP_INCORRECT_HANDLE_STATE );
             return FALSE;
         }
         if (getsockname( request->netconn->socket, &local, &len )) return FALSE;
@@ -848,7 +871,7 @@ static BOOL request_query_option( struct object_header *hdr, DWORD option, void 
 
     default:
         FIXME("unimplemented option %u\n", option);
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
 }
@@ -862,13 +885,13 @@ static WCHAR *buffer_to_str( WCHAR *buffer, DWORD buflen )
         ret[buflen] = 0;
         return ret;
     }
-    SetLastError( ERROR_OUTOFMEMORY );
+    set_last_error( ERROR_OUTOFMEMORY );
     return NULL;
 }
 
-static BOOL request_set_option( struct object_header *hdr, DWORD option, void *buffer, DWORD buflen )
+static BOOL request_set_option( object_header_t *hdr, DWORD option, LPVOID buffer, DWORD buflen )
 {
-    struct request *request = (struct request *)hdr;
+    request_t *request = (request_t *)hdr;
 
     switch (option)
     {
@@ -885,7 +908,7 @@ static BOOL request_set_option( struct object_header *hdr, DWORD option, void *b
 
         if (buflen != sizeof(DWORD))
         {
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
 
@@ -900,7 +923,7 @@ static BOOL request_set_option( struct object_header *hdr, DWORD option, void *b
 
         if (buflen != sizeof(DWORD))
         {
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
 
@@ -915,7 +938,7 @@ static BOOL request_set_option( struct object_header *hdr, DWORD option, void *b
 
         if (buflen != sizeof(DWORD))
         {
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
 
@@ -927,21 +950,20 @@ static BOOL request_set_option( struct object_header *hdr, DWORD option, void *b
     case WINHTTP_OPTION_SECURITY_FLAGS:
     {
         DWORD flags;
-        static const DWORD accepted = SECURITY_FLAG_IGNORE_CERT_CN_INVALID   |
-                                      SECURITY_FLAG_IGNORE_CERT_DATE_INVALID |
-                                      SECURITY_FLAG_IGNORE_UNKNOWN_CA        |
-                                      SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
 
         if (buflen < sizeof(DWORD))
         {
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
         flags = *(DWORD *)buffer;
         TRACE("0x%x\n", flags);
-        if (flags && (flags & ~accepted))
+        if (!(flags & (SECURITY_FLAG_IGNORE_CERT_CN_INVALID   |
+                       SECURITY_FLAG_IGNORE_CERT_DATE_INVALID |
+                       SECURITY_FLAG_IGNORE_UNKNOWN_CA        |
+                       SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE)))
         {
-            SetLastError( ERROR_INVALID_PARAMETER );
+            set_last_error( ERROR_INVALID_PARAMETER );
             return FALSE;
         }
         request->security_flags = flags;
@@ -969,7 +991,7 @@ static BOOL request_set_option( struct object_header *hdr, DWORD option, void *b
 
     case WINHTTP_OPTION_USERNAME:
     {
-        struct connect *connect = request->connect;
+        connect_t *connect = request->connect;
 
         heap_free( connect->username );
         if (!(connect->username = buffer_to_str( buffer, buflen ))) return FALSE;
@@ -977,7 +999,7 @@ static BOOL request_set_option( struct object_header *hdr, DWORD option, void *b
     }
     case WINHTTP_OPTION_PASSWORD:
     {
-        struct connect *connect = request->connect;
+        connect_t *connect = request->connect;
 
         heap_free( connect->password );
         if (!(connect->password = buffer_to_str( buffer, buflen ))) return FALSE;
@@ -985,7 +1007,7 @@ static BOOL request_set_option( struct object_header *hdr, DWORD option, void *b
     }
     case WINHTTP_OPTION_PROXY_USERNAME:
     {
-        struct session *session = request->connect->session;
+        session_t *session = request->connect->session;
 
         heap_free( session->proxy_username );
         if (!(session->proxy_username = buffer_to_str( buffer, buflen ))) return FALSE;
@@ -993,7 +1015,7 @@ static BOOL request_set_option( struct object_header *hdr, DWORD option, void *b
     }
     case WINHTTP_OPTION_PROXY_PASSWORD:
     {
-        struct session *session = request->connect->session;
+        session_t *session = request->connect->session;
 
         heap_free( session->proxy_password );
         if (!(session->proxy_password = buffer_to_str( buffer, buflen ))) return FALSE;
@@ -1027,42 +1049,74 @@ static BOOL request_set_option( struct object_header *hdr, DWORD option, void *b
 
     default:
         FIXME("unimplemented option %u\n", option);
-        SetLastError( ERROR_WINHTTP_INVALID_OPTION );
+        set_last_error( ERROR_WINHTTP_INVALID_OPTION );
         return FALSE;
     }
 }
 
-static const struct object_vtbl request_vtbl =
+static const object_vtbl_t request_vtbl =
 {
     request_destroy,
     request_query_option,
     request_set_option
 };
 
-static BOOL add_accept_types_header( struct request *request, const WCHAR **types )
+static BOOL store_accept_types( request_t *request, const WCHAR **accept_types )
 {
-    static const WCHAR acceptW[] = {'A','c','c','e','p','t',0};
+    static const WCHAR attr_accept[] = {'A','c','c','e','p','t',0};
     static const DWORD flags = WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_COALESCE_WITH_COMMA;
+    const WCHAR **types = accept_types;
 
     if (!types) return TRUE;
     while (*types)
     {
-        if (!process_header( request, acceptW, *types, flags, TRUE )) return FALSE;
+        process_header( request, attr_accept, *types, flags, TRUE );
         types++;
     }
     return TRUE;
 }
 
-static WCHAR *get_request_path( const WCHAR *object )
+static WCHAR *get_request_path( const WCHAR *object, DWORD flags )
 {
-    int len = object ? strlenW(object) : 0;
-    WCHAR *p, *ret;
+    DWORD len, path_len = 0, query_len = 0;
+    const WCHAR *p = object, *q = NULL;
+    enum escape_flags path_flags, query_flags;
+    WCHAR *ret;
 
-    if (!object || object[0] != '/') len++;
-    if (!(p = ret = heap_alloc( (len + 1) * sizeof(WCHAR) ))) return NULL;
-    if (!object || object[0] != '/') *p++ = '/';
-    if (object) strcpyW( p, object );
-    ret[len] = 0;
+    if (flags & WINHTTP_FLAG_ESCAPE_DISABLE) path_flags = ESCAPE_FLAG_SPACE_ONLY|ESCAPE_FLAG_REMOVE_CRLF;
+    else if (flags & WINHTTP_FLAG_ESCAPE_PERCENT) path_flags = ESCAPE_FLAG_PERCENT;
+    else path_flags = 0;
+
+    if (flags & WINHTTP_FLAG_ESCAPE_DISABLE_QUERY) query_flags = ESCAPE_FLAG_SPACE_ONLY|ESCAPE_FLAG_REMOVE_CRLF;
+    else query_flags = path_flags;
+
+    if (object)
+    {
+        path_len = strlenW( object );
+        if (object[0] == '/')
+        {
+            path_len--;
+            p++;
+        }
+        if ((q = strchrW( p, '?' )))
+        {
+            q++;
+            query_len = path_len - (q - p);
+            path_len -= query_len + 1;
+        }
+    }
+
+    len = escape_string( NULL, p, path_len, path_flags );
+    len += escape_string( NULL, q, query_len, query_flags );
+    if (!(ret = heap_alloc( (len + 3) * sizeof(WCHAR) ))) return NULL;
+
+    ret[0] = '/';
+    len = escape_string( ret + 1, p, path_len, path_flags ) + 1;
+    if (q)
+    {
+        ret[len] = '?';
+        escape_string( ret + 1 + len, q, query_len, query_flags );
+    }
     return ret;
 }
 
@@ -1072,8 +1126,8 @@ static WCHAR *get_request_path( const WCHAR *object )
 HINTERNET WINAPI WinHttpOpenRequest( HINTERNET hconnect, LPCWSTR verb, LPCWSTR object, LPCWSTR version,
                                      LPCWSTR referrer, LPCWSTR *types, DWORD flags )
 {
-    struct request *request;
-    struct connect *connect;
+    request_t *request;
+    connect_t *connect;
     HINTERNET hrequest = NULL;
 
     TRACE("%p, %s, %s, %s, %s, %p, 0x%08x\n", hconnect, debugstr_w(verb), debugstr_w(object),
@@ -1086,18 +1140,18 @@ HINTERNET WINAPI WinHttpOpenRequest( HINTERNET hconnect, LPCWSTR verb, LPCWSTR o
         for (iter = types; *iter; iter++) TRACE("    %s\n", debugstr_w(*iter));
     }
 
-    if (!(connect = (struct connect *)grab_object( hconnect )))
+    if (!(connect = (connect_t *)grab_object( hconnect )))
     {
-        SetLastError( ERROR_INVALID_HANDLE );
+        set_last_error( ERROR_INVALID_HANDLE );
         return NULL;
     }
     if (connect->hdr.type != WINHTTP_HANDLE_TYPE_CONNECT)
     {
         release_object( &connect->hdr );
-        SetLastError( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
+        set_last_error( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
         return NULL;
     }
-    if (!(request = heap_alloc_zero( sizeof(struct request) )))
+    if (!(request = heap_alloc_zero( sizeof(request_t) )))
     {
         release_object( &connect->hdr );
         return NULL;
@@ -1125,11 +1179,11 @@ HINTERNET WINAPI WinHttpOpenRequest( HINTERNET hconnect, LPCWSTR verb, LPCWSTR o
 
     if (!verb || !verb[0]) verb = getW;
     if (!(request->verb = strdupW( verb ))) goto end;
-    if (!(request->path = get_request_path( object ))) goto end;
+    if (!(request->path = get_request_path( object, flags ))) goto end;
 
     if (!version || !version[0]) version = http1_1;
     if (!(request->version = strdupW( version ))) goto end;
-    if (!(add_accept_types_header( request, types ))) goto end;
+    if (!(store_accept_types( request, types ))) goto end;
 
     if (!(hrequest = alloc_handle( &request->hdr ))) goto end;
     request->hdr.handle = hrequest;
@@ -1140,7 +1194,7 @@ end:
     release_object( &request->hdr );
     release_object( &connect->hdr );
     TRACE("returning %p\n", hrequest);
-    if (hrequest) SetLastError( ERROR_SUCCESS );
+    if (hrequest) set_last_error( ERROR_SUCCESS );
     return hrequest;
 }
 
@@ -1149,28 +1203,28 @@ end:
  */
 BOOL WINAPI WinHttpCloseHandle( HINTERNET handle )
 {
-    struct object_header *hdr;
+    object_header_t *hdr;
 
     TRACE("%p\n", handle);
 
     if (!(hdr = grab_object( handle )))
     {
-        SetLastError( ERROR_INVALID_HANDLE );
+        set_last_error( ERROR_INVALID_HANDLE );
         return FALSE;
     }
     release_object( hdr );
     free_handle( handle );
-    SetLastError( ERROR_SUCCESS );
+    set_last_error( ERROR_SUCCESS );
     return TRUE;
 }
 
-static BOOL query_option( struct object_header *hdr, DWORD option, void *buffer, DWORD *buflen )
+static BOOL query_option( object_header_t *hdr, DWORD option, LPVOID buffer, LPDWORD buflen )
 {
     BOOL ret = FALSE;
 
     if (!buflen)
     {
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
 
@@ -1181,7 +1235,7 @@ static BOOL query_option( struct object_header *hdr, DWORD option, void *buffer,
         if (!buffer || *buflen < sizeof(DWORD_PTR))
         {
             *buflen = sizeof(DWORD_PTR);
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
 
@@ -1194,7 +1248,7 @@ static BOOL query_option( struct object_header *hdr, DWORD option, void *buffer,
         else
         {
             FIXME("unimplemented option %u\n", option);
-            SetLastError( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
+            set_last_error( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
             return FALSE;
         }
         break;
@@ -1208,30 +1262,30 @@ static BOOL query_option( struct object_header *hdr, DWORD option, void *buffer,
 BOOL WINAPI WinHttpQueryOption( HINTERNET handle, DWORD option, LPVOID buffer, LPDWORD buflen )
 {
     BOOL ret = FALSE;
-    struct object_header *hdr;
+    object_header_t *hdr;
 
     TRACE("%p, %u, %p, %p\n", handle, option, buffer, buflen);
 
     if (!(hdr = grab_object( handle )))
     {
-        SetLastError( ERROR_INVALID_HANDLE );
+        set_last_error( ERROR_INVALID_HANDLE );
         return FALSE;
     }
 
     ret = query_option( hdr, option, buffer, buflen );
 
     release_object( hdr );
-    if (ret) SetLastError( ERROR_SUCCESS );
+    if (ret) set_last_error( ERROR_SUCCESS );
     return ret;
 }
 
-static BOOL set_option( struct object_header *hdr, DWORD option, void *buffer, DWORD buflen )
+static BOOL set_option( object_header_t *hdr, DWORD option, LPVOID buffer, DWORD buflen )
 {
     BOOL ret = TRUE;
 
     if (!buffer && buflen)
     {
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
 
@@ -1241,7 +1295,7 @@ static BOOL set_option( struct object_header *hdr, DWORD option, void *buffer, D
     {
         if (buflen != sizeof(DWORD_PTR))
         {
-            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
 
@@ -1253,7 +1307,7 @@ static BOOL set_option( struct object_header *hdr, DWORD option, void *buffer, D
         else
         {
             FIXME("unimplemented option %u\n", option);
-            SetLastError( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
+            set_last_error( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
             return FALSE;
         }
         break;
@@ -1267,20 +1321,20 @@ static BOOL set_option( struct object_header *hdr, DWORD option, void *buffer, D
 BOOL WINAPI WinHttpSetOption( HINTERNET handle, DWORD option, LPVOID buffer, DWORD buflen )
 {
     BOOL ret = FALSE;
-    struct object_header *hdr;
+    object_header_t *hdr;
 
     TRACE("%p, %u, %p, %u\n", handle, option, buffer, buflen);
 
     if (!(hdr = grab_object( handle )))
     {
-        SetLastError( ERROR_INVALID_HANDLE );
+        set_last_error( ERROR_INVALID_HANDLE );
         return FALSE;
     }
 
     ret = set_option( hdr, option, buffer, buflen );
 
     release_object( hdr );
-    if (ret) SetLastError( ERROR_SUCCESS );
+    if (ret) set_last_error( ERROR_SUCCESS );
     return ret;
 }
 
@@ -1384,7 +1438,7 @@ BOOL WINAPI WinHttpDetectAutoProxyConfigUrl( DWORD flags, LPWSTR *url )
 
     if (!flags || !url)
     {
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
     if (get_system_proxy_autoconfig_url( system_url, sizeof(system_url) ))
@@ -1393,7 +1447,7 @@ BOOL WINAPI WinHttpDetectAutoProxyConfigUrl( DWORD flags, LPWSTR *url )
 
         if (!(urlW = strdupAW( system_url ))) return FALSE;
         *url = urlW;
-        SetLastError( ERROR_SUCCESS );
+        set_last_error( ERROR_SUCCESS );
         return TRUE;
     }
     if (flags & WINHTTP_AUTO_DETECT_TYPE_DHCP)
@@ -1447,10 +1501,10 @@ BOOL WINAPI WinHttpDetectAutoProxyConfigUrl( DWORD flags, LPWSTR *url )
     }
     if (!ret)
     {
-        SetLastError( ERROR_WINHTTP_AUTODETECTION_FAILED );
+        set_last_error( ERROR_WINHTTP_AUTODETECTION_FAILED );
         *url = NULL;
     }
-    else SetLastError( ERROR_SUCCESS );
+    else set_last_error( ERROR_SUCCESS );
     return ret;
 }
 
@@ -1609,7 +1663,7 @@ BOOL WINAPI WinHttpGetDefaultProxyConfiguration( WINHTTP_PROXY_INFO *info )
         info->lpszProxy       = NULL;
         info->lpszProxyBypass = NULL;
     }
-    SetLastError( ERROR_SUCCESS );
+    set_last_error( ERROR_SUCCESS );
     return TRUE;
 }
 
@@ -1629,7 +1683,7 @@ BOOL WINAPI WinHttpGetIEProxyConfigForCurrentUser( WINHTTP_CURRENT_USER_IE_PROXY
 
     if (!config)
     {
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
     memset( config, 0, sizeof(*config) );
@@ -1692,7 +1746,7 @@ done:
         GlobalFree( config->lpszProxyBypass );
         config->lpszProxyBypass = NULL;
     }
-    else SetLastError( ERROR_SUCCESS );
+    else set_last_error( ERROR_SUCCESS );
     return ret;
 }
 
@@ -1786,7 +1840,7 @@ done:
     WinHttpCloseHandle( con );
     WinHttpCloseHandle( ses );
     heap_free( hostname );
-    if (!buffer) SetLastError( ERROR_WINHTTP_UNABLE_TO_DOWNLOAD_SCRIPT );
+    if (!buffer) set_last_error( ERROR_WINHTTP_UNABLE_TO_DOWNLOAD_SCRIPT );
     return buffer;
 }
 
@@ -1849,22 +1903,22 @@ BOOL WINAPI WinHttpGetProxyForUrl( HINTERNET hsession, LPCWSTR url, WINHTTP_AUTO
 {
     WCHAR *detected_pac_url = NULL;
     const WCHAR *pac_url;
-    struct session *session;
+    session_t *session;
     char *script;
     DWORD size;
     BOOL ret = FALSE;
 
     TRACE("%p, %s, %p, %p\n", hsession, debugstr_w(url), options, info);
 
-    if (!(session = (struct session *)grab_object( hsession )))
+    if (!(session = (session_t *)grab_object( hsession )))
     {
-        SetLastError( ERROR_INVALID_HANDLE );
+        set_last_error( ERROR_INVALID_HANDLE );
         return FALSE;
     }
     if (session->hdr.type != WINHTTP_HANDLE_TYPE_SESSION)
     {
         release_object( &session->hdr );
-        SetLastError( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
+        set_last_error( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
         return FALSE;
     }
     if (!url || !options || !info ||
@@ -1874,7 +1928,7 @@ BOOL WINAPI WinHttpGetProxyForUrl( HINTERNET hsession, LPCWSTR url, WINHTTP_AUTO
          (options->dwFlags & WINHTTP_AUTOPROXY_CONFIG_URL)))
     {
         release_object( &session->hdr );
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
     if (options->dwFlags & WINHTTP_AUTOPROXY_AUTO_DETECT &&
@@ -1893,7 +1947,7 @@ BOOL WINAPI WinHttpGetProxyForUrl( HINTERNET hsession, LPCWSTR url, WINHTTP_AUTO
 done:
     GlobalFree( detected_pac_url );
     release_object( &session->hdr );
-    if (ret) SetLastError( ERROR_SUCCESS );
+    if (ret) set_last_error( ERROR_SUCCESS );
     return ret;
 }
 
@@ -1911,7 +1965,7 @@ BOOL WINAPI WinHttpSetDefaultProxyConfiguration( WINHTTP_PROXY_INFO *info )
 
     if (!info)
     {
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
     switch (info->dwAccessType)
@@ -1921,14 +1975,14 @@ BOOL WINAPI WinHttpSetDefaultProxyConfiguration( WINHTTP_PROXY_INFO *info )
     case WINHTTP_ACCESS_TYPE_NAMED_PROXY:
         if (!info->lpszProxy)
         {
-            SetLastError( ERROR_INVALID_PARAMETER );
+            set_last_error( ERROR_INVALID_PARAMETER );
             return FALSE;
         }
         /* Only ASCII characters are allowed */
         for (src = info->lpszProxy; *src; src++)
             if (*src > 0x7f)
             {
-                SetLastError( ERROR_INVALID_PARAMETER );
+                set_last_error( ERROR_INVALID_PARAMETER );
                 return FALSE;
             }
         if (info->lpszProxyBypass)
@@ -1936,13 +1990,13 @@ BOOL WINAPI WinHttpSetDefaultProxyConfiguration( WINHTTP_PROXY_INFO *info )
             for (src = info->lpszProxyBypass; *src; src++)
                 if (*src > 0x7f)
                 {
-                    SetLastError( ERROR_INVALID_PARAMETER );
+                    set_last_error( ERROR_INVALID_PARAMETER );
                     return FALSE;
                 }
         }
         break;
     default:
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
 
@@ -2001,7 +2055,7 @@ BOOL WINAPI WinHttpSetDefaultProxyConfiguration( WINHTTP_PROXY_INFO *info )
         }
         RegCloseKey( key );
     }
-    if (ret) SetLastError( ERROR_SUCCESS );
+    if (ret) set_last_error( ERROR_SUCCESS );
     return ret;
 }
 
@@ -2011,14 +2065,14 @@ BOOL WINAPI WinHttpSetDefaultProxyConfiguration( WINHTTP_PROXY_INFO *info )
 WINHTTP_STATUS_CALLBACK WINAPI WinHttpSetStatusCallback( HINTERNET handle, WINHTTP_STATUS_CALLBACK callback,
                                                          DWORD flags, DWORD_PTR reserved )
 {
-    struct object_header *hdr;
+    object_header_t *hdr;
     WINHTTP_STATUS_CALLBACK ret;
 
     TRACE("%p, %p, 0x%08x, 0x%lx\n", handle, callback, flags, reserved);
 
     if (!(hdr = grab_object( handle )))
     {
-        SetLastError( ERROR_INVALID_HANDLE );
+        set_last_error( ERROR_INVALID_HANDLE );
         return WINHTTP_INVALID_STATUS_CALLBACK;
     }
     ret = hdr->callback;
@@ -2026,7 +2080,7 @@ WINHTTP_STATUS_CALLBACK WINAPI WinHttpSetStatusCallback( HINTERNET handle, WINHT
     hdr->notify_mask = flags;
 
     release_object( hdr );
-    SetLastError( ERROR_SUCCESS );
+    set_last_error( ERROR_SUCCESS );
     return ret;
 }
 
@@ -2036,19 +2090,19 @@ WINHTTP_STATUS_CALLBACK WINAPI WinHttpSetStatusCallback( HINTERNET handle, WINHT
 BOOL WINAPI WinHttpSetTimeouts( HINTERNET handle, int resolve, int connect, int send, int receive )
 {
     BOOL ret = TRUE;
-    struct object_header *hdr;
+    object_header_t *hdr;
 
     TRACE("%p, %d, %d, %d, %d\n", handle, resolve, connect, send, receive);
 
     if (resolve < -1 || connect < -1 || send < -1 || receive < -1)
     {
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
 
     if (!(hdr = grab_object( handle )))
     {
-        SetLastError( ERROR_INVALID_HANDLE );
+        set_last_error( ERROR_INVALID_HANDLE );
         return FALSE;
     }
 
@@ -2056,7 +2110,7 @@ BOOL WINAPI WinHttpSetTimeouts( HINTERNET handle, int resolve, int connect, int 
     {
     case WINHTTP_HANDLE_TYPE_REQUEST:
     {
-        struct request *request = (struct request *)hdr;
+        request_t *request = (request_t *)hdr;
         request->connect_timeout = connect;
 
         if (resolve < 0) resolve = 0;
@@ -2077,7 +2131,7 @@ BOOL WINAPI WinHttpSetTimeouts( HINTERNET handle, int resolve, int connect, int 
     }
     case WINHTTP_HANDLE_TYPE_SESSION:
     {
-        struct session *session = (struct session *)hdr;
+        session_t *session = (session_t *)hdr;
         session->connect_timeout = connect;
 
         if (resolve < 0) resolve = 0;
@@ -2091,11 +2145,11 @@ BOOL WINAPI WinHttpSetTimeouts( HINTERNET handle, int resolve, int connect, int 
         break;
     }
     default:
-        SetLastError( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
+        set_last_error( ERROR_WINHTTP_INCORRECT_HANDLE_TYPE );
         ret = FALSE;
     }
     release_object( hdr );
-    if (ret) SetLastError( ERROR_SUCCESS );
+    if (ret) set_last_error( ERROR_SUCCESS );
     return ret;
 }
 
@@ -2120,7 +2174,7 @@ BOOL WINAPI WinHttpTimeFromSystemTime( const SYSTEMTIME *time, LPWSTR string )
 
     if (!time || !string)
     {
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
 
@@ -2133,7 +2187,7 @@ BOOL WINAPI WinHttpTimeFromSystemTime( const SYSTEMTIME *time, LPWSTR string )
               time->wMinute,
               time->wSecond );
 
-    SetLastError( ERROR_SUCCESS );
+    set_last_error( ERROR_SUCCESS );
     return TRUE;
 }
 
@@ -2150,7 +2204,7 @@ BOOL WINAPI WinHttpTimeToSystemTime( LPCWSTR string, SYSTEMTIME *time )
 
     if (!string || !time)
     {
-        SetLastError( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
 
@@ -2161,7 +2215,7 @@ BOOL WINAPI WinHttpTimeToSystemTime( LPCWSTR string, SYSTEMTIME *time )
      *  a SYSTEMTIME structure.
      */
 
-    SetLastError( ERROR_SUCCESS );
+    set_last_error( ERROR_SUCCESS );
 
     while (*s && !isalphaW( *s )) s++;
     if (s[0] == '\0' || s[1] == '\0' || s[2] == '\0') return TRUE;

@@ -96,6 +96,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
     {"GL_ARB_internalformat_query2",        ARB_INTERNALFORMAT_QUERY2     },
     {"GL_ARB_map_buffer_alignment",         ARB_MAP_BUFFER_ALIGNMENT      },
     {"GL_ARB_map_buffer_range",             ARB_MAP_BUFFER_RANGE          },
+    {"GL_ARB_multi_bind",                   ARB_MULTI_BIND                },
     {"GL_ARB_multisample",                  ARB_MULTISAMPLE               },
     {"GL_ARB_multitexture",                 ARB_MULTITEXTURE              },
     {"GL_ARB_occlusion_query",              ARB_OCCLUSION_QUERY           },
@@ -833,6 +834,13 @@ static BOOL match_broken_viewport_subpixel_bits(const struct wined3d_gl_info *gl
     return !wined3d_caps_gl_ctx_test_viewport_subpixel_bits(ctx);
 }
 
+static BOOL match_mesa(const struct wined3d_gl_info *gl_info, struct wined3d_caps_gl_ctx *ctx,
+        const char *gl_renderer, enum wined3d_gl_vendor gl_vendor,
+        enum wined3d_pci_vendor card_vendor, enum wined3d_pci_device device)
+{
+    return gl_vendor == GL_VENDOR_MESA;
+}
+
 static void quirk_apple_glsl_constants(struct wined3d_gl_info *gl_info)
 {
     /* MacOS needs uniforms for relative addressing offsets. This can
@@ -985,6 +993,13 @@ static void quirk_broken_viewport_subpixel_bits(struct wined3d_gl_info *gl_info)
         TRACE("Disabling ARB_clip_control.\n");
         gl_info->supported[ARB_CLIP_CONTROL] = FALSE;
     }
+}
+
+static void quirk_use_client_storage_bit(struct wined3d_gl_info *gl_info)
+{
+    // Using ARB_buffer_storage on Mesa requires the GL_CLIENT_STORAGE_BIT to be
+    // set to use GTT for immutable buffers on radeon (see PIPE_USAGE_STREAM).
+    gl_info->quirks |= WINED3D_QUIRK_USE_CLIENT_STORAGE_BIT;
 }
 
 static const struct wined3d_gpu_description *query_gpu_description(const struct wined3d_gl_info *gl_info,
@@ -1140,6 +1155,11 @@ static void fixup_extensions(struct wined3d_gl_info *gl_info, struct wined3d_cap
             quirk_broken_viewport_subpixel_bits,
             "NVIDIA viewport subpixel bits bug"
         },
+        {
+            match_mesa,
+            quirk_use_client_storage_bit,
+            "Use GL_CLIENT_STORAGE_BIT for persistent buffers on mesa",
+        },
     };
 
     for (i = 0; i < ARRAY_SIZE(quirk_table); ++i)
@@ -1203,7 +1223,6 @@ static enum wined3d_gl_vendor wined3d_guess_gl_vendor(const struct wined3d_gl_in
             || strstr(gl_vendor_string, "DRI R300 Project")
             || strstr(gl_vendor_string, "Tungsten Graphics, Inc")
             || strstr(gl_vendor_string, "VMware, Inc.")
-            || strstr(gl_vendor_string, "Red Hat")
             || strstr(gl_vendor_string, "Intel")
             || strstr(gl_renderer, "Mesa")
             || strstr(gl_renderer, "Gallium")
@@ -1243,10 +1262,6 @@ static enum wined3d_pci_vendor wined3d_guess_card_vendor(const char *gl_vendor_s
             || strstr(gl_renderer, "i915")
             || strstr(gl_vendor_string, "Intel Inc."))
         return HW_VENDOR_INTEL;
-
-    if (strstr(gl_vendor_string, "Red Hat")
-            || strstr(gl_renderer, "virgl"))
-        return HW_VENDOR_REDHAT;
 
     if (strstr(gl_renderer, "SVGA3D"))
         return HW_VENDOR_VMWARE;
@@ -1812,10 +1827,6 @@ cards_nvidia_mesa[] =
     {"nv04",                        CARD_NVIDIA_RIVA_TNT},
     {"nv03",                        CARD_NVIDIA_RIVA_128},
 },
-cards_redhat[] =
-{
-    {"virgl",                       CARD_REDHAT_VIRGL},
-},
 cards_vmware[] =
 {
     {"SVGA3D",                      CARD_VMWARE_SVGA3D},
@@ -1839,10 +1850,6 @@ nvidia_gl_vendor_table[] =
     {GL_VENDOR_APPLE,   "Apple OSX NVidia binary driver",   cards_nvidia_binary,    ARRAY_SIZE(cards_nvidia_binary)},
     {GL_VENDOR_MESA,    "Mesa Nouveau driver",              cards_nvidia_mesa,      ARRAY_SIZE(cards_nvidia_mesa)},
     {GL_VENDOR_NVIDIA,  "NVIDIA binary driver",             cards_nvidia_binary,    ARRAY_SIZE(cards_nvidia_binary)},
-},
-redhat_gl_vendor_table[] =
-{
-    {GL_VENDOR_MESA,    "Red Hat driver",                   cards_redhat,           ARRAY_SIZE(cards_redhat)},
 },
 vmware_gl_vendor_table[] =
 {
@@ -1890,7 +1897,6 @@ card_vendor_table[] =
 {
     {HW_VENDOR_AMD,    "AMD",    amd_gl_vendor_table,    ARRAY_SIZE(amd_gl_vendor_table)},
     {HW_VENDOR_NVIDIA, "NVIDIA", nvidia_gl_vendor_table, ARRAY_SIZE(nvidia_gl_vendor_table)},
-    {HW_VENDOR_REDHAT, "Red Hat",redhat_gl_vendor_table, ARRAY_SIZE(redhat_gl_vendor_table)},
     {HW_VENDOR_VMWARE, "VMware", vmware_gl_vendor_table, ARRAY_SIZE(vmware_gl_vendor_table)},
     {HW_VENDOR_INTEL,  "Intel",  intel_gl_vendor_table,  ARRAY_SIZE(intel_gl_vendor_table)},
 };
@@ -2180,6 +2186,8 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
     /* GL_ARB_map_buffer_range */
     USE_GL_FUNC(glFlushMappedBufferRange)
     USE_GL_FUNC(glMapBufferRange)
+    /* GL_ARB_multi_bind */
+    USE_GL_FUNC(glBindBuffersRange)
     /* GL_ARB_multisample */
     USE_GL_FUNC(glSampleCoverageARB)
     /* GL_ARB_multitexture */
@@ -3364,6 +3372,7 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
         {ARB_BUFFER_STORAGE,               MAKEDWORD_VERSION(4, 4)},
         {ARB_CLEAR_TEXTURE,                MAKEDWORD_VERSION(4, 4)},
         {ARB_QUERY_BUFFER_OBJECT,          MAKEDWORD_VERSION(4, 4)},
+        {ARB_MULTI_BIND,                   MAKEDWORD_VERSION(4, 4)},
 
         {ARB_CLIP_CONTROL,                 MAKEDWORD_VERSION(4, 5)},
         {ARB_CULL_DISTANCE,                MAKEDWORD_VERSION(4, 5)},
@@ -3886,8 +3895,9 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
     TRACE("Reporting (fake) driver version 0x%08x-0x%08x.\n",
             driver_info->version_high, driver_info->version_low);
 
+    adapter->vram_bytes = driver_info->vram_bytes;
     adapter->vram_bytes_used = 0;
-    TRACE("Emulating 0x%s bytes of video ram.\n", wine_dbgstr_longlong(driver_info->vram_bytes));
+    TRACE("Emulating 0x%s bytes of video ram.\n", wine_dbgstr_longlong(adapter->vram_bytes));
 
     gl_ext_emul_mask = adapter->vertex_pipe->vp_get_emul_mask(gl_info)
             | adapter->fragment_pipe->get_emul_mask(gl_info);

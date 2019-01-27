@@ -629,11 +629,6 @@ static HRESULT WINAPI upnpnat_QueryInterface(IUPnPNAT *iface, REFIID riid, void 
     {
         *object = iface;
     }
-    else if(IsEqualGUID( riid, &IID_IProvideClassInfo))
-    {
-        TRACE("IProvideClassInfo not supported.\n");
-        return E_NOINTERFACE;
-    }
     else
     {
         FIXME("interface %s not implemented\n", debugstr_guid(riid));

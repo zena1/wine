@@ -29,6 +29,7 @@
 #include "winbase.h"
 #include "objbase.h"
 #include "ocidl.h"
+#include "initguid.h"
 #include "comcat.h"
 #include "olectl.h"
 

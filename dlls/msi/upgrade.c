@@ -55,59 +55,45 @@ static BOOL check_language(DWORD lang1, LPCWSTR lang2, DWORD attributes)
         return (lang1 == langdword);
 }
 
-static BOOL find_product( const WCHAR *list, const WCHAR *product )
+static void append_productcode(MSIPACKAGE* package, LPCWSTR action_property,
+                               LPCWSTR productid)
 {
-    const WCHAR *p = list, *q;
-
-    if (!list) return FALSE;
-    for (;;)
-    {
-        while (*p && *p != '{') p++;
-        if (*p != '{') return FALSE;
-        q = p;
-        while (*q && *q != '}') q++;
-        if (*q != '}') return FALSE;
-        q++;
-        if (q - p < strlenW( product )) return FALSE;
-        if (!memcmp( p, product, (q - p) * sizeof(WCHAR) )) return TRUE;
-        p = q + 1;
-        while (*p && *p != ';') p++;
-        if (*p != ';') break;
-    }
-
-    return FALSE;
-}
-
-static void append_productcode( MSIPACKAGE *package, const WCHAR *action_prop, const WCHAR *product )
-{
-    WCHAR *prop, *newprop;
-    DWORD len = 0;
+    LPWSTR prop;
+    LPWSTR newprop;
+    DWORD len;
     UINT r;
 
-    prop = msi_dup_property( package->db, action_prop );
-    if (find_product( prop, product ))
-    {
-        TRACE( "related product property %s already contains %s\n", debugstr_w(action_prop), debugstr_w(product) );
-        msi_free( prop );
-        return;
-    }
+    prop = msi_dup_property(package->db, action_property );
+    if (prop)
+        len = strlenW(prop);
+    else
+        len = 0;
 
-    if (prop) len += strlenW( prop );
-    len += strlenW( product ) + 2;
-    if (!(newprop = msi_alloc( len * sizeof(WCHAR) ))) return;
+    /*separator*/
+    len ++;
+
+    len += strlenW(productid);
+
+    /*null*/
+    len++;
+
+    newprop = msi_alloc( len*sizeof(WCHAR) );
+
     if (prop)
     {
-        strcpyW( newprop, prop );
-        strcatW( newprop, szSemiColon );
+        strcpyW(newprop,prop);
+        strcatW(newprop,szSemiColon);
     }
-    else newprop[0] = 0;
-    strcatW( newprop, product );
+    else
+        newprop[0] = 0;
+    strcatW(newprop,productid);
 
-    r = msi_set_property( package->db, action_prop, newprop, -1 );
-    if (r == ERROR_SUCCESS && !strcmpW( action_prop, szSourceDir ))
+    r = msi_set_property( package->db, action_property, newprop, -1 );
+    if (r == ERROR_SUCCESS && !strcmpW( action_property, szSourceDir ))
         msi_reset_source_folders( package );
 
-    TRACE( "related product property %s now %s\n", debugstr_w(action_prop), debugstr_w(newprop) );
+    TRACE("Found Related Product... %s now %s\n",
+          debugstr_w(action_property), debugstr_w(newprop));
 
     msi_free( prop );
     msi_free( newprop );

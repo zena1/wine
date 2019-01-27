@@ -5197,8 +5197,6 @@ static void test_GetDefaultColumn(void)
         hr = IShellFolder2_GetDefaultColumn(folder, 0, &sort, NULL);
         ok(hr == E_NOTIMPL, "Unexpected hr %#x.\n", hr);
         ok(sort == 123, "Unexpected default column.\n");
-
-        IShellFolder2_Release(folder);
     }
 
     CoUninitialize();

@@ -638,24 +638,12 @@ static HRESULT WINAPI d3drm1_LoadTexture(IDirect3DRM *iface,
     struct d3drm_texture *object;
     HRESULT hr;
 
-    TRACE("iface %p, filename %s, texture %p.\n", iface, debugstr_a(filename), texture);
-
-    if (!texture)
-        return D3DRMERR_BADVALUE;
+    FIXME("iface %p, filename %s, texture %p stub!\n", iface, debugstr_a(filename), texture);
 
     if (FAILED(hr = d3drm_texture_create(&object, iface)))
         return hr;
 
     *texture = &object->IDirect3DRMTexture_iface;
-    if (FAILED(hr = IDirect3DRMTexture_InitFromFile(*texture, filename)))
-    {
-        IDirect3DRMTexture_Release(*texture);
-        *texture = NULL;
-        if (!filename)
-            return D3DRMERR_BADVALUE;
-
-        return hr == D3DRMERR_BADOBJECT ? D3DRMERR_FILENOTFOUND : hr;
-    }
 
     return D3DRM_OK;
 }
@@ -1155,22 +1143,15 @@ static HRESULT WINAPI d3drm2_LoadTexture(IDirect3DRM2 *iface,
         const char *filename, IDirect3DRMTexture2 **texture)
 {
     struct d3drm *d3drm = impl_from_IDirect3DRM2(iface);
-    IDirect3DRMTexture3 *texture3;
+    struct d3drm_texture *object;
     HRESULT hr;
 
-    TRACE("iface %p, filename %s, texture %p.\n", iface, debugstr_a(filename), texture);
+    FIXME("iface %p, filename %s, texture %p stub!\n", iface, debugstr_a(filename), texture);
 
-    if (!texture)
-        return D3DRMERR_BADVALUE;
-
-    if (FAILED(hr = IDirect3DRM3_LoadTexture(&d3drm->IDirect3DRM3_iface, filename, &texture3)))
-    {
-        *texture = NULL;
+    if (FAILED(hr = d3drm_texture_create(&object, &d3drm->IDirect3DRM_iface)))
         return hr;
-    }
 
-    hr = IDirect3DRMTexture3_QueryInterface(texture3, &IID_IDirect3DRMTexture2, (void **)texture);
-    IDirect3DRMTexture3_Release(texture3);
+    *texture = &object->IDirect3DRMTexture2_iface;
 
     return hr;
 }
@@ -1837,21 +1818,12 @@ static HRESULT WINAPI d3drm3_LoadTexture(IDirect3DRM3 *iface,
     struct d3drm_texture *object;
     HRESULT hr;
 
-    TRACE("iface %p, filename %s, texture %p.\n", iface, debugstr_a(filename), texture);
-
-    if (!texture)
-        return D3DRMERR_BADVALUE;
+    FIXME("iface %p, filename %s, texture %p stub!\n", iface, debugstr_a(filename), texture);
 
     if (FAILED(hr = d3drm_texture_create(&object, &d3drm->IDirect3DRM_iface)))
         return hr;
 
     *texture = &object->IDirect3DRMTexture3_iface;
-    if (FAILED(hr = IDirect3DRMTexture3_InitFromFile(*texture, filename)))
-    {
-        IDirect3DRMTexture3_Release(*texture);
-        *texture = NULL;
-        return hr == D3DRMERR_BADOBJECT ? D3DRMERR_FILENOTFOUND : hr;
-    }
 
     return D3DRM_OK;
 }

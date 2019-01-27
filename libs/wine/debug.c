@@ -167,7 +167,7 @@ static void parse_options( const char *str )
 
         if (p > opt)
         {
-            for (i = 0; i < ARRAY_SIZE(debug_classes); i++)
+            for (i = 0; i < sizeof(debug_classes)/sizeof(debug_classes[0]); i++)
             {
                 int len = strlen(debug_classes[i]);
                 if (len != (p - opt)) continue;
@@ -178,7 +178,7 @@ static void parse_options( const char *str )
                     break;
                 }
             }
-            if (i == ARRAY_SIZE(debug_classes)) /* bad class name, skip it */
+            if (i == sizeof(debug_classes)/sizeof(debug_classes[0])) /* bad class name, skip it */
                 continue;
         }
         else
@@ -291,7 +291,7 @@ static char *get_temp_buffer( size_t size )
     char *ret;
     int idx;
 
-    idx = interlocked_xchg_add( &pos, 1 ) % ARRAY_SIZE(list);
+    idx = interlocked_xchg_add( &pos, 1 ) % (sizeof(list)/sizeof(list[0]));
     if ((ret = realloc( list[idx], size ))) list[idx] = ret;
     return ret;
 }
@@ -434,7 +434,7 @@ static int default_dbg_vlog( enum __wine_debug_class cls, struct __wine_debug_ch
         ret += wine_dbg_printf( "%04x:", GetCurrentProcessId() );
     ret += wine_dbg_printf( "%04x:", GetCurrentThreadId() );
 #endif
-    if (cls < ARRAY_SIZE(debug_classes))
+    if (cls < sizeof(debug_classes)/sizeof(debug_classes[0]))
         ret += wine_dbg_printf( "%s:%s:%s ", debug_classes[cls], channel->name, func );
     if (format)
         ret += funcs.dbg_vprintf( format, args );

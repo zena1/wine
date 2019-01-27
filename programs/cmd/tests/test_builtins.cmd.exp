@@ -479,20 +479,6 @@ foo
 I'm here!@space@
 I'm here!@space@
 I'm here!@space@
------------- Testing 'choice' ------------
-@todo_wine@Example message [A,B,C]?A@or_broken@choice unavailable
-@todo_wine@1@or_broken@9009
-@todo_wine@Example message [A,B,C]?B@or_broken@choice unavailable
-@todo_wine@2@or_broken@9009
-@todo_wine@[D,E,F]?F@or_broken@choice unavailable
-@todo_wine@3@or_broken@9009
-@todo_wine@[A,B,C,X,Y,Z]?Y@or_broken@choice unavailable
-@todo_wine@5@or_broken@9009
-@todo_wine@A@or_broken@choice unavailable
-@todo_wine@1@or_broken@9009
-@todo_wine@[a,b,c,A,B,C]?A@or_broken@choice unavailable
-@todo_wine@4@or_broken@9009
-@todo_wine@255@or_broken@9009
 ------------ Testing variable expansion ------------
 ~p0 should be path containing batch file
 @path@
@@ -1406,22 +1392,22 @@ bar\baz removed
 @drive@@path@foobar
 @pwd@
 ------------ Testing attrib ------------
-A@spaces@@drive@@path@foobar\foo@or_broken@A       I@spaces@@drive@@path@foobar\foo
+A            @drive@@path@foobar\foo@or_broken@A          @drive@@path@foobar\foo@or_broken@A       I    @drive@@path@foobar\foo
 --- read-only attribute
-A    R@spaces@@drive@@path@foobar\foo@or_broken@A    R  I@spaces@@drive@@path@foobar\foo
+A    R       @drive@@path@foobar\foo@or_broken@A    R     @drive@@path@foobar\foo@or_broken@A    R  I    @drive@@path@foobar\foo
 foo
 foo original contents
 Read-only file not deleted
 Read-only file forcibly deleted
 --- recursive behaviour
-A@spaces@@drive@@path@foobar\baz\level2@or_broken@A       I@spaces@@drive@@path@foobar\baz\level2
-A    R@spaces@@drive@@path@foobar\level1@or_broken@A    R  I@spaces@@drive@@path@foobar\level1
-A    R@spaces@@drive@@path@foobar\baz\level2@or_broken@A    R  I@spaces@@drive@@path@foobar\baz\level2
-A@spaces@@drive@@path@foobar\bar@or_broken@A       I@spaces@@drive@@path@foobar\bar
+A            @drive@@path@foobar\baz\level2@or_broken@A          @drive@@path@foobar\baz\level2@or_broken@A       I    @drive@@path@foobar\baz\level2
+A    R       @drive@@path@foobar\level1@or_broken@A    R     @drive@@path@foobar\level1@or_broken@A    R  I    @drive@@path@foobar\level1
+A    R       @drive@@path@foobar\baz\level2@or_broken@A    R     @drive@@path@foobar\baz\level2@or_broken@A    R  I    @drive@@path@foobar\baz\level2
+A            @drive@@path@foobar\bar@or_broken@A          @drive@@path@foobar\bar@or_broken@A       I    @drive@@path@foobar\bar
 --- folders processing
-@spaces@@drive@@path@foobar@or_broken@        I@spaces@@drive@@path@foobar
-@todo_wine@     R@spaces@@drive@@path@foobar\baz@or_broken@@spaces@@drive@@path@foobar\baz@or_broken@     R  I@spaces@@drive@@path@foobar\baz
-A@spaces@@drive@@path@foobar\baz\toto@or_broken@A       I@spaces@@drive@@path@foobar\baz\toto
+             @drive@@path@foobar@or_broken@           @drive@@path@foobar@or_broken@        I    @drive@@path@foobar
+@todo_wine@     R       @drive@@path@foobar\baz@or_broken@     R     @drive@@path@foobar\baz@or_broken@           @drive@@path@foobar\baz@or_broken@     R  I    @drive@@path@foobar\baz
+A            @drive@@path@foobar\baz\toto@or_broken@A          @drive@@path@foobar\baz\toto@or_broken@A       I    @drive@@path@foobar\baz\toto
 toto
 lulu
 file created in read-only dir

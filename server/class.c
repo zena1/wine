@@ -76,8 +76,6 @@ static struct window_class *create_class( struct process *process, int extra_byt
 
 static void destroy_class( struct window_class *class )
 {
-    release_global_atom( NULL, class->atom );
-    release_global_atom( NULL, class->base_atom );
     list_remove( &class->entry );
     release_object( class->process );
     free( class );
@@ -141,7 +139,7 @@ int is_hwnd_message_class( struct window_class *class )
 
 atom_t get_class_atom( struct window_class *class )
 {
-    return class->base_atom;
+    return class->atom;
 }
 
 client_ptr_t get_class_client_ptr( struct window_class *class )
