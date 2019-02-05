@@ -51,7 +51,6 @@ WINE_DECLARE_DEBUG_CHANNEL(winediag);
 #define GNUTLS_CIPHER_AES_128_GCM 93
 #define GNUTLS_CIPHER_AES_256_GCM 94
 #define GNUTLS_PK_ECC 4
-#define GNUTLS_PK_ECDSA 4
 
 #define GNUTLS_CURVE_TO_BITS(curve) (unsigned int)(((unsigned int)1<<31)|((unsigned int)(curve)))
 
@@ -63,6 +62,10 @@ typedef enum
     GNUTLS_ECC_CURVE_SECP384R1,
     GNUTLS_ECC_CURVE_SECP521R1,
 } gnutls_ecc_curve_t;
+#endif
+
+#ifndef GNUTLS_PK_ECDSA
+#define GNUTLS_PK_ECDSA 4
 #endif
 
 /* Not present in gnutls version < 3.0 */
