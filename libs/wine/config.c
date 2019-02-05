@@ -33,6 +33,13 @@
 #ifdef HAVE_PWD_H
 #include <pwd.h>
 #endif
+#ifdef __APPLE__
+#include <crt_externs.h>
+#include <spawn.h>
+#ifndef _POSIX_SPAWN_DISABLE_ASLR
+#define _POSIX_SPAWN_DISABLE_ASLR 0x0100
+#endif
+#endif
 #include "wine/library.h"
 
 static const char server_config_dir[] = "/.wine";        /* config dir relative to $HOME */
@@ -660,10 +667,13 @@ wine_patch_data[] =
 {
     { "Alex Henrie", "mountmgr.sys: Do a device check before returning a default serial port name.", 1 },
     { "Alexander E. Patrakov", "dsound: Add a linear resampler for use with a large number of mixing buffers.", 2 },
+    { "Alistair Leslie-Hughes", "bcrypt: Add BCryptDeriveKey stub.", 1 },
+    { "Alistair Leslie-Hughes", "bcrypt: Add BCryptDestroySecret/BCryptSecretAgreement stubs.", 1 },
     { "Alistair Leslie-Hughes", "d3dx9: Implement D3DXComputeTangent.", 1 },
     { "Alistair Leslie-Hughes", "d3dx9_36: ID3DXFont_DrawText calc_rect can be null.", 1 },
     { "Alistair Leslie-Hughes", "d3dx9_36: Support NULL terminated strings in ID3DXFont_DrawText.", 1 },
     { "Alistair Leslie-Hughes", "hid: Implement HidD_FlushQueue.", 1 },
+    { "Alistair Leslie-Hughes", "httpapi: Fake success from HttpCreateServerSession.", 1 },
     { "Alistair Leslie-Hughes", "include: Add VSS writer enum.", 1 },
     { "Alistair Leslie-Hughes", "include: Add more VSS_* typedefs.", 1 },
     { "Alistair Leslie-Hughes", "include: Add vsbackup.idl.", 1 },
@@ -676,6 +686,7 @@ wine_patch_data[] =
     { "Alistair Leslie-Hughes", "setupapi: Add SetupDiInstallDeviceInterfaces.", 1 },
     { "Alistair Leslie-Hughes", "setupapi: Add SetupDiRegisterCoDeviceInstallers stub.", 1 },
     { "Alistair Leslie-Hughes", "setupapi: Added CM_Request_Device_EjectA/W stub.", 1 },
+    { "Alistair Leslie-Hughes", "urlmon/tests: Add FTP encoded url test.", 1 },
     { "Alistair Leslie-Hughes", "user32/msgbox: Support WM_COPY Message.", 1 },
     { "Alistair Leslie-Hughes", "user32/msgbox: Use a windows hook to trap Ctrl+C.", 1 },
     { "Alistair Leslie-Hughes", "vssapi: Add ?CreateVssBackupComponents@@YGJPAPAVIVssBackupComponents@@@Z stub.", 1 },
@@ -702,11 +713,15 @@ wine_patch_data[] =
     { "Andrew Wesie", "ntdll: Refactor RtlCreateUserThread into NtCreateThreadEx.", 1 },
     { "Andrew Wesie", "ntdll: Unsupported stub for MemoryWorkingSetExInformation.", 1 },
     { "Andrew Wesie", "wined3d: Use glReadPixels for RT texture download.", 1 },
+    { "Andrey Gusev", "d3dx9_*: Add D3DXSHProjectCubeMap stub.", 1 },
     { "Andrey Gusev", "wmvcore: Implement WMCreateSyncReaderPriv.", 1 },
     { "André Hentschel", "ntdll: Support ISOLATIONAWARE_MANIFEST_RESOURCE_ID range.", 1 },
+    { "André Hentschel", "urlmon: Use unescaped Urls for FTP actions.", 1 },
     { "André Hentschel", "wpcap: Load libpcap dynamically.", 1 },
     { "Austin English", "advapi32: Add RegLoadAppKeyA/RegLoadAppKeyW stubs.", 1 },
+    { "Austin English", "iphlpapi: Add GetBestRoute2 stub.", 1 },
     { "Bernhard Reiter", "imagehlp: Implement parts of BindImageEx to make freezing Python scripts work.", 1 },
+    { "Bruno Jesus", "mciavi32: Add Support for MCI_MCIAVI_PLAY_FULLSCREEN.", 1 },
     { "Charles Davis", "crypt32: Skip unknown item when decoding a CMS certificate.", 1 },
     { "Christian Costa", "d3d9/tests: Avoid crash when surface and texture creation fails.", 1 },
     { "Christian Costa", "d3dx9: Return D3DFMT_A8R8G8B8 in D3DXGetImageInfoFromFileInMemory for 32 bpp BMP with alpha.", 1 },
@@ -734,14 +749,11 @@ wine_patch_data[] =
     { "Christian Costa", "wined3d: Print FIXME only once in surface_cpu_blt.", 1 },
     { "Claudio Fontana", "kernel32: Allow empty profile section and key name strings.", 1 },
     { "Daniel Jelinski", "wine.inf: Add registry keys for Windows Performance Library.", 1 },
-    { "David Adam", "d3dx9_36/tests: Fix D3DXMatrixTransformation when the scaling matrix is NULL.", 1 },
     { "Dmitry Timoshkov", "comdlg32: Postpone setting ofn->lpstrFileTitle to work around an application bug.", 1 },
-    { "Dmitry Timoshkov", "gdiplus/tests: Add some tests for GdipInitializePalette.", 2 },
     { "Dmitry Timoshkov", "gdiplus/tests: Add some tests for loading TIFF images in various color formats.", 1 },
     { "Dmitry Timoshkov", "gdiplus: Add support for more image color formats.", 1 },
     { "Dmitry Timoshkov", "gdiplus: Change multiplications by additions in the x/y scaler loops.", 1 },
     { "Dmitry Timoshkov", "gdiplus: Change the order of x/y loops in the scaler.", 1 },
-    { "Dmitry Timoshkov", "gdiplus: Implement GdipInitializePalette.", 2 },
     { "Dmitry Timoshkov", "gdiplus: Prefer using pre-multiplied ARGB data in the scaler.", 1 },
     { "Dmitry Timoshkov", "gdiplus: Remove ceilf/floorf calls from bilinear scaler.", 2 },
     { "Dmitry Timoshkov", "include: Make stdole32.idl a public component.", 1 },
@@ -830,7 +842,6 @@ wine_patch_data[] =
     { "Dmitry Timoshkov", "windowscodecs: Add support for 4bpp RGBA format to TIFF decoder.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Add support for CMYK to BGR conversion.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Add support for IMILBitmapScaler interface.", 2 },
-    { "Dmitry Timoshkov", "windowscodecs: Add support for converting to 8bppIndexed format to IWICFormatConverter.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Avoid redundant checks when reading a TIFF tile.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Better follow the GIF spec and don't specify the local color table size if there is no local palette.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Correctly indicate that the global info was written even without the global palette.", 1 },
@@ -839,7 +850,6 @@ wine_patch_data[] =
     { "Dmitry Timoshkov", "windowscodecs: Fix IWICBitmapDecoder::CopyPalette for a not initialized case in the GIF decoder.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Fix behaviour of format converter for indexed formats when NULL or empty palette has been provided.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Fix the SupportsTransparency flag value for various pixel formats.", 1 },
-    { "Dmitry Timoshkov", "windowscodecs: Implement IWICPalette::InitializeFromBitmap.", 5 },
     { "Dmitry Timoshkov", "windowscodecs: Improve compatibility of IMILBitmapSource interface.", 3 },
     { "Dmitry Timoshkov", "windowscodecs: Initialize empty property bag in GIF encoder's CreateNewFrame implementation.", 1 },
     { "Dmitry Timoshkov", "windowscodecs: Move JPEG frame image data initialization from Frame::CopyPixels to Decoder::Initialize.", 2 },
@@ -907,16 +917,14 @@ wine_patch_data[] =
     { "Erich E. Hoover", "ws2_32: Add support for TF_DISCONNECT to TransmitFile.", 1 },
     { "Erich E. Hoover", "ws2_32: Add support for TF_REUSE_SOCKET to TransmitFile.", 1 },
     { "Eriks Dobelis", "winex11: Implement PK_CHANGE for wintab.", 1 },
-    { "Fabian Maurer", "api-ms-win-crt-private-l1-1-0: Update to 10.0.17134.12 (WinBuild.160101.0800).", 1 },
-    { "Fabian Maurer", "ucrtbase: Forward a few functions for dxil.dll and pkgmgr.exe.", 1 },
     { "Felix Yan", "winex11.drv: Update a candidate window's position with over-the-spot style.", 2 },
     { "Firerat", "winecfg: Toggle upstream CSMT implementation.", 1},
     { "Gabriel Ivăncescu", "shell32/iconcache: Generate icons from available icons if some icon sizes failed to load.", 1 },
     { "Gijs Vermeulen", "imm32: Only generate 'WM_IME_SETCONTEXT' message if window has focus.", 1 },
-    { "Gijs Vermeulen", "msvcp140: Export _Equivalent and port tests.", 1 },
+    { "Gijs Vermeulen", "kernel32: Implement CreateSymbolicLink.", 1 },
     { "Gijs Vermeulen", "qwave: Added QOSCreateHandle stub.", 1 },
+    { "Hans Leidekker", "bcrypt: Implement BCryptGenerate/FinalizeKeyPair for ECDH P256.", 1 },
     { "Hao Peng", "winecfg: Double click in dlls list to edit item's overides.", 3 },
-    { "Henri Verbeet", "ddraw: Implement ddraw7_FlipToGDISurface.", 2 },
     { "Hermes Belusca-Maito", "setupapi/tests: Determine path to system32 directory at runtime.", 1 },
     { "Hermès BÉLUSCA-MAÏTO", "shlwapi: Fix the return value of SHAddDataBlock.", 1 },
     { "Ivan Akulinchev", "uxthemegtk: Initial implementation.", 1 },
@@ -1023,9 +1031,6 @@ wine_patch_data[] =
     { "Mark Jansen", "wintrust: Verify image hash in WinVerifyTrust.", 2 },
     { "Marko Friedemann", "wintrust: Use enhanced crypto provider in VerifyImageHash.", 1 },
     { "Matt Durgavich", "ws2_32: Proper WSACleanup implementation using wineserver function.", 2 },
-    { "Maxime Lombard", "bcrypt: Add BCryptFinalizeKeyPair stub.", 1 },
-    { "Maxime Lombard", "bcrypt: Add BCryptGenerateKeyPair stub.", 1 },
-    { "Maxime Lombard", "bcrypt: Add support for algorithm ECDH P256.", 1 },
     { "Michael Müller", "Add licenses for fonts as separate files.", 1 },
     { "Michael Müller", "aclui: Add basic ACE viewer.", 1 },
     { "Michael Müller", "advapi32/tests: Add test for perflib registry key.", 1 },
@@ -1286,7 +1291,9 @@ wine_patch_data[] =
     { "Michael Müller", "wusa: Treat empty update list as error.", 1 },
     { "Ondrej Kraus", "winex11.drv: Fix main Russian keyboard layout.", 1 },
     { "Paul Gofman", "d3d9/tests: Add test for indexed vertex blending.", 1 },
+    { "Paul Gofman", "wined3d: Ignore multisample quality for MULTISAMPLE_NONE in context_find_fbo_entry().", 1 },
     { "Paul Gofman", "wined3d: Implement hardware indexed vertex blending with 9 matrices.", 1 },
+    { "Paul Gofman", "wined3d: Return stream frequency of 1 if it was not set.", 1 },
     { "Philippe Valembois", "winex11: Fix more key translation.", 1 },
     { "Qian Hong", "advapi32/tests: Test prefix and use of TokenPrimaryGroup Sid.", 1 },
     { "Qian Hong", "advapi32: Fallback to Sid string when LookupAccountSid fails.", 1 },
@@ -1459,7 +1466,6 @@ wine_patch_data[] =
     { "Sebastian Lackner", "ws2_32: Invalidate client-side file descriptor cache in WSACleanup.", 1 },
     { "Sebastian Lackner", "ws2_32: Reuse old async ws2_async_io structures if possible.", 1 },
     { "Sebastian Lackner", "wsdapi: Avoid implicit cast of interface pointer.", 1 },
-    { "Sebastian Lackner", "wtsapi32: Improve WTSQueryUserToken stub.", 2 },
     { "Sebastian Lackner", "wtsapi32: Partial implementation of WTSEnumerateProcessesW.", 1 },
     { "Sebastian Lackner", "wusa: Add workaround to be compatible with Vista packages.", 1 },
     { "Sebastian Lackner", "wusa: Improve tracing of installation process.", 1 },
@@ -1536,6 +1542,15 @@ static void preloader_exec( char **argv, int use_preloader )
         new_argv = xmalloc( (last_arg - argv + 2) * sizeof(*argv) );
         memcpy( new_argv + 1, argv, (last_arg - argv + 1) * sizeof(*argv) );
         new_argv[0] = full_name;
+#ifdef __APPLE__
+        {
+            posix_spawnattr_t attr;
+            posix_spawnattr_init( &attr );
+            posix_spawnattr_setflags( &attr, POSIX_SPAWN_SETEXEC | _POSIX_SPAWN_DISABLE_ASLR );
+            posix_spawn( NULL, full_name, NULL, &attr, new_argv, *_NSGetEnviron() );
+            posix_spawnattr_destroy( &attr );
+        }
+#endif
         execv( full_name, new_argv );
         free( new_argv );
         free( full_name );

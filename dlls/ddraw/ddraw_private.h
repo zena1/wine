@@ -58,7 +58,6 @@ struct FvfToDecl
 #define DDRAW_SCL_DDRAW1        0x00000010
 #define DDRAW_SCL_RECURSIVE     0x00000020
 #define DDRAW_SWAPPED           0x00000040
-#define DDRAW_GDI_FLIP          0x00000080
 
 #define DDRAW_STRIDE_ALIGNMENT  8
 
@@ -98,6 +97,7 @@ struct ddraw
     struct ddraw_surface *primary;
     RECT primary_lock;
     struct wined3d_texture *wined3d_frontbuffer;
+    struct wined3d_texture *gdi_surface;
     struct wined3d_swapchain *wined3d_swapchain;
     HWND swapchain_window;
 
