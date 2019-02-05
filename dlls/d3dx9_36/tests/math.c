@@ -709,7 +709,7 @@ static void D3DXMatrixTest(void)
             0.0f, 0.0f, 1.0f, 0.0f,
             9.7f, -8.6f, 1.3f, 1.0f);
     D3DXMatrixTransformation(&gotmat, NULL, NULL, NULL, &eye, NULL, &last);
-    expect_matrix(&expectedmat, &gotmat, 2);
+    expect_matrix(&expectedmat, &gotmat, 0);
 
     set_matrix(&expectedmat,
             1.0f, 0.0f, 0.0f, 0.0f,
@@ -757,7 +757,7 @@ static void D3DXMatrixTest(void)
             1.0212f, 0.1936f, -1.3588f, 0.0f,
             0.0f, 0.0f, 0.0f, 1.0f);
     D3DXMatrixTransformation(&gotmat, NULL, &q, NULL, NULL, &r, NULL);
-    expect_matrix(&expectedmat, &gotmat, 48);
+    expect_matrix(&expectedmat, &gotmat, 8);
 
     set_matrix(&expectedmat,
             -0.2148f, 1.3116f, 0.4752f, 0.0f,
@@ -853,7 +853,7 @@ static void D3DXMatrixTest(void)
             0.0f, 0.0f, 7.0f, 0.0f,
             9.7f, -8.6f, 1.3f, 1.0f);
     D3DXMatrixTransformation(&gotmat, NULL, NULL, &axis, &eye, NULL, &last);
-    expect_matrix(&expectedmat, &gotmat, 2);
+    expect_matrix(&expectedmat, &gotmat, 0);
 
     set_matrix(&expectedmat,
             1.0f, 0.0f, 0.0f, 0.0f,
@@ -861,7 +861,7 @@ static void D3DXMatrixTest(void)
             0.0f, 0.0f, 1.0f, 0.0f,
             9.7f, -8.6f, 1.3f, 1.0f);
     D3DXMatrixTransformation(&gotmat, NULL, &q, NULL, &eye, NULL, &last);
-    expect_matrix(&expectedmat, &gotmat, 2);
+    expect_matrix(&expectedmat, &gotmat, 0);
 
     set_matrix(&expectedmat,
             1.0f, 0.0f, 0.0f, 0.0f,
@@ -869,7 +869,7 @@ static void D3DXMatrixTest(void)
             0.0f, 0.0f, 1.0f, 0.0f,
             9.7f, -8.6f, 1.3f, 1.0f);
     D3DXMatrixTransformation(&gotmat, &at, NULL, NULL, &eye, NULL, &last);
-    expect_matrix(&expectedmat, &gotmat, 2);
+    expect_matrix(&expectedmat, &gotmat, 0);
 
     set_matrix(&expectedmat,
             25521.0f, 39984.0f, 20148.0f, 0.0f,
@@ -925,7 +925,7 @@ static void D3DXMatrixTest(void)
             -12749.161133f, 28365.580078f, 13503.520508f, 0.0f,
             0.0f, 0.0f, 0.0f, 1.0f);
     D3DXMatrixTransformation(&gotmat, NULL, &q, &axis, NULL, &r, NULL);
-    expect_matrix(&expectedmat, &gotmat, 2);
+    expect_matrix(&expectedmat, &gotmat, 32);
 
     set_matrix(&expectedmat,
             -0.2148f, 1.3116f, 0.4752f, 0.0f,
@@ -1005,7 +1005,7 @@ static void D3DXMatrixTest(void)
             -12749.161133f, 28365.580078f, 13503.520508f, 0.0f,
             9.7f, -8.6f, 1.3f, 1.0f);
     D3DXMatrixTransformation(&gotmat, NULL, &q, &axis, NULL, &r, &last);
-    expect_matrix(&expectedmat, &gotmat, 2);
+    expect_matrix(&expectedmat, &gotmat, 32);
 
     set_matrix(&expectedmat,
             -0.2148f, 1.3116f, 0.4752f, 0.0f,
@@ -1029,7 +1029,7 @@ static void D3DXMatrixTest(void)
             20148.0f, -3324.0f, -5153.0f, 0.0f,
             9.7f, -8.6f, 1.3f, 1.0f);
     D3DXMatrixTransformation(&gotmat, NULL, &q, &axis, &eye, NULL, &last);
-    expect_matrix(&expectedmat, &gotmat, 2);
+    expect_matrix(&expectedmat, &gotmat, 0);
 
     set_matrix(&expectedmat,
             1.0f, 0.0f, 0.0f, 0.0f,
@@ -1037,7 +1037,7 @@ static void D3DXMatrixTest(void)
             0.0f, 0.0f, 7.0f, 0.0f,
             9.7f, 43.400002f, 55.299999f, 1.0f);
     D3DXMatrixTransformation(&gotmat, &at, NULL, &axis, &eye, NULL, &last);
-    expect_matrix(&expectedmat, &gotmat, 2);
+    expect_matrix(&expectedmat, &gotmat, 0);
 
     set_matrix(&expectedmat,
             1.0f, 0.0f, 0.0f, 0.0f,
@@ -1045,7 +1045,7 @@ static void D3DXMatrixTest(void)
             0.0f, 0.0f, 1.0f, 0.0f,
             9.7f, -8.6f, 1.3f, 1.0f);
     D3DXMatrixTransformation(&gotmat, &at, &q, NULL, &eye, NULL, &last);
-    expect_matrix(&expectedmat, &gotmat, 2);
+    expect_matrix(&expectedmat, &gotmat, 0);
 
     set_matrix(&expectedmat,
             25521.0f, 39984.0f, 20148.0f, 0.0f,
@@ -1061,7 +1061,7 @@ static void D3DXMatrixTest(void)
             -12749.161133f, 28365.580078f, 13503.520508f, 0.0f,
             8.598499f, -21.024f, 14.383499f, 1.0f);
     D3DXMatrixTransformation(&gotmat, NULL, &q, &axis, &eye, &r, NULL);
-    expect_matrix(&expectedmat, &gotmat, 2);
+    expect_matrix(&expectedmat, &gotmat, 32);
 
     set_matrix(&expectedmat,
             -0.2148f, 1.3116f, 0.4752f, 0.0f,
@@ -1085,7 +1085,7 @@ static void D3DXMatrixTest(void)
             -12749.161133f, 28365.580078f, 13503.520508f, 0.0f,
             86280.34375f, -357366.3125f, -200024.125f, 1.0f);
     D3DXMatrixTransformation(&gotmat, &at, &q, &axis, NULL, &r, NULL);
-    expect_matrix(&expectedmat, &gotmat, 2);
+    expect_matrix(&expectedmat, &gotmat, 32);
 
     set_matrix(&expectedmat,
             25521.0f, 39984.0f, 20148.0f, 0.0f,
@@ -1101,7 +1101,7 @@ static void D3DXMatrixTest(void)
             -12749.161133f, 28365.580078f, 13503.520508f, 0.0f,
             86280.34375f, -357366.3125f, -200009.75f, 1.0f);
     D3DXMatrixTransformation(&gotmat, &at, &q, &axis, &eye, &r, NULL);
-    expect_matrix(&expectedmat, &gotmat, 4096);
+    expect_matrix(&expectedmat, &gotmat, 2048);
 
     set_matrix(&expectedmat,
             25521.0f, 39984.0f, 20148.0f, 0.0f,
@@ -1117,7 +1117,7 @@ static void D3DXMatrixTest(void)
             -12749.161133f, 28365.580078f, 13503.520508f, 0.0f,
             86290.046875f, -357374.90625f, -200022.828125f, 1.0f);
     D3DXMatrixTransformation(&gotmat, &at, &q, &axis, NULL, &r, &last);
-    expect_matrix(&expectedmat, &gotmat, 2);
+    expect_matrix(&expectedmat, &gotmat, 32);
 
     set_matrix(&expectedmat,
             -0.21480007f, 1.3116000f, 0.47520003f, 0.0f,
@@ -1126,7 +1126,6 @@ static void D3DXMatrixTest(void)
             18.298532f, -29.624001f, 15.683499f, 1.0f);
     D3DXMatrixTransformation(&gotmat, &at, &q, NULL, &eye, &r, &last);
     expect_matrix(&expectedmat, &gotmat, 512);
-    expect_matrix(&expectedmat, &gotmat, 1024);
 
     set_matrix(&expectedmat,
             -0.2148f, 1.3116f, 0.4752f, 0.0f,
@@ -1142,7 +1141,7 @@ static void D3DXMatrixTest(void)
             -12749.161133f, 28365.580078f, 13503.520508f, 0.0f,
             18.2985f, -29.624001f, 15.683499f, 1.0f);
     D3DXMatrixTransformation(&gotmat, NULL, &q, &axis, &eye, &r, &last);
-    expect_matrix(&expectedmat, &gotmat, 2);
+    expect_matrix(&expectedmat, &gotmat, 32);
 
     q.x = 1.0f, q.y = 1.0f, q.z = 1.0f, q.w = 1.0f,
     axis.x = 1.0f, axis.y = 1.0f, axis.z = 2.0f,
@@ -1799,16 +1798,16 @@ static void D3DXQuaternionTest(void)
     expectedquat.x = 7.121285f; expectedquat.y = 2.159964f; expectedquat.z = -3.855094f; expectedquat.w = 5.362844f;
     expect_quaternion(&expectedquat, &gotquat, 2);
     expectedquat.x = -1113.492920f; expectedquat.y = 82.679260f; expectedquat.z = -6.696645f; expectedquat.w = -4.090050f;
-    expect_quaternion(&expectedquat, &Nq, 2);
+    expect_quaternion(&expectedquat, &Nq, 4);
     expectedquat.x = -1111.0f; expectedquat.y = 111.0f; expectedquat.z = -11.0f; expectedquat.w = 1.0f;
     expect_quaternion(&expectedquat, &Nq1, 0);
     gotquat = s;
     D3DXQuaternionSquadSetup(&gotquat, &Nq, &Nq1, &r, &gotquat, &t, &u);
     expectedquat.x = -1113.492920f; expectedquat.y = 82.679260f; expectedquat.z = -6.696645f; expectedquat.w = -4.090050f;
-    expect_quaternion(&expectedquat, &Nq, 2);
+    expect_quaternion(&expectedquat, &Nq, 4);
     Nq1 = u;
     D3DXQuaternionSquadSetup(&gotquat, &Nq, &Nq1, &r, &s, &t, &Nq1);
-    expect_quaternion(&expectedquat, &Nq, 2);
+    expect_quaternion(&expectedquat, &Nq, 4);
     r.x = 0.2f; r.y = 0.3f; r.z = 1.3f; r.w = -0.6f;
     s.x = -3.0f; s.y =-2.0f; s.z = 4.0f; s.w = 0.2f;
     t.x = 0.4f; t.y = 8.3f; t.z = -3.1f; t.w = -2.7f;
@@ -3021,7 +3020,7 @@ static void test_Matrix_Transformation2D(void)
     U(exp_mat).m[3][3] = 1.0f;
 
     D3DXMatrixTransformation2D(&got_mat, &sca_center, sca_rot, NULL, NULL, rot, &trans);
-    expect_matrix(&exp_mat, &got_mat, 10);
+    expect_matrix(&exp_mat, &got_mat, 8);
 
 /*_________*/
 
@@ -3043,7 +3042,7 @@ static void test_Matrix_Transformation2D(void)
     U(exp_mat).m[3][3] = 1.0f;
 
     D3DXMatrixTransformation2D(&got_mat, NULL, sca_rot, NULL, NULL, rot, NULL);
-    expect_matrix(&exp_mat, &got_mat, 10);
+    expect_matrix(&exp_mat, &got_mat, 8);
 }
 
 static void test_D3DXVec_Array(void)
