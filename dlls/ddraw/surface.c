@@ -70,7 +70,7 @@ HRESULT ddraw_surface_update_frontbuffer(struct ddraw_surface *surface,
     if (w <= 0 || h <= 0)
         return DD_OK;
 
-    if (surface->ddraw->swapchain_window && !(surface->ddraw->flags & DDRAW_GDI_FLIP))
+    if (surface->ddraw->swapchain_window)
     {
         /* Nothing to do, we control the frontbuffer, or at least the parts we
          * care about. */
@@ -5809,7 +5809,10 @@ static void STDMETHODCALLTYPE ddraw_surface_wined3d_object_destroyed(void *paren
         IDirectDrawClipper_Release(&surface->clipper->IDirectDrawClipper_iface);
 
     if (surface == surface->ddraw->primary)
+    {
         surface->ddraw->primary = NULL;
+        surface->ddraw->gdi_surface = NULL;
+    }
 
     wined3d_private_store_cleanup(&surface->private_store);
 
@@ -6380,6 +6383,8 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
         {
             mip = wined3d_texture_get_sub_resource_parent(wined3d_texture, i * levels + j);
             mip_desc = &mip->surface_desc;
+            if (desc->ddsCaps.dwCaps & DDSCAPS_MIPMAP)
+                mip_desc->u2.dwMipMapCount = levels - j;
 
             if (j)
             {
@@ -6498,7 +6503,10 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
     }
 
     if (surface_desc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
+    {
         ddraw->primary = root;
+        ddraw->gdi_surface = root->wined3d_texture;
+    }
     *surface = root;
 
     return DD_OK;
