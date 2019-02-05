@@ -20,6 +20,7 @@
  */
 
 #include "config.h"
+#include "wine/port.h"
 #include "initguid.h"
 #include "d3d8_private.h"
 #include "wine/debug.h"
@@ -58,6 +59,10 @@ IDirect3D8 * WINAPI DECLSPEC_HOTPATCH Direct3DCreate8(UINT sdk_version)
 
 /***********************************************************************
  *              ValidateVertexShader (D3D8.@)
+ *
+ * I've seen reserved1 and reserved2 always passed as 0's
+ * boolean seems always passed as 0 or 1, but other values work as well...
+ * toto       result?
  */
 HRESULT WINAPI ValidateVertexShader(DWORD *vertexshader, DWORD *reserved1, DWORD *reserved2,
                                     BOOL return_error, char **errors)

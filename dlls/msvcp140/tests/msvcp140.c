@@ -938,7 +938,7 @@ static void test_dir_operation(void)
     wcscat(longer_path, backslashW);
     while(lstrlenW(longer_path) < MAX_PATH-1)
         wcscat(longer_path, sW);
-    memset(first_file_name, 0, sizeof(first_file_name));
+    memset(first_file_name, 0xff, sizeof(first_file_name));
     type = err =  0xdeadbeef;
     result_handle = NULL;
     result_handle = p_Open_dir(first_file_name, longer_path, &err, &type);
@@ -947,7 +947,7 @@ static void test_dir_operation(void)
     ok(err == ERROR_BAD_PATHNAME, "_Open_dir(): expect: ERROR_BAD_PATHNAME, got %d\n", err);
     ok((int)type == 0xdeadbeef, "_Open_dir(): expect 0xdeadbeef, got %d\n", type);
 
-    memset(first_file_name, 0, sizeof(first_file_name));
+    memset(first_file_name, 0xff, sizeof(first_file_name));
     memset(dest, 0, sizeof(dest));
     err = type = 0xdeadbeef;
     result_handle = NULL;
@@ -978,17 +978,17 @@ static void test_dir_operation(void)
     ok(num_of_sub_dir == 1, "found sub_dir %d times\n", num_of_sub_dir);
     ok(num_of_other_files == 0, "found %d other files\n", num_of_other_files);
 
-    memset(first_file_name, 0, sizeof(first_file_name));
+    memset(first_file_name, 0xff, sizeof(first_file_name));
     err = type = 0xdeadbeef;
     result_handle = file;
     result_handle = p_Open_dir(first_file_name, not_existW, &err, &type);
     ok(result_handle == NULL, "_Open_dir(): expect: NULL, got %p\n", result_handle);
-    todo_wine ok(err == ERROR_BAD_PATHNAME, "_Open_dir(): expect: ERROR_BAD_PATHNAME, got %d\n", err);
+    ok(err == ERROR_BAD_PATHNAME, "_Open_dir(): expect: ERROR_BAD_PATHNAME, got %d\n", err);
     ok((int)type == 0xdeadbeef, "_Open_dir(): expect: 0xdeadbeef, got %d\n", type);
     ok(!*first_file_name, "_Open_dir(): expect: 0, got %s\n", wine_dbgstr_w(first_file_name));
 
     CreateDirectoryW(empty_dirW, NULL);
-    memset(first_file_name, 0, sizeof(first_file_name));
+    memset(first_file_name, 0xff, sizeof(first_file_name));
     err = type = 0xdeadbeef;
     result_handle = file;
     result_handle = p_Open_dir(first_file_name, empty_dirW, &err, &type);

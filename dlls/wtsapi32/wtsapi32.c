@@ -324,7 +324,7 @@ BOOL WINAPI WTSQuerySessionInformationW(
  */
 BOOL WINAPI WTSQueryUserToken(ULONG session_id, PHANDLE token)
 {
-    FIXME("%u %p\n", session_id, token);
+    FIXME("%u %p semi-stub!\n", session_id, token);
 
     if (!token)
     {
