@@ -440,12 +440,6 @@ struct wined3d_cs_generate_mipmaps
     struct wined3d_shader_resource_view *view;
 };
 
-struct wined3d_cs_set_software_vertex_processing
-{
-    enum wined3d_cs_op opcode;
-    BOOL software;
-};
-
 struct wined3d_cs_stop
 {
     enum wined3d_cs_op opcode;
@@ -2550,30 +2544,6 @@ void wined3d_cs_emit_generate_mipmaps(struct wined3d_cs *cs, struct wined3d_shad
     wined3d_resource_acquire(view->resource);
 
     wined3d_cs_submit(cs, WINED3D_CS_QUEUE_DEFAULT);
-}
-
-void wined3d_cs_exec_set_software_vertex_processing(struct wined3d_cs *cs, const void *data)
-{
-    const struct wined3d_cs_set_software_vertex_processing *op = data;
-    BOOL software = op->software;
-
-    if (!cs->device->softwareVertexProcessing != !software)
-    {
-        unsigned int i;
-
-        for (i = 0; i < cs->device->context_count; ++i)
-            cs->device->contexts[i]->constant_update_mask |= WINED3D_SHADER_CONST_VS_F;
-    }
-    cs->device->softwareVertexProcessing = software;
-}
-
-void wined3d_cs_emit_set_software_vertex_processing(struct wined3d_cs *cs, BOOL software)
-{
-    struct wined3d_cs_set_software_vertex_processing op;
-
-    cs->ops->finish(cs, WINED3D_CS_QUEUE_DEFAULT);
-    op.software = software;
-    wined3d_cs_exec_set_software_vertex_processing(cs, &op);
 }
 
 static void wined3d_cs_emit_stop(struct wined3d_cs *cs)

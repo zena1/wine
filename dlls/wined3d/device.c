@@ -2515,8 +2515,9 @@ HRESULT CDECL wined3d_device_set_vs_consts_f(struct wined3d_device *device,
     TRACE("device %p, start_idx %u, count %u, constants %p.\n",
             device, start_idx, count, constants);
 
-    constants_count = device->create_parms.flags & WINED3DCREATE_HARDWARE_VERTEXPROCESSING
-            ? d3d_info->limits.vs_uniform_count : d3d_info->limits.vs_uniform_count_swvp;
+    constants_count = device->create_parms.flags
+            & (WINED3DCREATE_SOFTWARE_VERTEXPROCESSING | WINED3DCREATE_MIXED_VERTEXPROCESSING)
+            ? d3d_info->limits.vs_uniform_count_swvp : d3d_info->limits.vs_uniform_count;
     if (!constants || start_idx >= constants_count
             || count > constants_count - start_idx)
         return WINED3DERR_INVALIDCALL;
@@ -4029,7 +4030,16 @@ void CDECL wined3d_device_set_software_vertex_processing(struct wined3d_device *
         FIXME("device %p, software %#x stub!\n", device, software);
         warned = TRUE;
     }
-    wined3d_cs_emit_set_software_vertex_processing(device->cs, software);
+
+    wined3d_cs_finish(device->cs, WINED3D_CS_QUEUE_DEFAULT);
+    if (!device->softwareVertexProcessing != !software)
+    {
+        unsigned int i;
+
+        for (i = 0; i < device->context_count; ++i)
+            device->contexts[i]->constant_update_mask |= WINED3D_SHADER_CONST_VS_F;
+    }
+    device->softwareVertexProcessing = software;
 }
 
 BOOL CDECL wined3d_device_get_software_vertex_processing(const struct wined3d_device *device)
