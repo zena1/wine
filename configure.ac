@@ -1530,7 +1530,6 @@ then
 fi
 WINE_NOTICE_WITH(gtk3,[test "x$ac_cv_lib_soname_gtk_3" = x],
                  [GTK3 ${notice_platform}development files not found, GTK themes won't be supported.])
-test "x$ac_cv_lib_soname_gtk_3" != "x" || enable_uxtheme_gtk=${enable_uxtheme_gtk:-no}
 
 dnl **** Check for FreeType 2 ****
 if test "x$with_freetype" != "xno"
@@ -1690,7 +1689,7 @@ if test "x$with_sdl" != "xno"
 then
     WINE_PACKAGE_FLAGS(SDL2,[sdl2],[-lSDL2],,,
         [AC_CHECK_HEADERS([SDL2/SDL.h],
-            [WINE_CHECK_SONAME(SDL2,SDL_Init,,,,[[libSDL2-2.0*]])])])
+            [WINE_CHECK_SONAME(SDL2,SDL_Init,,,[$SDL2_LIBS],[[libSDL2-2.0*]])])])
 fi
 WINE_NOTICE_WITH(sdl,[test "x$ac_cv_lib_soname_SDL2" = "x"],
                  [libSDL2 ${notice_platform}development files not found, SDL2 won't be supported.])
@@ -3853,6 +3852,7 @@ WINE_CONFIG_MAKEFILE(dlls/ucrtbase)
 WINE_CONFIG_MAKEFILE(dlls/ucrtbase/tests)
 WINE_CONFIG_MAKEFILE(dlls/uianimation)
 WINE_CONFIG_MAKEFILE(dlls/uiautomationcore)
+WINE_CONFIG_MAKEFILE(dlls/uiautomationcore/tests)
 WINE_CONFIG_MAKEFILE(dlls/uiribbon)
 WINE_CONFIG_MAKEFILE(dlls/unicows)
 WINE_CONFIG_MAKEFILE(dlls/updspapi)
@@ -3870,7 +3870,6 @@ WINE_CONFIG_MAKEFILE(dlls/usp10/tests)
 WINE_CONFIG_MAKEFILE(dlls/uuid)
 WINE_CONFIG_MAKEFILE(dlls/uxtheme)
 WINE_CONFIG_MAKEFILE(dlls/uxtheme/tests)
-WINE_CONFIG_MAKEFILE(dlls/uxtheme-gtk)
 WINE_CONFIG_MAKEFILE(dlls/vbscript)
 WINE_CONFIG_MAKEFILE(dlls/vbscript/tests)
 WINE_CONFIG_MAKEFILE(dlls/vcomp)

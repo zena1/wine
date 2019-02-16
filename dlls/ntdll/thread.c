@@ -69,14 +69,12 @@ void (WINAPI *kernel32_start_process)(LPTHREAD_START_ROUTINE,void*) = NULL;
 struct startup_info
 {
     TEB                            *teb;
-    LPTHREAD_START_ROUTINE          entry_point;
+    PRTL_THREAD_START_ROUTINE       entry_point;
     void                           *entry_arg;
 };
 
 static PEB *peb;
 static PEB_LDR_DATA ldr;
-static RTL_USER_PROCESS_PARAMETERS params;  /* default parameters if no parent */
-static WCHAR current_dir[MAX_PATH];
 static RTL_BITMAP tls_bitmap;
 static RTL_BITMAP tls_expansion_bitmap;
 static RTL_BITMAP fls_bitmap;
@@ -91,6 +89,73 @@ static RTL_CRITICAL_SECTION_DEBUG critsect_debug =
       0, 0, { (DWORD_PTR)(__FILE__ ": peb_lock") }
 };
 static RTL_CRITICAL_SECTION peb_lock = { &critsect_debug, -1, 0, 0, 0, 0 };
+
+#ifdef __linux__
+
+#ifdef HAVE_ELF_H
+# include <elf.h>
+#endif
+#ifdef HAVE_LINK_H
+# include <link.h>
+#endif
+#ifdef HAVE_SYS_AUXV_H
+# include <sys/auxv.h>
+#endif
+#ifndef HAVE_GETAUXVAL
+static unsigned long getauxval( unsigned long id )
+{
+    extern char **__wine_main_environ;
+    char **ptr = __wine_main_environ;
+    ElfW(auxv_t) *auxv;
+
+    while (*ptr) ptr++;
+    while (!*ptr) ptr++;
+    for (auxv = (ElfW(auxv_t) *)ptr; auxv->a_type; auxv++)
+        if (auxv->a_type == id) return auxv->a_un.a_val;
+    return 0;
+}
+#endif
+
+static ULONG_PTR get_image_addr(void)
+{
+    ULONG_PTR size, num, phdr_addr = getauxval( AT_PHDR );
+    ElfW(Phdr) *phdr;
+
+    if (!phdr_addr) return 0;
+    phdr = (ElfW(Phdr) *)phdr_addr;
+    size = getauxval( AT_PHENT );
+    num = getauxval( AT_PHNUM );
+    while (num--)
+    {
+        if (phdr->p_type == PT_PHDR) return phdr_addr - phdr->p_offset;
+        phdr = (ElfW(Phdr) *)((char *)phdr + size);
+    }
+    return 0;
+}
+
+#elif defined(__APPLE__)
+#include <mach/mach.h>
+#include <mach/mach_error.h>
+
+static ULONG_PTR get_image_addr(void)
+{
+    ULONG_PTR ret = 0;
+#ifdef TASK_DYLD_INFO
+    struct task_dyld_info dyld_info;
+    mach_msg_type_number_t size = TASK_DYLD_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_DYLD_INFO, (task_info_t)&dyld_info, &size) == KERN_SUCCESS)
+        ret = dyld_info.all_image_info_addr;
+#endif
+    return ret;
+}
+
+#else
+static ULONG_PTR get_image_addr(void)
+{
+    return 0;
+}
+#endif
+
 
 BOOL read_process_time(int unix_pid, int unix_tid, unsigned long clk_tck,
                        LARGE_INTEGER *kernel, LARGE_INTEGER *user)
@@ -175,185 +240,127 @@ BOOL read_process_memory_stats(int unix_pid, VM_COUNTERS *pvmi)
 }
 
 /***********************************************************************
- *           get_unicode_string
+ *           thread_init
  *
- * Copy a unicode string from the startup info.
- */
-static inline void get_unicode_string( UNICODE_STRING *str, WCHAR **src, WCHAR **dst, UINT len )
-{
-    str->Buffer = *dst;
-    str->Length = len;
-    str->MaximumLength = len + sizeof(WCHAR);
-    memcpy( str->Buffer, *src, len );
-    str->Buffer[len / sizeof(WCHAR)] = 0;
-    *src += len / sizeof(WCHAR);
-    *dst += len / sizeof(WCHAR) + 1;
-}
-
-/***********************************************************************
- *           init_user_process_params
+ * Setup the initial thread.
  *
- * Fill the RTL_USER_PROCESS_PARAMETERS structure from the server.
+ * NOTES: The first allocated TEB on NT is at 0x7ffde000.
  */
-static NTSTATUS init_user_process_params( SIZE_T data_size )
+void thread_init(void)
 {
-    void *ptr;
-    WCHAR *src, *dst;
-    SIZE_T info_size, env_size, size, alloc_size;
+    TEB *teb;
+    void *addr;
+    BOOL suspend;
+    SIZE_T size, info_size;
     NTSTATUS status;
-    startup_info_t *info;
-    RTL_USER_PROCESS_PARAMETERS *params = NULL;
+    struct ntdll_thread_data *thread_data;
+    static struct debug_info debug_info;  /* debug info for initial thread */
 
-    if (!(info = RtlAllocateHeap( GetProcessHeap(), 0, data_size )))
-        return STATUS_NO_MEMORY;
+    virtual_init();
+    signal_init_early();
 
-    SERVER_START_REQ( get_startup_info )
+    /* reserve space for shared user data */
+
+    addr = (void *)0x7ffe0000;
+    size = 0x10000;
+    status = NtAllocateVirtualMemory( NtCurrentProcess(), &addr, 0, &size,
+                                      MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE );
+    if (status)
     {
-        wine_server_set_reply( req, info, data_size );
-        if (!(status = wine_server_call( req )))
-        {
-            data_size = wine_server_reply_size( reply );
-            info_size = reply->info_size;
-            env_size  = data_size - info_size;
-        }
+        MESSAGE( "wine: failed to map the shared user data: %08x\n", status );
+        exit(1);
     }
-    SERVER_END_REQ;
-    if (status != STATUS_SUCCESS) goto done;
+	user_shared_data_external = addr;
+    memcpy( user_shared_data->NtSystemRoot, default_windirW, sizeof(default_windirW) );
 
-    size = sizeof(*params);
-    size += sizeof(current_dir);
-    size += info->dllpath_len + sizeof(WCHAR);
-    size += info->imagepath_len + sizeof(WCHAR);
-    size += info->cmdline_len + sizeof(WCHAR);
-    size += info->title_len + sizeof(WCHAR);
-    size += info->desktop_len + sizeof(WCHAR);
-    size += info->shellinfo_len + sizeof(WCHAR);
-    size += info->runtime_len + sizeof(WCHAR);
+    /* allocate and initialize the PEB */
 
-    alloc_size = size;
-    status = NtAllocateVirtualMemory( NtCurrentProcess(), (void **)&params, 0, &alloc_size,
-                                      MEM_COMMIT, PAGE_READWRITE );
-    if (status != STATUS_SUCCESS) goto done;
+    addr = NULL;
+    size = sizeof(*peb);
+    NtAllocateVirtualMemory( NtCurrentProcess(), &addr, 1, &size,
+                             MEM_COMMIT | MEM_TOP_DOWN, PAGE_READWRITE );
+    peb = addr;
 
-    NtCurrentTeb()->Peb->ProcessParameters = params;
-    params->AllocationSize  = alloc_size;
-    params->Size            = size;
-    params->Flags           = PROCESS_PARAMS_FLAG_NORMALIZED;
-    params->DebugFlags      = info->debug_flags;
-    params->ConsoleHandle   = wine_server_ptr_handle( info->console );
-    params->ConsoleFlags    = info->console_flags;
-    params->hStdInput       = wine_server_ptr_handle( info->hstdin );
-    params->hStdOutput      = wine_server_ptr_handle( info->hstdout );
-    params->hStdError       = wine_server_ptr_handle( info->hstderr );
-    params->dwX             = info->x;
-    params->dwY             = info->y;
-    params->dwXSize         = info->xsize;
-    params->dwYSize         = info->ysize;
-    params->dwXCountChars   = info->xchars;
-    params->dwYCountChars   = info->ychars;
-    params->dwFillAttribute = info->attribute;
-    params->dwFlags         = info->flags;
-    params->wShowWindow     = info->show;
+    peb->FastPebLock        = &peb_lock;
+    peb->ApiSetMap          = &apiset_map;
+    peb->TlsBitmap          = &tls_bitmap;
+    peb->TlsExpansionBitmap = &tls_expansion_bitmap;
+    peb->FlsBitmap          = &fls_bitmap;
+    peb->LdrData            = &ldr;
+    peb->OSMajorVersion     = 5;
+    peb->OSMinorVersion     = 1;
+    peb->OSBuildNumber      = 0xA28;
+    peb->OSPlatformId       = VER_PLATFORM_WIN32_NT;
+    ldr.Length = sizeof(ldr);
+    ldr.Initialized = TRUE;
+    RtlInitializeBitMap( &tls_bitmap, peb->TlsBitmapBits, sizeof(peb->TlsBitmapBits) * 8 );
+    RtlInitializeBitMap( &tls_expansion_bitmap, peb->TlsExpansionBitmapBits,
+                         sizeof(peb->TlsExpansionBitmapBits) * 8 );
+    RtlInitializeBitMap( &fls_bitmap, peb->FlsBitmapBits, sizeof(peb->FlsBitmapBits) * 8 );
+    RtlSetBits( peb->TlsBitmap, 0, 1 ); /* TLS index 0 is reserved and should be initialized to NULL. */
+    RtlSetBits( peb->FlsBitmap, 0, 1 );
+    InitializeListHead( &peb->FlsListHead );
+    InitializeListHead( &ldr.InLoadOrderModuleList );
+    InitializeListHead( &ldr.InMemoryOrderModuleList );
+    InitializeListHead( &ldr.InInitializationOrderModuleList );
+    *(ULONG_PTR *)peb->Reserved = get_image_addr();
 
-    src = (WCHAR *)(info + 1);
-    dst = (WCHAR *)(params + 1);
-
-    /* current directory needs more space */
-    get_unicode_string( &params->CurrentDirectory.DosPath, &src, &dst, info->curdir_len );
-    params->CurrentDirectory.DosPath.MaximumLength = sizeof(current_dir);
-    dst = (WCHAR *)(params + 1) + ARRAY_SIZE(current_dir);
-
-    get_unicode_string( &params->DllPath, &src, &dst, info->dllpath_len );
-    get_unicode_string( &params->ImagePathName, &src, &dst, info->imagepath_len );
-    get_unicode_string( &params->CommandLine, &src, &dst, info->cmdline_len );
-    get_unicode_string( &params->WindowTitle, &src, &dst, info->title_len );
-    get_unicode_string( &params->Desktop, &src, &dst, info->desktop_len );
-    get_unicode_string( &params->ShellInfo, &src, &dst, info->shellinfo_len );
-
-    /* runtime info isn't a real string */
-    params->RuntimeInfo.Buffer = dst;
-    params->RuntimeInfo.Length = params->RuntimeInfo.MaximumLength = info->runtime_len;
-    memcpy( dst, src, info->runtime_len );
-
-    /* environment needs to be a separate memory block */
-    ptr = NULL;
-    alloc_size = max( 1, env_size );
-    status = NtAllocateVirtualMemory( NtCurrentProcess(), &ptr, 0, &alloc_size,
-                                      MEM_COMMIT, PAGE_READWRITE );
-    if (status != STATUS_SUCCESS) goto done;
-    memcpy( ptr, (char *)info + info_size, env_size );
-    params->Environment = ptr;
-
-done:
-    RtlFreeHeap( GetProcessHeap(), 0, info );
-    return status;
-}
-
-#ifdef __linux__
-
-#ifdef HAVE_ELF_H
-# include <elf.h>
-#endif
-#ifdef HAVE_LINK_H
-# include <link.h>
-#endif
-#ifdef HAVE_SYS_AUXV_H
-# include <sys/auxv.h>
-#endif
-#ifndef HAVE_GETAUXVAL
-static unsigned long getauxval( unsigned long id )
-{
-    extern char **__wine_main_environ;
-    char **ptr = __wine_main_environ;
-    ElfW(auxv_t) *auxv;
-
-    while (*ptr) ptr++;
-    while (!*ptr) ptr++;
-    for (auxv = (ElfW(auxv_t) *)ptr; auxv->a_type; auxv++)
-        if (auxv->a_type == id) return auxv->a_un.a_val;
-    return 0;
-}
+#if defined(__APPLE__) && defined(__x86_64__)
+    *((DWORD*)((char*)user_shared_data_external + 0x1000)) = __wine_syscall_dispatcher;
 #endif
 
-static ULONG_PTR get_image_addr(void)
-{
-    ULONG_PTR size, num, phdr_addr = getauxval( AT_PHDR );
-    ElfW(Phdr) *phdr;
+    /*
+     * Starting with Vista, the first user to log on has session id 1.
+     * Session id 0 is for processes that don't interact with the user (like services).
+     */
+    peb->SessionId = 1;
 
-    if (!phdr_addr) return 0;
-    phdr = (ElfW(Phdr) *)phdr_addr;
-    size = getauxval( AT_PHENT );
-    num = getauxval( AT_PHNUM );
-    while (num--)
+    /* allocate and initialize the initial TEB */
+
+    signal_alloc_thread( &teb );
+    teb->Peb = peb;
+    teb->Tib.StackBase = (void *)~0UL;
+    teb->StaticUnicodeString.Buffer = teb->StaticUnicodeBuffer;
+    teb->StaticUnicodeString.MaximumLength = sizeof(teb->StaticUnicodeBuffer);
+
+    thread_data = (struct ntdll_thread_data *)&teb->GdiTebBatch;
+    thread_data->request_fd = -1;
+    thread_data->reply_fd   = -1;
+    thread_data->wait_fd[0] = -1;
+    thread_data->wait_fd[1] = -1;
+    thread_data->debug_info = &debug_info;
+    thread_data->esync_queue_fd = -1;
+    thread_data->esync_apc_fd = -1;
+
+    signal_init_thread( teb );
+    virtual_init_threading();
+
+    debug_info.str_pos = debug_info.strings;
+    debug_info.out_pos = debug_info.output;
+    debug_init();
+
+    /* setup the server connection */
+    server_init_process();
+    info_size = server_init_thread( peb, &suspend );
+
+    /* create the process heap */
+    if (!(peb->ProcessHeap = RtlCreateHeap( HEAP_GROWABLE, NULL, 0, 0, NULL, NULL )))
     {
-        if (phdr->p_type == PT_PHDR) return phdr_addr - phdr->p_offset;
-        phdr = (ElfW(Phdr) *)((char *)phdr + size);
+        MESSAGE( "wine: failed to create the process heap\n" );
+        exit(1);
     }
-    return 0;
+
+    init_user_process_params( info_size );
+
+	/* initialize user_shared_data */
+    __wine_user_shared_data();
+    fill_cpu_info();
+
+    esync_init();
+
+    NtCreateKeyedEvent( &keyed_event, GENERIC_READ | GENERIC_WRITE, NULL, 0 );
 }
 
-#elif defined(__APPLE__)
-#include <mach/mach.h>
-#include <mach/mach_error.h>
-
-static ULONG_PTR get_image_addr(void)
-{
-    ULONG_PTR ret = 0;
-#ifdef TASK_DYLD_INFO
-    struct task_dyld_info dyld_info;
-    mach_msg_type_number_t size = TASK_DYLD_INFO_COUNT;
-    if (task_info(mach_task_self(), TASK_DYLD_INFO, (task_info_t)&dyld_info, &size) == KERN_SUCCESS)
-        ret = dyld_info.all_image_info_addr;
-#endif
-    return ret;
-}
-
-#else
-static ULONG_PTR get_image_addr(void)
-{
-    return 0;
-}
-#endif
 
 
 /**************************************************************************
@@ -425,148 +432,6 @@ void create_user_shared_data_thread(void)
     pthread_attr_setstacksize(&attr, 0x10000);
     pthread_create(&thread, &attr, user_shared_data_thread, NULL);
     pthread_attr_destroy(&attr);
-}
-
-
-/***********************************************************************
- *           thread_init
- *
- * Setup the initial thread.
- *
- * NOTES: The first allocated TEB on NT is at 0x7ffde000.
- */
-void thread_init(void)
-{
-    TEB *teb;
-    void *addr;
-    BOOL suspend;
-    SIZE_T size, info_size;
-    NTSTATUS status;
-    struct ntdll_thread_data *thread_data;
-    static struct debug_info debug_info;  /* debug info for initial thread */
-
-    virtual_init();
-    signal_init_early();
-
-    /* reserve space for shared user data */
-
-    addr = (void *)0x7ffe0000;
-    size = 0x10000;
-    status = NtAllocateVirtualMemory( NtCurrentProcess(), &addr, 0, &size,
-                                      MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE );
-    if (status)
-    {
-        MESSAGE( "wine: failed to map the shared user data: %08x\n", status );
-        exit(1);
-    }
-    user_shared_data_external = addr;
-    memcpy( user_shared_data->NtSystemRoot, default_windirW, sizeof(default_windirW) );
-
-    /* allocate and initialize the PEB */
-
-    addr = NULL;
-    size = sizeof(*peb);
-    NtAllocateVirtualMemory( NtCurrentProcess(), &addr, 1, &size,
-                             MEM_COMMIT | MEM_TOP_DOWN, PAGE_READWRITE );
-    peb = addr;
-
-    peb->FastPebLock        = &peb_lock;
-    peb->ProcessParameters  = &params;
-    peb->ApiSetMap          = &apiset_map;
-    peb->TlsBitmap          = &tls_bitmap;
-    peb->TlsExpansionBitmap = &tls_expansion_bitmap;
-    peb->FlsBitmap          = &fls_bitmap;
-    peb->LdrData            = &ldr;
-    peb->OSMajorVersion     = 5;
-    peb->OSMinorVersion     = 1;
-    peb->OSBuildNumber      = 0xA28;
-    peb->OSPlatformId       = VER_PLATFORM_WIN32_NT;
-    params.CurrentDirectory.DosPath.Buffer = current_dir;
-    params.CurrentDirectory.DosPath.MaximumLength = sizeof(current_dir);
-    params.wShowWindow = 1; /* SW_SHOWNORMAL */
-    ldr.Length = sizeof(ldr);
-    ldr.Initialized = TRUE;
-    RtlInitializeBitMap( &tls_bitmap, peb->TlsBitmapBits, sizeof(peb->TlsBitmapBits) * 8 );
-    RtlInitializeBitMap( &tls_expansion_bitmap, peb->TlsExpansionBitmapBits,
-                         sizeof(peb->TlsExpansionBitmapBits) * 8 );
-    RtlInitializeBitMap( &fls_bitmap, peb->FlsBitmapBits, sizeof(peb->FlsBitmapBits) * 8 );
-    RtlSetBits( peb->TlsBitmap, 0, 1 ); /* TLS index 0 is reserved and should be initialized to NULL. */
-    RtlSetBits( peb->FlsBitmap, 0, 1 );
-    InitializeListHead( &peb->FlsListHead );
-    InitializeListHead( &ldr.InLoadOrderModuleList );
-    InitializeListHead( &ldr.InMemoryOrderModuleList );
-    InitializeListHead( &ldr.InInitializationOrderModuleList );
-    *(ULONG_PTR *)peb->Reserved = get_image_addr();
-
-#if defined(__APPLE__) && defined(__x86_64__)
-    *((DWORD*)((char*)user_shared_data_external + 0x1000)) = __wine_syscall_dispatcher;
-#endif
-
-    /*
-     * Starting with Vista, the first user to log on has session id 1.
-     * Session id 0 is for processes that don't interact with the user (like services).
-     */
-    peb->SessionId = 1;
-
-    /* allocate and initialize the initial TEB */
-
-    signal_alloc_thread( &teb );
-    teb->Peb = peb;
-    teb->Tib.StackBase = (void *)~0UL;
-    teb->StaticUnicodeString.Buffer = teb->StaticUnicodeBuffer;
-    teb->StaticUnicodeString.MaximumLength = sizeof(teb->StaticUnicodeBuffer);
-
-    thread_data = (struct ntdll_thread_data *)&teb->GdiTebBatch;
-    thread_data->request_fd = -1;
-    thread_data->reply_fd   = -1;
-    thread_data->wait_fd[0] = -1;
-    thread_data->wait_fd[1] = -1;
-    thread_data->debug_info = &debug_info;
-    thread_data->esync_queue_fd = -1;
-    thread_data->esync_apc_fd = -1;
-
-    signal_init_thread( teb );
-    virtual_init_threading();
-
-    debug_info.str_pos = debug_info.strings;
-    debug_info.out_pos = debug_info.output;
-    debug_init();
-
-    /* setup the server connection */
-    server_init_process();
-    info_size = server_init_thread( peb, &suspend );
-
-    /* create the process heap */
-    if (!(peb->ProcessHeap = RtlCreateHeap( HEAP_GROWABLE, NULL, 0, 0, NULL, NULL )))
-    {
-        MESSAGE( "wine: failed to create the process heap\n" );
-        exit(1);
-    }
-
-    /* allocate user parameters */
-    if (info_size)
-    {
-        init_user_process_params( info_size );
-    }
-    else
-    {
-        if (isatty(0) || isatty(1) || isatty(2))
-            params.ConsoleHandle = (HANDLE)2; /* see kernel32/kernel_private.h */
-        if (!isatty(0))
-            wine_server_fd_to_handle( 0, GENERIC_READ|SYNCHRONIZE,  OBJ_INHERIT, &params.hStdInput );
-        if (!isatty(1))
-            wine_server_fd_to_handle( 1, GENERIC_WRITE|SYNCHRONIZE, OBJ_INHERIT, &params.hStdOutput );
-        if (!isatty(2))
-            wine_server_fd_to_handle( 2, GENERIC_WRITE|SYNCHRONIZE, OBJ_INHERIT, &params.hStdError );
-    }
-
-    /* initialize user_shared_data */
-    __wine_user_shared_data();
-    fill_cpu_info();
-
-    esync_init();
-
-    NtCreateKeyedEvent( &keyed_event, GENERIC_READ | GENERIC_WRITE, NULL, 0 );
 }
 
 
@@ -691,7 +556,7 @@ static void start_thread( struct startup_info *info )
 
     signal_init_thread( teb );
     server_init_thread( info->entry_point, &suspend );
-    signal_start_thread( info->entry_point, info->entry_arg, suspend );
+    signal_start_thread( (LPTHREAD_START_ROUTINE)info->entry_point, info->entry_arg, suspend );
 }
 
 

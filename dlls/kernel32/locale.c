@@ -48,6 +48,7 @@
 #include "winerror.h"
 #include "winver.h"
 #include "kernel_private.h"
+#include "wine/heap.h"
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(nls);
@@ -4813,7 +4814,7 @@ BOOL WINAPI EnumUILanguagesA(UILANGUAGE_ENUMPROCA pUILangEnumProc, DWORD dwFlags
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
     }
-    if(dwFlags) {
+    if(dwFlags & ~MUI_LANGUAGE_ID) {
 	SetLastError(ERROR_INVALID_FLAGS);
 	return FALSE;
     }
@@ -4842,7 +4843,7 @@ BOOL WINAPI EnumUILanguagesW(UILANGUAGE_ENUMPROCW pUILangEnumProc, DWORD dwFlags
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
     }
-    if(dwFlags) {
+    if(dwFlags & ~MUI_LANGUAGE_ID) {
 	SetLastError(ERROR_INVALID_FLAGS);
 	return FALSE;
     }
@@ -5358,93 +5359,61 @@ INT WINAPI GetUserDefaultLocaleName(LPWSTR localename, int buffersize)
     return LCIDToLocaleName(userlcid, localename, buffersize, 0);
 }
 
-static inline int is_valid_norm(NORM_FORM norm)
-{
-   if (norm == NormalizationC || norm == NormalizationD ||
-       norm == NormalizationKC || norm == NormalizationKD)
-       return 1;
-   else
-       return 0;
-}
-
 /******************************************************************************
  *           NormalizeString (KERNEL32.@)
- *
- * Normalizes a string according to a Unicode Normalization Form.
- *
- * PARAMS
- *  norm       [I] Normalization Form
- *  src        [I] Source string to normalize
- *  srclen     [I] Length of source string (if -1, source string is null-terminated)
- *  dst        [O] Buffer to write normalized source string (can be NULL)
- *  dstlen     [I] Length of dst string (can be 0)
- *
- * RETURNS
- *  Success: If dstlen is 0, return size needed, else return size of normalized string.
- *  Failure: ret <= 0. Use GetLastError to determine error.
  */
-INT WINAPI NormalizeString(NORM_FORM norm, LPCWSTR src, INT srclen,
-                           LPWSTR dst, INT dstlen)
+INT WINAPI NormalizeString(NORM_FORM form, const WCHAR *src, INT src_len, WCHAR *dst, INT dst_len)
 {
-    extern int wine_unicode_decompose_string( int compat, const WCHAR *src,
-                                              int srclen, WCHAR *dst, int dstlen );
-    extern int unicode_canonical_composition( WCHAR *str, UINT strlen );
-    extern void unicode_canon_order( WCHAR *str, int strlen );
+    int flags = 0, compose = 0;
+    unsigned int res, buf_len;
+    WCHAR *buf = NULL;
 
-    WCHAR *decomp = NULL;
-    INT compat = 0;
-    INT needed_len;
+    TRACE("%x %s %d %p %d\n", form, debugstr_wn(src, src_len), src_len, dst, dst_len);
 
-    if (src == NULL || !is_valid_norm( norm ))
+    if (src_len == -1) src_len = strlenW(src) + 1;
+
+    if (form == NormalizationKC || form == NormalizationKD) flags |= WINE_DECOMPOSE_COMPAT;
+    if (form == NormalizationC || form == NormalizationKC) compose = 1;
+    if (compose || dst_len) flags |= WINE_DECOMPOSE_REORDER;
+
+    if (!compose && dst_len)
     {
-        SetLastError(ERROR_INVALID_PARAMETER);
-        return 0;
-    }
-
-    if (norm == NormalizationKC || norm == NormalizationKD) compat++;
-
-    if (srclen == -1) srclen = strlenW( src ) + 1;
-
-    needed_len = wine_unicode_decompose_string( compat, src, srclen, NULL, 0 );
-
-    if (needed_len < 0)
-    {
-        SetLastError(ERROR_NO_UNICODE_TRANSLATION);
-        return needed_len;
-    }
-
-    if (norm == NormalizationC || norm == NormalizationKC)
-    {
-        decomp = HeapAlloc( GetProcessHeap(), 0, needed_len * sizeof( WCHAR ) );
-        wine_unicode_decompose_string( compat, src, srclen, decomp, needed_len );
-        unicode_canon_order( decomp, needed_len );
-        needed_len = unicode_canonical_composition( decomp, needed_len );
-    }
-
-    if (dstlen < needed_len && dstlen > 0)
-    {
-        if (decomp) HeapFree(GetProcessHeap(), 0, decomp);
-        SetLastError(ERROR_INSUFFICIENT_BUFFER);
-        return -1;
-    }
-    else if (dstlen <= 0)
-    {
-        if (decomp) HeapFree(GetProcessHeap(), 0, decomp);
-        return needed_len;
-    }
-
-    if (norm == NormalizationC || norm == NormalizationKC)
-    {
-        memcpy( dst, decomp, sizeof(WCHAR) * needed_len );
-        HeapFree(GetProcessHeap(), 0, decomp);
-        return needed_len;
+        res = wine_decompose_string( flags, src, src_len, dst, dst_len );
+        if (!res)
+        {
+            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            goto done;
+        }
+        buf = dst;
     }
     else
     {
-        int decomp_len = wine_unicode_decompose_string( compat, src, srclen, dst, needed_len );
-        unicode_canon_order( dst, needed_len );
-        return decomp_len;
+        buf_len = src_len * 4;
+        do
+        {
+            WCHAR *old_buf = buf;
+
+            buf = heap_realloc( buf, buf_len );
+            if (!buf)
+            {
+                heap_free( old_buf );
+                SetLastError( ERROR_OUTOFMEMORY );
+                return 0;
+            }
+            res = wine_decompose_string( flags, src, src_len, buf, buf_len );
+            buf_len *= 2;
+        } while (!res);
     }
+
+    if (compose)
+    {
+        res = wine_compose_string( buf, res );
+        if (dst_len >= res) memcpy( dst, buf, res * sizeof(WCHAR) );
+    }
+
+done:
+    if (buf != dst) heap_free( buf );
+    return res;
 }
 
 /******************************************************************************

@@ -32,7 +32,6 @@ typedef struct _uxgtk_theme_vtable uxgtk_theme_vtable_t;
 
 struct _uxgtk_theme_vtable
 {
-    const char *classname;
     HRESULT (*get_color)(uxgtk_theme_t *theme, int part_id, int state_id,
                          int prop_id, GdkRGBA *rgba);
     HRESULT (*draw_background)(uxgtk_theme_t *theme, cairo_t *cr, int part_id, int state_id,
@@ -44,23 +43,11 @@ struct _uxgtk_theme_vtable
 
 struct _uxgtk_theme
 {
-    DWORD magic;
     const uxgtk_theme_vtable_t *vtable;
+
     GtkWidget *window;
     GtkWidget *layout;
 };
-
-typedef HANDLE HTHEMEFILE;
-
-typedef struct tagTHEMENAMES
-{
-    WCHAR szName[MAX_PATH+1];
-    WCHAR szDisplayName[MAX_PATH+1];
-    WCHAR szTooltip[MAX_PATH+1];
-} THEMENAMES, *PTHEMENAMES;
-
-typedef BOOL (CALLBACK *EnumThemeProc)(LPVOID, LPCWSTR, LPCWSTR, LPCWSTR, LPVOID, LPVOID);
-typedef BOOL (CALLBACK *ParseThemeIniFileProc)(DWORD, LPWSTR, LPWSTR, LPWSTR, DWORD, LPVOID);
 
 #define MAKE_FUNCPTR(f) extern typeof(f) * p##f DECLSPEC_HIDDEN
 MAKE_FUNCPTR(cairo_create);

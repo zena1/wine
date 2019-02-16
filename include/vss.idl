@@ -53,7 +53,7 @@ typedef enum _VSS_RESTORE_TYPE
 
 typedef enum _VSS_WRITER_STATE
 {
-    VSS_WS_UNKNOWN = 0,
+    VSS_WS_UNKNOWN,
     VSS_WS_STABLE,
     VSS_WS_WAITING_FOR_FREEZE,
     VSS_WS_WAITING_FOR_THAW,
@@ -74,7 +74,7 @@ typedef enum _VSS_WRITER_STATE
 
 typedef enum _VSS_OBJECT_TYPE
 {
-    VSS_OBJECT_UNKNOWN = 0,
+    VSS_OBJECT_UNKNOWN,
     VSS_OBJECT_NONE,
     VSS_OBJECT_SNAPSHOT_SET,
     VSS_OBJECT_SNAPSHOT,
@@ -105,17 +105,17 @@ typedef enum _VSS_SNAPSHOT_STATE
 
 typedef struct _VSS_SNAPSHOT_PROP
 {
-    VSS_ID              m_SnapshotId;
-    VSS_ID              m_SnapshotSetId;
-    LONG                m_lSnapshotsCount;
-    VSS_PWSZ            m_pwszSnapshotDeviceObject;
-    VSS_PWSZ            m_pwszOriginalVolumeName;
-    VSS_PWSZ            m_pwszOriginatingMachine;
-    VSS_PWSZ            m_pwszServiceMachine;
-    VSS_PWSZ            m_pwszExposedName;
-    VSS_PWSZ            m_pwszExposedPath;
-    VSS_ID              m_ProviderId;
-    LONG                m_lSnapshotAttributes;
-    VSS_TIMESTAMP       m_tsCreationTimestamp;
-    VSS_SNAPSHOT_STATE  m_eStatus;
+    VSS_ID             m_SnapshotId;
+    VSS_ID             m_SnapshotSetId;
+    LONG               m_lSnapshotsCount;
+    VSS_PWSZ           m_pwszSnapshotDeviceObject;
+    VSS_PWSZ           m_pwszOriginalVolumeName;
+    VSS_PWSZ           m_pwszOriginatingMachine;
+    VSS_PWSZ           m_pwszServiceMachine;
+    VSS_PWSZ           m_pwszExposedName;
+    VSS_PWSZ           m_pwszExposedPath;
+    VSS_ID             m_ProviderId;
+    LONG               m_lSnapshotAttributes;
+    VSS_TIMESTAMP      m_tsCreationTimestamp;
+    VSS_SNAPSHOT_STATE m_eStatus;
 } VSS_SNAPSHOT_PROP, *PVSS_SNAPSHOT_PROP;

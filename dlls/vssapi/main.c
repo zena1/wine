@@ -118,7 +118,7 @@ HRESULT WINAPI CreateVssBackupComponentsInternal(IVssBackupComponents **backup)
 /******************************************************************
  *  ?CreateVssBackupComponents@@YGJPAPAVIVssBackupComponents@@@Z
  */
-HRESULT VSSAPI_CreateVssBackupComponents( IVssBackupComponents **backup )
+HRESULT WINAPI VSSAPI_CreateVssBackupComponents( IVssBackupComponents **backup )
 {
     FIXME( "%p\n", backup );
 
