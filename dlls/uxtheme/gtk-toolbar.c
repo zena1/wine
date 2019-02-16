@@ -18,6 +18,10 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include "config.h"
+
+#ifdef HAVE_GTK_GTK_H
+
 #include "uxthemegtk.h"
 
 #include <assert.h>
@@ -138,7 +142,6 @@ static BOOL is_part_defined(int part_id, int state_id)
 
 static const uxgtk_theme_vtable_t toolbar_vtable =
 {
-    "toolbar",
     NULL, /* get_color */
     draw_background,
     NULL, /* get_part_size */
@@ -164,3 +167,5 @@ uxgtk_theme_t *uxgtk_toolbar_theme_create(void)
 
     return &theme->base;
 }
+
+#endif /* HAVE_GTK_GTK_H */

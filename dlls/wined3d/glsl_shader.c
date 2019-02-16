@@ -831,11 +831,13 @@ static void append_transform_feedback_skip_components(const char **varyings,
     }
 }
 
-static BOOL shader_glsl_generate_transform_feedback_varyings(const struct wined3d_stream_output_desc *so_desc,
-        struct wined3d_string_buffer *buffer, const char **varyings, unsigned int *varying_count,
-        char *strings, unsigned int *strings_length, GLenum buffer_mode)
+static BOOL shader_glsl_generate_transform_feedback_varyings(struct wined3d_string_buffer *buffer,
+        const char **varyings, unsigned int *varying_count, char *strings, unsigned int *strings_length,
+        GLenum buffer_mode, struct wined3d_shader *shader)
 {
-    unsigned int i, buffer_idx, count, length, highest_output_slot, stride;
+    const struct wined3d_stream_output_desc *so_desc = &shader->u.gs.so_desc;
+    unsigned int buffer_idx, count, length, highest_output_slot, stride;
+    unsigned int i, register_idx, component_idx;
     BOOL have_varyings_to_record = FALSE;
 
     count = length = 0;
@@ -860,30 +862,33 @@ static BOOL shader_glsl_generate_transform_feedback_varyings(const struct wined3
 
             stride += e->component_count;
 
-            if (e->register_idx == WINED3D_STREAM_OUTPUT_GAP)
+            if (!e->semantic_name)
             {
                 append_transform_feedback_skip_components(varyings, &count,
                         &strings, &length, buffer, e->component_count);
                 continue;
             }
 
-            if (e->component_idx || e->component_count != 4)
+            if (!shader_get_stream_output_register_info(shader, e, &register_idx, &component_idx))
+                continue;
+
+            if (component_idx || e->component_count != 4)
             {
                 if (so_desc->rasterizer_stream_idx != WINED3D_NO_RASTERIZER_STREAM)
                 {
-                    FIXME("Unsupported component range %u-%u.\n", e->component_idx, e->component_count);
+                    FIXME("Unsupported component range %u-%u.\n", component_idx, e->component_count);
                     append_transform_feedback_skip_components(varyings, &count,
                             &strings, &length, buffer, e->component_count);
                     continue;
                 }
 
                 string_buffer_sprintf(buffer, "shader_in_out.reg%u_%u_%u",
-                        e->register_idx, e->component_idx, e->component_idx + e->component_count - 1);
+                        register_idx, component_idx, component_idx + e->component_count - 1);
                 append_transform_feedback_varying(varyings, &count, &strings, &length, buffer);
             }
             else
             {
-                string_buffer_sprintf(buffer, "shader_in_out.reg%u", e->register_idx);
+                string_buffer_sprintf(buffer, "shader_in_out.reg%u", register_idx);
                 append_transform_feedback_varying(varyings, &count, &strings, &length, buffer);
             }
 
@@ -940,7 +945,7 @@ static void shader_glsl_init_transform_feedback(const struct wined3d_context *co
 
         for (i = 0; i < so_desc->element_count; ++i)
         {
-            if (so_desc->elements[i].register_idx == WINED3D_STREAM_OUTPUT_GAP)
+            if (!so_desc->elements[i].semantic_name)
             {
                 FIXME("ARB_transform_feedback3 is needed for stream output gaps.\n");
                 return;
@@ -973,7 +978,7 @@ static void shader_glsl_init_transform_feedback(const struct wined3d_context *co
 
     buffer = string_buffer_get(&priv->string_buffers);
 
-    if (!shader_glsl_generate_transform_feedback_varyings(so_desc, buffer, NULL, &count, NULL, &length, mode))
+    if (!shader_glsl_generate_transform_feedback_varyings(buffer, NULL, &count, NULL, &length, mode, shader))
     {
         FIXME("No varyings to record, disabling transform feedback.\n");
         shader->u.gs.so_desc.element_count = 0;
@@ -995,7 +1000,7 @@ static void shader_glsl_init_transform_feedback(const struct wined3d_context *co
         return;
     }
 
-    shader_glsl_generate_transform_feedback_varyings(so_desc, buffer, varyings, NULL, strings, NULL, mode);
+    shader_glsl_generate_transform_feedback_varyings(buffer, varyings, NULL, strings, NULL, mode, shader);
     GL_EXTCALL(glTransformFeedbackVaryings(program_id, count, varyings, mode));
     checkGLcall("glTransformFeedbackVaryings");
 
@@ -1996,10 +2001,10 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
 
         for (i = 0; i < MAX_ACTIVE_LIGHTS; ++i)
         {
-            if (!state->lights[i])
+            if (!state->light_state.lights[i])
                 continue;
 
-            switch (state->lights[i]->OriginalParms.type)
+            switch (state->light_state.lights[i]->OriginalParms.type)
             {
                 case WINED3D_LIGHT_POINT:
                     ++point_count;
@@ -2014,7 +2019,7 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
                     ++parallel_point_count;
                     break;
                 default:
-                    FIXME("Unhandled light type %#x.\n", state->lights[i]->OriginalParms.type);
+                    FIXME("Unhandled light type %#x.\n", state->light_state.lights[i]->OriginalParms.type);
                     break;
             }
         }
@@ -2026,7 +2031,7 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
         shader_glsl_ffp_vertex_lightambient_uniform(context, state, prog);
         for (i = 0; i < MAX_ACTIVE_LIGHTS; ++i)
         {
-            const struct wined3d_light_info *light_info = state->lights[i];
+            const struct wined3d_light_info *light_info = state->light_state.lights[i];
             unsigned int idx;
 
             if (!light_info)
@@ -2140,7 +2145,7 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
 
     if (update_mask & WINED3D_SHADER_CONST_PS_ALPHA_TEST)
     {
-        float ref = state->render_states[WINED3D_RS_ALPHAREF] / 255.0f;
+        float ref = wined3d_alpha_ref(state);
 
         GL_EXTCALL(glUniform1f(prog->ps.alpha_test_ref_location, ref));
         checkGLcall("alpha test emulation uniform");
@@ -7542,11 +7547,11 @@ static GLuint shader_glsl_generate_vs3_rasterizer_input_setup(struct shader_glsl
     return ret;
 }
 
-static void shader_glsl_generate_stream_output_setup(struct shader_glsl_priv *priv,
-        const struct wined3d_shader *shader, const struct wined3d_stream_output_desc *so_desc)
+static void shader_glsl_generate_stream_output_setup(struct wined3d_string_buffer *buffer,
+        const struct wined3d_shader *shader)
 {
-    struct wined3d_string_buffer *buffer = &priv->shader_buffer;
-    unsigned int i;
+    const struct wined3d_stream_output_desc *so_desc = &shader->u.gs.so_desc;
+    unsigned int i, register_idx, component_idx;
 
     shader_addline(buffer, "out shader_in_out\n{\n");
     for (i = 0; i < so_desc->element_count; ++i)
@@ -7558,21 +7563,24 @@ static void shader_glsl_generate_stream_output_setup(struct shader_glsl_priv *pr
             FIXME("Unhandled stream %u.\n", e->stream_idx);
             continue;
         }
-        if (e->register_idx == WINED3D_STREAM_OUTPUT_GAP)
+        if (!e->semantic_name)
+            continue;
+        if (!shader_get_stream_output_register_info(shader, e, &register_idx, &component_idx))
             continue;
 
-        if (e->component_idx || e->component_count != 4)
+        if (component_idx || e->component_count != 4)
         {
             if (e->component_count == 1)
                 shader_addline(buffer, "float");
             else
                 shader_addline(buffer, "vec%u", e->component_count);
+
             shader_addline(buffer, " reg%u_%u_%u;\n",
-                    e->register_idx, e->component_idx, e->component_idx + e->component_count - 1);
+                    register_idx, component_idx, component_idx + e->component_count - 1);
         }
         else
         {
-            shader_addline(buffer, "vec4 reg%u;\n", e->register_idx);
+            shader_addline(buffer, "vec4 reg%u;\n", register_idx);
         }
     }
     shader_addline(buffer, "} shader_out;\n");
@@ -7588,24 +7596,25 @@ static void shader_glsl_generate_stream_output_setup(struct shader_glsl_priv *pr
             FIXME("Unhandled stream %u.\n", e->stream_idx);
             continue;
         }
-        if (e->register_idx == WINED3D_STREAM_OUTPUT_GAP)
+        if (!e->semantic_name)
+            continue;
+        if (!shader_get_stream_output_register_info(shader, e, &register_idx, &component_idx))
             continue;
 
-        if (e->component_idx || e->component_count != 4)
+        if (component_idx || e->component_count != 4)
         {
             DWORD write_mask;
             char str_mask[6];
 
-            write_mask = ((1u << e->component_count) - 1) << e->component_idx;
+            write_mask = ((1u << e->component_count) - 1) << component_idx;
             shader_glsl_write_mask_to_str(write_mask, str_mask);
             shader_addline(buffer, "shader_out.reg%u_%u_%u = outputs[%u]%s;\n",
-                    e->register_idx, e->component_idx, e->component_idx + e->component_count - 1,
-                    e->register_idx, str_mask);
+                    register_idx, component_idx, component_idx + e->component_count - 1,
+                    register_idx, str_mask);
         }
         else
         {
-            shader_addline(buffer, "shader_out.reg%u = outputs[%u];\n",
-                    e->register_idx, e->register_idx);
+            shader_addline(buffer, "shader_out.reg%u = outputs[%u];\n", register_idx, register_idx);
         }
     }
     shader_addline(buffer, "}\n");
@@ -8664,7 +8673,7 @@ static GLuint shader_glsl_generate_geometry_shader(const struct wined3d_context 
 
     if (is_rasterization_disabled(shader))
     {
-        shader_glsl_generate_stream_output_setup(priv, shader, &shader->u.gs.so_desc);
+        shader_glsl_generate_stream_output_setup(buffer, shader);
     }
     else
     {
@@ -11703,8 +11712,8 @@ static const SHADER_HANDLER shader_glsl_instruction_handler_table[WINED3DSIH_TAB
     /* WINED3DSIH_DCL_INPUT_CONTROL_POINT_COUNT    */ shader_glsl_nop,
     /* WINED3DSIH_DCL_INPUT_PRIMITIVE              */ shader_glsl_nop,
     /* WINED3DSIH_DCL_INPUT_PS                     */ shader_glsl_nop,
-    /* WINED3DSIH_DCL_INPUT_PS_SGV                 */ NULL,
-    /* WINED3DSIH_DCL_INPUT_PS_SIV                 */ NULL,
+    /* WINED3DSIH_DCL_INPUT_PS_SGV                 */ shader_glsl_nop,
+    /* WINED3DSIH_DCL_INPUT_PS_SIV                 */ shader_glsl_nop,
     /* WINED3DSIH_DCL_INPUT_SGV                    */ shader_glsl_nop,
     /* WINED3DSIH_DCL_INPUT_SIV                    */ shader_glsl_nop,
     /* WINED3DSIH_DCL_INTERFACE                    */ NULL,
@@ -12877,7 +12886,7 @@ static void glsl_fragment_pipe_alpha_test_func(struct wined3d_context *context,
 {
     const struct wined3d_gl_info *gl_info = context->gl_info;
     GLint func = wined3d_gl_compare_func(state->render_states[WINED3D_RS_ALPHAFUNC]);
-    float ref = state->render_states[WINED3D_RS_ALPHAREF] / 255.0f;
+    float ref = wined3d_alpha_ref(state);
 
     if (func)
     {
@@ -13705,7 +13714,7 @@ static BOOL glsl_blitter_supported(enum wined3d_blit_op blit_op, const struct wi
     /* We don't necessarily want to blit from resources without
      * WINED3D_RESOURCE_ACCESS_GPU, but that may be the only way to decompress
      * compressed textures. */
-    decompress = src_format && (src_format->flags[WINED3D_GL_RES_TYPE_TEX_2D] & WINED3DFMT_FLAG_COMPRESSED)
+    decompress = (src_format->flags[WINED3D_GL_RES_TYPE_TEX_2D] & WINED3DFMT_FLAG_COMPRESSED)
             && !(dst_format->flags[WINED3D_GL_RES_TYPE_TEX_2D] & WINED3DFMT_FLAG_COMPRESSED);
     if (!decompress && !(src_resource->access & dst_resource->access & WINED3D_RESOURCE_ACCESS_GPU))
     {

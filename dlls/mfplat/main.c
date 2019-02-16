@@ -248,19 +248,13 @@ HRESULT WINAPI MFTUnregisterLocal(IClassFactory *factory)
     return S_OK;
 }
 
-MFTIME WINAPI MFGetSystemTime()
+MFTIME WINAPI MFGetSystemTime(void)
 {
-    SYSTEMTIME st;
-    FILETIME ft;
     MFTIME mf;
 
     TRACE("()\n");
 
-    GetSystemTime(&st);
-
-    SystemTimeToFileTime(&st, &ft);
-
-    memcpy(&mf, &ft, sizeof(FILETIME));
+    GetSystemTimeAsFileTime( (FILETIME*)&mf );
 
     return mf;
 }

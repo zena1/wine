@@ -200,3 +200,12 @@ ULONG WINAPI HttpCreateServerSession( HTTPAPI_VERSION version, HTTP_SERVER_SESSI
 
     return NO_ERROR;
 }
+
+/***********************************************************************
+ *        HttpCloseServerSession     (HTTPAPI.@)
+ */
+ULONG WINAPI HttpCloseServerSession( HTTP_SERVER_SESSION_ID id )
+{
+    FIXME( "(%s): stub!\n", wine_dbgstr_longlong(id));
+    return ERROR_INVALID_PARAMETER;
+}
