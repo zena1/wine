@@ -18,6 +18,10 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include "config.h"
+
+#ifdef HAVE_GTK_GTK_H
+
 #include "uxthemegtk.h"
 
 #include <assert.h>
@@ -30,29 +34,39 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(uxthemegtk);
 
-typedef struct _listbox_theme
+typedef struct _header_theme
 {
     uxgtk_theme_t base;
 
-    GtkWidget *scrolled_window;
-} listbox_theme_t;
+    GtkWidget *treeview;
+} header_theme_t;
 
-static inline listbox_theme_t *impl_from_uxgtk_theme_t(uxgtk_theme_t *theme)
+static inline header_theme_t *impl_from_uxgtk_theme_t(uxgtk_theme_t *theme)
 {
-    return CONTAINING_RECORD(theme, listbox_theme_t, base);
+    return CONTAINING_RECORD(theme, header_theme_t, base);
 }
 
-static HRESULT draw_border(listbox_theme_t *theme, cairo_t *cr, int width, int height)
+static HRESULT draw_item(header_theme_t *theme, cairo_t *cr, int state_id, int width, int height)
 {
     GtkStyleContext *context;
+    GtkStateFlags state;
+    GtkWidget *widget;
 
     assert(theme != NULL);
 
-    context = pgtk_widget_get_style_context(theme->scrolled_window);
+    widget = pgtk_tree_view_column_get_button(
+        pgtk_tree_view_get_column((GtkTreeView *)theme->treeview, 1));
+    context = pgtk_widget_get_style_context(widget);
     pgtk_style_context_save(context);
 
-    pgtk_style_context_add_class(context, GTK_STYLE_CLASS_VIEW);
-    pgtk_style_context_add_class(context, GTK_STYLE_CLASS_FRAME);
+    if (state_id == HIS_HOT)
+        state = GTK_STATE_FLAG_PRELIGHT;
+    else if (state_id == HIS_PRESSED)
+        state = GTK_STATE_FLAG_ACTIVE;
+    else
+        state = GTK_STATE_FLAG_NORMAL;
+
+    pgtk_style_context_set_state(context, state);
 
     pgtk_render_background(context, cr, 0, 0, width, height);
     pgtk_render_frame(context, cr, 0, 0, width, height);
@@ -65,50 +79,50 @@ static HRESULT draw_border(listbox_theme_t *theme, cairo_t *cr, int width, int h
 static HRESULT draw_background(uxgtk_theme_t *theme, cairo_t *cr, int part_id, int state_id,
                                int width, int height)
 {
-    listbox_theme_t *listbox_theme = impl_from_uxgtk_theme_t(theme);
+    header_theme_t *header_theme = impl_from_uxgtk_theme_t(theme);
 
     switch (part_id)
     {
-        case 0:
-        case LBCP_BORDER_HSCROLL:
-        case LBCP_BORDER_HVSCROLL:
-        case LBCP_BORDER_NOSCROLL:
-        case LBCP_BORDER_VSCROLL:
-            return draw_border(listbox_theme, cr, width, height);
+        case HP_HEADERITEM:
+            return draw_item(header_theme, cr, state_id, width, height);
     }
 
-    FIXME("Unsupported listbox part %d.\n", part_id);
+    FIXME("Unsupported header part %d.\n", part_id);
     return E_NOTIMPL;
 }
 
 static BOOL is_part_defined(int part_id, int state_id)
 {
-    return (part_id >= 0 && part_id < LBCP_ITEM);
+    return (part_id == HP_HEADERITEM);
 }
 
-static const uxgtk_theme_vtable_t listbox_vtable =
-{
-    "listbox",
+static const uxgtk_theme_vtable_t header_vtable = {
     NULL, /* get_color */
     draw_background,
     NULL, /* get_part_size */
     is_part_defined
 };
 
-uxgtk_theme_t *uxgtk_listbox_theme_create(void)
+uxgtk_theme_t *uxgtk_header_theme_create(void)
 {
-    listbox_theme_t *theme;
+    header_theme_t *theme;
 
     TRACE("()\n");
 
     theme = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*theme));
     if (!theme) return NULL;
 
-    uxgtk_theme_init(&theme->base, &listbox_vtable);
+    uxgtk_theme_init(&theme->base, &header_vtable);
 
-    theme->scrolled_window = pgtk_scrolled_window_new(NULL, NULL);
+    theme->treeview = pgtk_tree_view_new();
 
-    pgtk_container_add((GtkContainer *)theme->base.layout, theme->scrolled_window);
+    pgtk_tree_view_append_column((GtkTreeView *)theme->treeview, pgtk_tree_view_column_new());
+    pgtk_tree_view_append_column((GtkTreeView *)theme->treeview, pgtk_tree_view_column_new());
+    pgtk_tree_view_append_column((GtkTreeView *)theme->treeview, pgtk_tree_view_column_new());
+
+    pgtk_container_add((GtkContainer *)theme->base.layout, theme->treeview);
 
     return &theme->base;
 }
+
+#endif /* HAVE_GTK_GTK_H */
