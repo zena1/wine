@@ -1,5 +1,7 @@
 /*
- * Copyright (C) 2015 Michael Müller
+ * GTK uxtheme implementation
+ *
+ * Copyright (C) 2015 Ivan Akulinchev
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -16,6 +18,21 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#define WINE_FILENAME_STR "uxtheme.dll"
+#include "config.h"
 
-#include <wine/wine_common_ver.rc>
+#ifdef HAVE_GTK_GTK_H
+
+#include "uxthemegtk.h"
+
+#include "wine/debug.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(uxthemegtk);
+
+uxgtk_theme_t *uxgtk_listview_theme_create(void)
+{
+    TRACE("()\n");
+
+    return uxgtk_listbox_theme_create();
+}
+
+#endif /* HAVE_GTK_GTK_H */

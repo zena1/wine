@@ -64,24 +64,24 @@ typedef enum
 } gnutls_ecc_curve_t;
 #endif
 
-#ifndef GNUTLS_PK_ECDSA
-#define GNUTLS_PK_ECDSA 4
-#endif
-
 /* Not present in gnutls version < 3.0 */
 static int (*pgnutls_cipher_tag)(gnutls_cipher_hd_t, void *, size_t);
 static int (*pgnutls_cipher_add_auth)(gnutls_cipher_hd_t, const void *, size_t);
-static int (*pgnutls_privkey_export_ecc_raw)(gnutls_privkey_t, gnutls_ecc_curve_t *,
-                                             gnutls_datum_t *, gnutls_datum_t *, gnutls_datum_t *);
+static gnutls_sign_algorithm_t (*pgnutls_pk_to_sign)(gnutls_pk_algorithm_t, gnutls_digest_algorithm_t);
 static int (*pgnutls_pubkey_import_ecc_raw)(gnutls_pubkey_t, gnutls_ecc_curve_t,
                                             const gnutls_datum_t *, const gnutls_datum_t *);
-static gnutls_sign_algorithm_t (*pgnutls_pk_to_sign)(gnutls_pk_algorithm_t, gnutls_digest_algorithm_t);
+static int (*pgnutls_privkey_import_ecc_raw)(gnutls_privkey_t, gnutls_ecc_curve_t, const gnutls_datum_t *,
+                                             const gnutls_datum_t *, const gnutls_datum_t *);
 static int (*pgnutls_pubkey_verify_hash2)(gnutls_pubkey_t, gnutls_sign_algorithm_t, unsigned int,
                                           const gnutls_datum_t *, const gnutls_datum_t *);
-static int (*pgnutls_privkey_generate)(gnutls_privkey_t, gnutls_pk_algorithm_t, unsigned int, unsigned int);
 
 /* Not present in gnutls version < 2.11.0 */
 static int (*pgnutls_pubkey_import_rsa_raw)(gnutls_pubkey_t key, const gnutls_datum_t *m, const gnutls_datum_t *e);
+
+/* Not present in gnutls version < 3.3.0 */
+static int (*pgnutls_privkey_export_ecc_raw)(gnutls_privkey_t, gnutls_ecc_curve_t *,
+                                             gnutls_datum_t *, gnutls_datum_t *, gnutls_datum_t *);
+static int (*pgnutls_privkey_generate)(gnutls_privkey_t, gnutls_pk_algorithm_t, unsigned int, unsigned int);
 
 static void *libgnutls_handle;
 #define MAKE_FUNCPTR(f) static typeof(f) * p##f
@@ -122,6 +122,13 @@ static int compat_gnutls_privkey_export_ecc_raw(gnutls_privkey_t key, gnutls_ecc
     return GNUTLS_E_UNKNOWN_PK_ALGORITHM;
 }
 
+static int compat_gnutls_privkey_import_ecc_raw(gnutls_privkey_t key, gnutls_ecc_curve_t curve,
+                                                const gnutls_datum_t *x, const gnutls_datum_t *y,
+                                                const gnutls_datum_t *k)
+{
+    return GNUTLS_E_UNKNOWN_PK_ALGORITHM;
+}
+
 static gnutls_sign_algorithm_t compat_gnutls_pk_to_sign(gnutls_pk_algorithm_t pk, gnutls_digest_algorithm_t hash)
 {
     return GNUTLS_SIGN_UNKNOWN;
@@ -140,7 +147,7 @@ static int compat_gnutls_pubkey_import_rsa_raw(gnutls_pubkey_t key, const gnutls
 }
 
 static int compat_gnutls_privkey_generate(gnutls_privkey_t key, gnutls_pk_algorithm_t algo, unsigned int bits,
-                                    unsigned int flags)
+                                          unsigned int flags)
 {
     return GNUTLS_E_UNKNOWN_PK_ALGORITHM;
 }
@@ -208,6 +215,11 @@ BOOL gnutls_initialize(void)
         WARN("gnutls_privkey_export_ecc_raw not found\n");
         pgnutls_privkey_export_ecc_raw = compat_gnutls_privkey_export_ecc_raw;
     }
+    if (!(pgnutls_privkey_import_ecc_raw = wine_dlsym( libgnutls_handle, "gnutls_privkey_import_ecc_raw", NULL, 0 )))
+    {
+        WARN("gnutls_privkey_import_ecc_raw not found\n");
+        pgnutls_privkey_import_ecc_raw = compat_gnutls_privkey_import_ecc_raw;
+    }
     if (!(pgnutls_pk_to_sign = wine_dlsym( libgnutls_handle, "gnutls_pk_to_sign", NULL, 0 )))
     {
         WARN("gnutls_pk_to_sign not found\n");
@@ -223,8 +235,7 @@ BOOL gnutls_initialize(void)
         WARN("gnutls_pubkey_import_rsa_raw not found\n");
         pgnutls_pubkey_import_rsa_raw = compat_gnutls_pubkey_import_rsa_raw;
     }
-
-    if (!(pgnutls_pubkey_import_rsa_raw = wine_dlsym( libgnutls_handle, "gnutls_privkey_generate", NULL, 0 )))
+    if (!(pgnutls_privkey_generate = wine_dlsym( libgnutls_handle, "gnutls_privkey_generate", NULL, 0 )))
     {
         WARN("gnutls_privkey_generate not found\n");
         pgnutls_privkey_generate = compat_gnutls_privkey_generate;
@@ -592,7 +603,7 @@ NTSTATUS key_asymmetric_generate( struct key *key )
     switch (key->alg_id)
     {
     case ALG_ID_ECDH_P256:
-        pk_alg = GNUTLS_PK_ECDSA; /* compatible with ECDSA and ECDH */
+        pk_alg = GNUTLS_PK_ECC; /* compatible with ECDSA and ECDH */
         curve = GNUTLS_ECC_CURVE_SECP256R1;
         break;
 
@@ -617,11 +628,116 @@ NTSTATUS key_asymmetric_generate( struct key *key )
     if ((status = export_gnutls_pubkey_ecc( handle, &key->u.a.pubkey, &key->u.a.pubkey_len )))
     {
         pgnutls_privkey_deinit( handle );
-        return STATUS_INTERNAL_ERROR;
+        return status;
     }
 
     key->u.a.handle = handle;
+    return STATUS_SUCCESS;
+}
 
+NTSTATUS key_export_ecc( struct key *key, UCHAR *buf, ULONG len, ULONG *ret_len )
+{
+    BCRYPT_ECCKEY_BLOB *ecc_blob;
+    gnutls_ecc_curve_t curve;
+    gnutls_datum_t x, y, d;
+    DWORD magic, size;
+    UCHAR *src, *dst;
+    int ret;
+
+    if ((ret = pgnutls_privkey_export_ecc_raw( key->u.a.handle, &curve, &x, &y, &d )))
+    {
+        pgnutls_perror( ret );
+        return STATUS_INTERNAL_ERROR;
+    }
+
+    switch (curve)
+    {
+    case GNUTLS_ECC_CURVE_SECP256R1:
+        magic = BCRYPT_ECDH_PRIVATE_P256_MAGIC;
+        size = 32;
+        break;
+
+    default:
+        FIXME( "curve %u not supported\n", curve );
+        free( x.data ); free( y.data ); free( d.data );
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    *ret_len = sizeof(*ecc_blob) + size * 3;
+    if (len >= *ret_len && buf)
+    {
+        ecc_blob = (BCRYPT_ECCKEY_BLOB *)buf;
+        ecc_blob->dwMagic = magic;
+        ecc_blob->cbKey   = size;
+
+        dst = (UCHAR *)(ecc_blob + 1);
+        if (x.size == size + 1) src = x.data + 1;
+        else src = x.data;
+        memcpy( dst, src, size );
+
+        dst += size;
+        if (y.size == size + 1) src = y.data + 1;
+        else src = y.data;
+        memcpy( dst, src, size );
+
+        dst += size;
+        if (d.size == size + 1) src = d.data + 1;
+        else src = d.data;
+        memcpy( dst, src, size );
+    }
+
+    free( x.data ); free( y.data ); free( d.data );
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS key_import_ecc( struct key *key, UCHAR *buf, ULONG len )
+{
+    BCRYPT_ECCKEY_BLOB *ecc_blob;
+    gnutls_ecc_curve_t curve;
+    gnutls_privkey_t handle;
+    gnutls_datum_t x, y, k;
+    NTSTATUS status;
+    int ret;
+
+    switch (key->alg_id)
+    {
+    case ALG_ID_ECDH_P256:
+        curve = GNUTLS_ECC_CURVE_SECP256R1;
+        break;
+
+    default:
+        FIXME( "algorithm %u not yet supported\n", key->alg_id );
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    if ((ret = pgnutls_privkey_init( &handle )))
+    {
+        pgnutls_perror( ret );
+        return STATUS_INTERNAL_ERROR;
+    }
+
+    ecc_blob = (BCRYPT_ECCKEY_BLOB *)buf;
+    x.data = (unsigned char *)(ecc_blob + 1);
+    x.size = ecc_blob->cbKey;
+    y.data = x.data + ecc_blob->cbKey;
+    y.size = ecc_blob->cbKey;
+    k.data = y.data + ecc_blob->cbKey;
+    k.size = ecc_blob->cbKey;
+
+    if ((ret = pgnutls_privkey_import_ecc_raw( handle, curve, &x, &y, &k )))
+    {
+        pgnutls_perror( ret );
+        pgnutls_privkey_deinit( handle );
+        return STATUS_INTERNAL_ERROR;
+    }
+
+    if ((status = export_gnutls_pubkey_ecc( handle, &key->u.a.pubkey, &key->u.a.pubkey_len )))
+    {
+        pgnutls_privkey_deinit( handle );
+        return status;
+    }
+
+    key->u.a.handle = handle;
     return STATUS_SUCCESS;
 }
 
