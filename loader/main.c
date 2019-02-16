@@ -47,9 +47,6 @@
 #include "wine/library.h"
 #include "main.h"
 
-/* the preloader will set this variable */
-const struct wine_preload_info *wine_main_preload_info = NULL;
-
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 
@@ -60,7 +57,7 @@ static const char *get_macho_library_path( const char *libname )
 
     for (i = 0; i < count; i++)
     {
-       const char *path = _dyld_get_image_name( i );
+        const char *path = _dyld_get_image_name( i );
         if (!path) continue;
 
         path_len = strlen( path );
@@ -72,7 +69,11 @@ static const char *get_macho_library_path( const char *libname )
     }
     return NULL;
 }
-#endif
+
+#endif /* __APPLE__ */
+
+/* the preloader will set this variable */
+const struct wine_preload_info *wine_main_preload_info = NULL;
 
 /***********************************************************************
  *           check_command_line

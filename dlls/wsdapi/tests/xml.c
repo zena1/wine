@@ -604,7 +604,6 @@ static void XMLContext_AddNameToNamespace_tests(void)
         /* Apparently wsdapi always leaves the namespace names array as empty */
         ok(ns2->Names == NULL, "Names array is not empty\n");
         ok(ns2->NamesCount == 0, "NamesCount is not 0 (value = %d)\n", ns2->NamesCount);
-        WSDFreeLinkedMemory(ns2);
     }
 
     IWSDXMLContext_Release(context);

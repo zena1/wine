@@ -143,10 +143,14 @@ static ULONG STDMETHODCALLTYPE d3d11_swapchain_AddRef(IDXGISwapChain1 *iface)
     struct d3d11_swapchain *swapchain = d3d11_swapchain_from_IDXGISwapChain1(iface);
     ULONG refcount = InterlockedIncrement(&swapchain->refcount);
 
-    TRACE("%p increasing refcount to %u.\n", swapchain, refcount);
+    TRACE("%p increasing refcount to %u\n", swapchain, refcount);
 
     if (refcount == 1)
+    {
+        wined3d_mutex_lock();
         wined3d_swapchain_incref(swapchain->wined3d_swapchain);
+        wined3d_mutex_unlock();
+    }
 
     return refcount;
 }
@@ -168,7 +172,9 @@ static ULONG STDMETHODCALLTYPE d3d11_swapchain_Release(IDXGISwapChain1 *iface)
         }
         if (swapchain->factory)
             IDXGIFactory_Release(swapchain->factory);
+        wined3d_mutex_lock();
         wined3d_swapchain_decref(swapchain->wined3d_swapchain);
+        wined3d_mutex_unlock();
         if (device)
             IWineDXGIDevice_Release(device);
     }
@@ -375,7 +381,7 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_GetDesc(IDXGISwapChain1 *iface,
     desc->BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
     dxgi_sample_desc_from_wined3d(&desc->SampleDesc,
             wined3d_desc.multisample_type, wined3d_desc.multisample_quality);
-    desc->BufferUsage = dxgi_usage_from_wined3d_bind_flags(wined3d_desc.backbuffer_bind_flags);
+    desc->BufferUsage = dxgi_usage_from_wined3d_usage(wined3d_desc.backbuffer_usage);
     desc->BufferCount = wined3d_desc.backbuffer_count;
     desc->OutputWindow = wined3d_desc.device_window;
     desc->Windowed = wined3d_desc.windowed;
@@ -428,6 +434,7 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_ResizeTarget(IDXGISwapChain1 *i
 {
     struct d3d11_swapchain *swapchain = d3d11_swapchain_from_IDXGISwapChain1(iface);
     struct wined3d_display_mode mode;
+    HRESULT hr;
 
     TRACE("iface %p, target_mode_desc %p.\n", iface, target_mode_desc);
 
@@ -444,7 +451,11 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_ResizeTarget(IDXGISwapChain1 *i
 
     wined3d_display_mode_from_dxgi(&mode, target_mode_desc);
 
-    return wined3d_swapchain_resize_target(swapchain->wined3d_swapchain, &mode);
+    wined3d_mutex_lock();
+    hr = wined3d_swapchain_resize_target(swapchain->wined3d_swapchain, &mode);
+    wined3d_mutex_unlock();
+
+    return hr;
 }
 
 static HRESULT STDMETHODCALLTYPE d3d11_swapchain_GetContainingOutput(IDXGISwapChain1 *iface, IDXGIOutput **output)
@@ -527,7 +538,7 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_GetDesc1(IDXGISwapChain1 *iface
     desc->Stereo = FALSE;
     dxgi_sample_desc_from_wined3d(&desc->SampleDesc,
             wined3d_desc.multisample_type, wined3d_desc.multisample_quality);
-    desc->BufferUsage = dxgi_usage_from_wined3d_bind_flags(wined3d_desc.backbuffer_bind_flags);
+    desc->BufferUsage = dxgi_usage_from_wined3d_usage(wined3d_desc.backbuffer_usage);
     desc->BufferCount = wined3d_desc.backbuffer_count;
     desc->Scaling = DXGI_SCALING_STRETCH;
     desc->SwapEffect = dxgi_swap_effect_from_wined3d(wined3d_desc.swap_effect);
@@ -602,6 +613,7 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_Present1(IDXGISwapChain1 *iface
         UINT sync_interval, UINT flags, const DXGI_PRESENT_PARAMETERS *present_parameters)
 {
     struct d3d11_swapchain *swapchain = d3d11_swapchain_from_IDXGISwapChain1(iface);
+    HRESULT hr;
 
     TRACE("iface %p, sync_interval %u, flags %#x, present_parameters %p.\n",
             iface, sync_interval, flags, present_parameters);
@@ -623,7 +635,11 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_Present1(IDXGISwapChain1 *iface
     if (present_parameters)
         FIXME("Ignored present parameters %p.\n", present_parameters);
 
-    return wined3d_swapchain_present(swapchain->wined3d_swapchain, NULL, NULL, NULL, sync_interval, 0);
+    wined3d_mutex_lock();
+    hr = wined3d_swapchain_present(swapchain->wined3d_swapchain, NULL, NULL, NULL, sync_interval, 0);
+    wined3d_mutex_unlock();
+
+    return hr;
 }
 
 static BOOL STDMETHODCALLTYPE d3d11_swapchain_IsTemporaryMonoSupported(IDXGISwapChain1 *iface)
@@ -801,6 +817,69 @@ cleanup:
     if (swapchain->device)
         IWineDXGIDevice_Release(swapchain->device);
     return hr;
+}
+
+HRESULT d3d11_swapchain_create(IWineDXGIDevice *device, HWND window, const DXGI_SWAP_CHAIN_DESC1 *swapchain_desc,
+        const DXGI_SWAP_CHAIN_FULLSCREEN_DESC *fullscreen_desc, IDXGISwapChain1 **swapchain)
+{
+    struct wined3d_swapchain *wined3d_swapchain;
+    struct wined3d_swapchain_desc wined3d_desc;
+    HRESULT hr;
+
+    if (swapchain_desc->Scaling != DXGI_SCALING_STRETCH)
+        FIXME("Ignoring scaling %#x.\n", swapchain_desc->Scaling);
+    if (swapchain_desc->AlphaMode != DXGI_ALPHA_MODE_IGNORE)
+        FIXME("Ignoring alpha mode %#x.\n", swapchain_desc->AlphaMode);
+    if (fullscreen_desc && fullscreen_desc->ScanlineOrdering)
+        FIXME("Unhandled scanline ordering %#x.\n", fullscreen_desc->ScanlineOrdering);
+    if (fullscreen_desc && fullscreen_desc->Scaling)
+        FIXME("Unhandled mode scaling %#x.\n", fullscreen_desc->Scaling);
+
+    switch (swapchain_desc->SwapEffect)
+    {
+        case DXGI_SWAP_EFFECT_DISCARD:
+            wined3d_desc.swap_effect = WINED3D_SWAP_EFFECT_DISCARD;
+            break;
+        case DXGI_SWAP_EFFECT_SEQUENTIAL:
+            wined3d_desc.swap_effect = WINED3D_SWAP_EFFECT_SEQUENTIAL;
+            break;
+        case DXGI_SWAP_EFFECT_FLIP_DISCARD:
+            wined3d_desc.swap_effect = WINED3D_SWAP_EFFECT_FLIP_DISCARD;
+            break;
+        case DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL:
+            wined3d_desc.swap_effect = WINED3D_SWAP_EFFECT_FLIP_SEQUENTIAL;
+            break;
+        default:
+            WARN("Invalid swap effect %#x.\n", swapchain_desc->SwapEffect);
+            return DXGI_ERROR_INVALID_CALL;
+    }
+
+    wined3d_desc.backbuffer_width = swapchain_desc->Width;
+    wined3d_desc.backbuffer_height = swapchain_desc->Height;
+    wined3d_desc.backbuffer_format = wined3dformat_from_dxgi_format(swapchain_desc->Format);
+    wined3d_desc.backbuffer_count = swapchain_desc->BufferCount;
+    wined3d_desc.backbuffer_usage = wined3d_usage_from_dxgi_usage(swapchain_desc->BufferUsage);
+    wined3d_sample_desc_from_dxgi(&wined3d_desc.multisample_type,
+            &wined3d_desc.multisample_quality, &swapchain_desc->SampleDesc);
+    wined3d_desc.device_window = window;
+    wined3d_desc.windowed = fullscreen_desc ? fullscreen_desc->Windowed : TRUE;
+    wined3d_desc.enable_auto_depth_stencil = FALSE;
+    wined3d_desc.auto_depth_stencil_format = 0;
+    wined3d_desc.flags = wined3d_swapchain_flags_from_dxgi(swapchain_desc->Flags);
+    wined3d_desc.refresh_rate = fullscreen_desc ? dxgi_rational_to_uint(&fullscreen_desc->RefreshRate) : 0;
+    wined3d_desc.auto_restore_display_mode = TRUE;
+
+    if (FAILED(hr = IWineDXGIDevice_create_swapchain(device, &wined3d_desc, FALSE, &wined3d_swapchain)))
+    {
+        WARN("Failed to create swapchain, hr %#x.\n", hr);
+        return hr;
+    }
+
+    wined3d_mutex_lock();
+    *swapchain = wined3d_swapchain_get_parent(wined3d_swapchain);
+    wined3d_mutex_unlock();
+
+    return S_OK;
 }
 
 #ifdef SONAME_LIBVKD3D

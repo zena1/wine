@@ -1,6 +1,4 @@
 MODULE    = hal.dll
-IMPORTLIB = hal
-IMPORTS   = ntoskrnl
 
 C_SRCS = \
 	hal.c

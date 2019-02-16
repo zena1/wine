@@ -67,8 +67,6 @@ WINE_DEFAULT_DEBUG_CHANNEL(ntdll);
 
 HANDLE keyed_event = NULL;
 
-
-static const LARGE_INTEGER zero_timeout;
 #define TICKSPERSEC        10000000
 
 #ifdef __linux__
@@ -200,7 +198,6 @@ static inline NTSTATUS fast_wake( RTL_CONDITION_VARIABLE *variable, int val )
     return STATUS_NOT_IMPLEMENTED;
 }
 #endif
-
 
 static inline int interlocked_dec_if_nonzero( int *dest )
 {
@@ -1381,7 +1378,6 @@ NTSTATUS WINAPI NtWaitForKeyedEvent( HANDLE handle, const void *key,
     select_op_t select_op;
     UINT flags = SELECT_INTERRUPTIBLE;
 
-    if (!handle) handle = keyed_event;
     if ((ULONG_PTR)key & 1) return STATUS_INVALID_PARAMETER_1;
     if (alertable) flags |= SELECT_ALERTABLE;
     select_op.keyed_event.op     = SELECT_KEYED_EVENT_WAIT;
@@ -1399,7 +1395,6 @@ NTSTATUS WINAPI NtReleaseKeyedEvent( HANDLE handle, const void *key,
     select_op_t select_op;
     UINT flags = SELECT_INTERRUPTIBLE;
 
-    if (!handle) handle = keyed_event;
     if ((ULONG_PTR)key & 1) return STATUS_INVALID_PARAMETER_1;
     if (alertable) flags |= SELECT_ALERTABLE;
     select_op.keyed_event.op     = SELECT_KEYED_EVENT_RELEASE;
@@ -1543,7 +1538,7 @@ NTSTATUS WINAPI NtRemoveIoCompletionEx( HANDLE port, FILE_IO_COMPLETION_INFORMAT
 
     for (;;)
     {
-        while (i < count)
+        for (;;)
         {
             SERVER_START_REQ( remove_completion )
             {
@@ -1560,13 +1555,12 @@ NTSTATUS WINAPI NtRemoveIoCompletionEx( HANDLE port, FILE_IO_COMPLETION_INFORMAT
 
             if (ret != STATUS_SUCCESS) break;
 
-            ++i;
+            if (i++ >= count) break;
         }
 
-        if (i || ret != STATUS_PENDING)
+        if (i && ret == STATUS_PENDING)
         {
-            if (ret == STATUS_PENDING)
-                ret = STATUS_SUCCESS;
+            ret = STATUS_SUCCESS;
             break;
         }
 
@@ -1719,7 +1713,7 @@ DWORD WINAPI RtlRunOnceBeginInitialize( RTL_RUN_ONCE *once, ULONG flags, void **
             next = val & ~3;
             if (interlocked_cmpxchg_ptr( &once->Ptr, (void *)((ULONG_PTR)&next | 1),
                                          (void *)val ) == (void *)val)
-                NtWaitForKeyedEvent( 0, &next, FALSE, NULL );
+                NtWaitForKeyedEvent( keyed_event, &next, FALSE, NULL );
             break;
 
         case 2:  /* done */
@@ -1759,7 +1753,7 @@ DWORD WINAPI RtlRunOnceComplete( RTL_RUN_ONCE *once, ULONG flags, void *context 
             while (val)
             {
                 ULONG_PTR next = *(ULONG_PTR *)val;
-                NtReleaseKeyedEvent( 0, (void *)val, FALSE, NULL );
+                NtReleaseKeyedEvent( keyed_event, (void *)val, FALSE, NULL );
                 val = next;
             }
             return STATUS_SUCCESS;
@@ -1899,12 +1893,12 @@ static inline void srwlock_leave_exclusive( RTL_SRWLOCK *lock, unsigned int val 
      * exclusive access threads they are processed first, followed by
      * the shared waiters. */
     if (val & SRWLOCK_MASK_EXCLUSIVE_QUEUE)
-        NtReleaseKeyedEvent( 0, srwlock_key_exclusive(lock), FALSE, NULL );
+        NtReleaseKeyedEvent( keyed_event, srwlock_key_exclusive(lock), FALSE, NULL );
     else
     {
         val &= SRWLOCK_MASK_SHARED_QUEUE; /* remove SRWLOCK_MASK_IN_EXCLUSIVE */
         while (val--)
-            NtReleaseKeyedEvent( 0, srwlock_key_shared(lock), FALSE, NULL );
+            NtReleaseKeyedEvent( keyed_event, srwlock_key_shared(lock), FALSE, NULL );
     }
 }
 
@@ -1913,7 +1907,7 @@ static inline void srwlock_leave_shared( RTL_SRWLOCK *lock, unsigned int val )
     /* Wake up one exclusive thread as soon as the last shared access thread
      * has left. */
     if ((val & SRWLOCK_MASK_EXCLUSIVE_QUEUE) && !(val & SRWLOCK_MASK_SHARED_QUEUE))
-        NtReleaseKeyedEvent( 0, srwlock_key_exclusive(lock), FALSE, NULL );
+        NtReleaseKeyedEvent( keyed_event, srwlock_key_exclusive(lock), FALSE, NULL );
 }
 
 /***********************************************************************
@@ -1942,7 +1936,7 @@ void WINAPI RtlInitializeSRWLock( RTL_SRWLOCK *lock )
 void WINAPI RtlAcquireSRWLockExclusive( RTL_SRWLOCK *lock )
 {
     if (srwlock_lock_exclusive( (unsigned int *)&lock->Ptr, SRWLOCK_RES_EXCLUSIVE ))
-        NtWaitForKeyedEvent( 0, srwlock_key_exclusive(lock), FALSE, NULL );
+        NtWaitForKeyedEvent( keyed_event, srwlock_key_exclusive(lock), FALSE, NULL );
 }
 
 /***********************************************************************
@@ -1970,14 +1964,14 @@ void WINAPI RtlAcquireSRWLockShared( RTL_SRWLOCK *lock )
     /* Drop exclusive access again and instead requeue for shared access. */
     if ((val & SRWLOCK_MASK_EXCLUSIVE_QUEUE) && !(val & SRWLOCK_MASK_IN_EXCLUSIVE))
     {
-        NtWaitForKeyedEvent( 0, srwlock_key_exclusive(lock), FALSE, NULL );
+        NtWaitForKeyedEvent( keyed_event, srwlock_key_exclusive(lock), FALSE, NULL );
         val = srwlock_unlock_exclusive( (unsigned int *)&lock->Ptr, (SRWLOCK_RES_SHARED
                                         - SRWLOCK_RES_EXCLUSIVE) ) - SRWLOCK_RES_EXCLUSIVE;
         srwlock_leave_exclusive( lock, val );
     }
 
     if (val & SRWLOCK_MASK_EXCLUSIVE_QUEUE)
-        NtWaitForKeyedEvent( 0, srwlock_key_shared(lock), FALSE, NULL );
+        NtWaitForKeyedEvent( keyed_event, srwlock_key_shared(lock), FALSE, NULL );
 }
 
 /***********************************************************************
@@ -2171,117 +2165,4 @@ NTSTATUS WINAPI RtlSleepConditionVariableSRW( RTL_CONDITION_VARIABLE *variable, 
             RtlAcquireSRWLockExclusive( lock );
     }
     return status;
-}
-
-static RTL_CRITICAL_SECTION addr_section;
-static RTL_CRITICAL_SECTION_DEBUG addr_section_debug =
-{
-    0, 0, &addr_section,
-    { &addr_section_debug.ProcessLocksList, &addr_section_debug.ProcessLocksList },
-      0, 0, { (DWORD_PTR)(__FILE__ ": addr_section") }
-};
-static RTL_CRITICAL_SECTION addr_section = { &addr_section_debug, -1, 0, 0, 0, 0 };
-
-static BOOL compare_addr( const void *addr, const void *cmp, SIZE_T size )
-{
-    switch (size)
-    {
-        case 1:
-            return (*(const UCHAR *)addr == *(const UCHAR *)cmp);
-        case 2:
-            return (*(const USHORT *)addr == *(const USHORT *)cmp);
-        case 4:
-            return (*(const ULONG *)addr == *(const ULONG *)cmp);
-        case 8:
-            return (*(const ULONG64 *)addr == *(const ULONG64 *)cmp);
-    }
-
-    return FALSE;
-}
-
-/***********************************************************************
- *           RtlWaitOnAddress   (NTDLL.@)
- */
-NTSTATUS WINAPI RtlWaitOnAddress( const void *addr, const void *cmp, SIZE_T size,
-                                  const LARGE_INTEGER *timeout )
-{
-    select_op_t select_op;
-    NTSTATUS ret;
-    int cookie;
-    BOOL user_apc = FALSE;
-    obj_handle_t apc_handle = 0;
-    apc_call_t call;
-    apc_result_t result;
-    timeout_t abs_timeout = timeout ? timeout->QuadPart : TIMEOUT_INFINITE;
-
-    if (size != 1 && size != 2 && size != 4 && size != 8)
-        return STATUS_INVALID_PARAMETER;
-
-    select_op.keyed_event.op     = SELECT_KEYED_EVENT_WAIT;
-    select_op.keyed_event.handle = wine_server_obj_handle( keyed_event );
-    select_op.keyed_event.key    = wine_server_client_ptr( addr );
-
-    memset( &result, 0, sizeof(result) );
-
-    for (;;)
-    {
-        RtlEnterCriticalSection( &addr_section );
-        if (!compare_addr( addr, cmp, size ))
-        {
-            RtlLeaveCriticalSection( &addr_section );
-            return STATUS_SUCCESS;
-        }
-
-        SERVER_START_REQ( select )
-        {
-            req->flags    = SELECT_INTERRUPTIBLE;
-            req->cookie   = wine_server_client_ptr( &cookie );
-            req->prev_apc = apc_handle;
-            req->timeout  = abs_timeout;
-            wine_server_add_data( req, &result, sizeof(result) );
-            wine_server_add_data( req, &select_op, sizeof(select_op.keyed_event) );
-            ret = wine_server_call( req );
-            abs_timeout = reply->timeout;
-            apc_handle  = reply->apc_handle;
-            call        = reply->call;
-        }
-        SERVER_END_REQ;
-
-        RtlLeaveCriticalSection( &addr_section );
-
-        if (ret == STATUS_PENDING) ret = wait_select_reply( &cookie );
-        if (ret != STATUS_USER_APC) break;
-        if (invoke_apc( &call, &result, NULL ))
-        {
-            /* if we ran a user apc we have to check once more if additional apcs are queued,
-             * but we don't want to wait */
-            abs_timeout = 0;
-            user_apc = TRUE;
-            size = 0;
-        }
-    }
-
-    if (ret == STATUS_TIMEOUT && user_apc) ret = STATUS_USER_APC;
-
-    return ret;
-}
-
-/***********************************************************************
- *           RtlWakeAddressAll    (NTDLL.@)
- */
-void WINAPI RtlWakeAddressAll( const void *addr )
-{
-    RtlEnterCriticalSection( &addr_section );
-    while (NtReleaseKeyedEvent( 0, addr, 0, &zero_timeout ) == STATUS_SUCCESS) {}
-    RtlLeaveCriticalSection( &addr_section );
-}
-
-/***********************************************************************
- *           RtlWakeAddressSingle (NTDLL.@)
- */
-void WINAPI RtlWakeAddressSingle( const void *addr )
-{
-    RtlEnterCriticalSection( &addr_section );
-    NtReleaseKeyedEvent( 0, addr, 0, &zero_timeout );
-    RtlLeaveCriticalSection( &addr_section );
 }

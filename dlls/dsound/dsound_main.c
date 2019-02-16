@@ -492,7 +492,6 @@ HRESULT enumerate_mmdevices(EDataFlow flow, GUID *guids,
     }
 
     if(count == 0){
-        IMMDeviceCollection_Release(coll);
         release_mmdevenum(devenum, init_hr);
         return DS_OK;
     }

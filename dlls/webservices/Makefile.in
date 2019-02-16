@@ -13,5 +13,3 @@ C_SRCS = \
 	string.c \
 	url.c \
 	writer.c
-
-RC_SRCS = rsrc.rc

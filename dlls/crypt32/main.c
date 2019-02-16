@@ -35,16 +35,6 @@ WINE_DEFAULT_DEBUG_CHANNEL(crypt);
 static HCRYPTPROV hDefProv;
 HINSTANCE hInstance;
 
-static CRITICAL_SECTION prov_param_cs;
-static CRITICAL_SECTION_DEBUG prov_param_cs_debug =
-{
-    0, 0, &prov_param_cs,
-    { &prov_param_cs_debug.ProcessLocksList,
-    &prov_param_cs_debug.ProcessLocksList },
-    0, 0, { (DWORD_PTR)(__FILE__ ": prov_param_cs") }
-};
-static CRITICAL_SECTION prov_param_cs = { &prov_param_cs_debug, -1, 0, 0, 0, 0 };
-
 BOOL WINAPI DllMain(HINSTANCE hInst, DWORD fdwReason, PVOID pvReserved)
 {
     switch (fdwReason)
@@ -54,9 +44,6 @@ BOOL WINAPI DllMain(HINSTANCE hInst, DWORD fdwReason, PVOID pvReserved)
             DisableThreadLibraryCalls(hInst);
             init_empty_store();
             crypt_oid_init();
-#ifdef SONAME_LIBGNUTLS
-            gnutls_initialize();
-#endif
             break;
         case DLL_PROCESS_DETACH:
             if (pvReserved) break;
@@ -64,15 +51,12 @@ BOOL WINAPI DllMain(HINSTANCE hInst, DWORD fdwReason, PVOID pvReserved)
             crypt_sip_free();
             default_chain_engine_free();
             if (hDefProv) CryptReleaseContext(hDefProv, 0);
-#ifdef SONAME_LIBGNUTLS
-            gnutls_uninitialize();
-#endif
             break;
     }
     return TRUE;
 }
 
-static HCRYPTPROV CRYPT_GetDefaultProvider(void)
+HCRYPTPROV CRYPT_GetDefaultProvider(void)
 {
     if (!hDefProv)
     {
@@ -190,69 +174,20 @@ BOOL WINAPI I_CryptGetOssGlobal(DWORD x)
     return FALSE;
 }
 
-static BOOL is_supported_algid(HCRYPTPROV prov, ALG_ID algid)
+HCRYPTPROV WINAPI I_CryptGetDefaultCryptProv(DWORD reserved)
 {
-    PROV_ENUMALGS prov_algs;
-    DWORD size = sizeof(prov_algs);
-    BOOL ret = FALSE;
+    HCRYPTPROV ret;
 
-    /* This enumeration is not thread safe */
-    EnterCriticalSection(&prov_param_cs);
-    if (CryptGetProvParam(prov, PP_ENUMALGS, (BYTE *)&prov_algs, &size, CRYPT_FIRST))
+    TRACE("(%08x)\n", reserved);
+
+    if (reserved)
     {
-        do
-        {
-            if (prov_algs.aiAlgid == algid)
-            {
-                ret = TRUE;
-                break;
-            }
-        } while (CryptGetProvParam(prov, PP_ENUMALGS, (BYTE *)&prov_algs, &size, CRYPT_NEXT));
-    }
-    LeaveCriticalSection(&prov_param_cs);
-    return ret;
-}
-
-HCRYPTPROV WINAPI DECLSPEC_HOTPATCH I_CryptGetDefaultCryptProv(ALG_ID algid)
-{
-    HCRYPTPROV prov, defprov;
-
-    TRACE("(%08x)\n", algid);
-
-    defprov = CRYPT_GetDefaultProvider();
-
-    if (algid && !is_supported_algid(defprov, algid))
-    {
-        DWORD i = 0, type, size;
-
-        while (CryptEnumProvidersW(i, NULL, 0, &type, NULL, &size))
-        {
-            WCHAR *name = CryptMemAlloc(size);
-            if (name)
-            {
-                if (CryptEnumProvidersW(i, NULL, 0, &type, name, &size))
-                {
-                    if (CryptAcquireContextW(&prov, NULL, name, type, CRYPT_VERIFYCONTEXT))
-                    {
-                        if (is_supported_algid(prov, algid))
-                        {
-                            CryptMemFree(name);
-                            return prov;
-                        }
-                        CryptReleaseContext(prov, 0);
-                    }
-                }
-                CryptMemFree(name);
-            }
-            i++;
-        }
-
         SetLastError(E_INVALIDARG);
         return 0;
     }
-
-    CryptContextAddRef(defprov, NULL, 0);
-    return defprov;
+    ret = CRYPT_GetDefaultProvider();
+    CryptContextAddRef(ret, NULL, 0);
+    return ret;
 }
 
 BOOL WINAPI I_CryptReadTrustedPublisherDWORDValueFromRegistry(LPCWSTR name,

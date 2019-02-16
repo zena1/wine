@@ -27,8 +27,6 @@
 #include "dinputd.h"
 #include "wine/list.h"
 
-extern HINSTANCE DINPUT_instance;
-
 /* Implementation specification */
 typedef struct IDirectInputImpl IDirectInputImpl;
 struct IDirectInputImpl

@@ -189,11 +189,6 @@ static HRESULT WINAPI BmpFrameEncode_SetPixelFormat(IWICBitmapFrameEncode *iface
 
     if (!This->initialized || This->bits) return WINCODEC_ERR_WRONGSTATE;
 
-    if (IsEqualGUID(pPixelFormat, &GUID_WICPixelFormatBlackWhite))
-        *pPixelFormat = GUID_WICPixelFormat1bppIndexed;
-    else if (IsEqualGUID(pPixelFormat, &GUID_WICPixelFormat2bppIndexed))
-        *pPixelFormat = GUID_WICPixelFormat4bppIndexed;
-
     for (i=0; formats[i].guid; i++)
     {
         if (IsEqualGUID(formats[i].guid, pPixelFormat))
@@ -201,6 +196,8 @@ static HRESULT WINAPI BmpFrameEncode_SetPixelFormat(IWICBitmapFrameEncode *iface
     }
 
     if (!formats[i].guid) i = 0;
+    else if (IsEqualGUID(pPixelFormat, &GUID_WICPixelFormatBlackWhite))
+        i = 2; /* GUID_WICPixelFormat1bppIndexed */
 
     This->format = &formats[i];
     memcpy(pPixelFormat, This->format->guid, sizeof(GUID));
@@ -304,7 +301,7 @@ static HRESULT WINAPI BmpFrameEncode_WriteSource(IWICBitmapFrameEncode *iface,
 {
     BmpFrameEncode *This = impl_from_IWICBitmapFrameEncode(iface);
     HRESULT hr;
-    TRACE("(%p,%p,%s)\n", iface, pIBitmapSource, debug_wic_rect(prc));
+    TRACE("(%p,%p,%p)\n", iface, pIBitmapSource, prc);
 
     if (!This->initialized)
         return WINCODEC_ERR_WRONGSTATE;
@@ -501,11 +498,6 @@ static HRESULT WINAPI BmpEncoder_Initialize(IWICBitmapEncoder *iface,
 static HRESULT WINAPI BmpEncoder_GetContainerFormat(IWICBitmapEncoder *iface,
     GUID *pguidContainerFormat)
 {
-    TRACE("(%p,%p)\n", iface, pguidContainerFormat);
-
-    if (!pguidContainerFormat)
-        return E_INVALIDARG;
-
     memcpy(pguidContainerFormat, &GUID_ContainerFormatBmp, sizeof(GUID));
     return S_OK;
 }

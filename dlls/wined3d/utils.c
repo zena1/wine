@@ -328,10 +328,8 @@ struct wined3d_format_base_flags
  * resource size. */
 static const struct wined3d_format_base_flags format_base_flags[] =
 {
-    {WINED3DFMT_ATI1N,                WINED3DFMT_FLAG_MAPPABLE | WINED3DFMT_FLAG_BROKEN_PITCH},
-    {WINED3DFMT_ATI2N,                WINED3DFMT_FLAG_MAPPABLE | WINED3DFMT_FLAG_BROKEN_PITCH},
-    {WINED3DFMT_D16_LOCKABLE,         WINED3DFMT_FLAG_MAPPABLE},
-    {WINED3DFMT_INTZ,                 WINED3DFMT_FLAG_MAPPABLE},
+    {WINED3DFMT_ATI1N,                WINED3DFMT_FLAG_BROKEN_PITCH},
+    {WINED3DFMT_ATI2N,                WINED3DFMT_FLAG_BROKEN_PITCH},
     {WINED3DFMT_R11G11B10_FLOAT,      WINED3DFMT_FLAG_FLOAT},
     {WINED3DFMT_D32_FLOAT,            WINED3DFMT_FLAG_FLOAT},
     {WINED3DFMT_S8_UINT_D24_FLOAT,    WINED3DFMT_FLAG_FLOAT},
@@ -1533,10 +1531,6 @@ static const struct wined3d_format_texture_info format_texture_info[] =
             GL_BGRA,                    GL_UNSIGNED_SHORT_4_4_4_4_REV,    0,
             WINED3DFMT_FLAG_TEXTURE | WINED3DFMT_FLAG_POSTPIXELSHADER_BLENDING | WINED3DFMT_FLAG_FILTERING,
             WINED3D_GL_EXT_NONE,        NULL},
-    {WINED3DFMT_R10G10B10A2_UINT,       GL_RGB10_A2UI,                    GL_RGB10_A2UI,                          0,
-            GL_RGBA_INTEGER,            GL_UNSIGNED_INT_2_10_10_10_REV,   0,
-            WINED3DFMT_FLAG_TEXTURE | WINED3DFMT_FLAG_RENDERTARGET,
-            ARB_TEXTURE_RGB10_A2UI,     NULL},
     {WINED3DFMT_R10G10B10A2_UNORM,      GL_RGB10_A2,                      GL_RGB10_A2,                            0,
             GL_RGBA,                    GL_UNSIGNED_INT_2_10_10_10_REV,   0,
             WINED3DFMT_FLAG_TEXTURE | WINED3DFMT_FLAG_POSTPIXELSHADER_BLENDING | WINED3DFMT_FLAG_FILTERING
@@ -3053,7 +3047,8 @@ static void query_internal_format(struct wined3d_adapter *adapter,
             if (!(format->f.flags[WINED3D_GL_RES_TYPE_TEX_2D]
                     & (WINED3DFMT_FLAG_SRGB_READ | WINED3DFMT_FLAG_SRGB_WRITE)))
                 format->srgb_internal = format->internal;
-            else if (gl_info->supported[EXT_TEXTURE_SRGB_DECODE])
+            else if (wined3d_settings.offscreen_rendering_mode != ORM_FBO
+                    && gl_info->supported[EXT_TEXTURE_SRGB_DECODE])
                 format->internal = format->srgb_internal;
         }
     }
@@ -3075,7 +3070,8 @@ static void query_internal_format(struct wined3d_adapter *adapter,
                 format->srgb_internal = format->internal;
                 format_clear_flag(&format->f, WINED3DFMT_FLAG_SRGB_READ | WINED3DFMT_FLAG_SRGB_WRITE);
             }
-            else if (gl_info->supported[EXT_TEXTURE_SRGB_DECODE])
+            else if (wined3d_settings.offscreen_rendering_mode != ORM_FBO
+                    && gl_info->supported[EXT_TEXTURE_SRGB_DECODE])
             {
                 format->internal = format->srgb_internal;
             }
@@ -3969,7 +3965,7 @@ static void init_format_depth_bias_scale(struct wined3d_adapter *adapter,
     }
 }
 
-static BOOL wined3d_adapter_init_format_info(struct wined3d_adapter *adapter, size_t format_size)
+BOOL wined3d_adapter_init_format_info(struct wined3d_adapter *adapter, size_t format_size)
 {
     unsigned int count = WINED3D_FORMAT_COUNT + ARRAY_SIZE(typeless_depth_stencil_formats);
 
@@ -4064,7 +4060,7 @@ fail:
 }
 
 const struct wined3d_format *wined3d_get_format(const struct wined3d_adapter *adapter,
-        enum wined3d_format_id format_id, unsigned int bind_flags)
+        enum wined3d_format_id format_id, unsigned int resource_usage)
 {
     const struct wined3d_format *format;
     int idx = get_format_idx(format_id);
@@ -4079,7 +4075,7 @@ const struct wined3d_format *wined3d_get_format(const struct wined3d_adapter *ad
 
     format = get_format_by_idx(adapter, idx);
 
-    if (bind_flags & WINED3D_BIND_DEPTH_STENCIL && wined3d_format_is_typeless(format))
+    if (resource_usage & WINED3DUSAGE_DEPTHSTENCIL && wined3d_format_is_typeless(format))
     {
         for (i = 0; i < ARRAY_SIZE(typeless_depth_stencil_formats); ++i)
         {
@@ -4210,18 +4206,6 @@ const char *debug_vec4(const struct wined3d_vec4 *v)
         return "(null)";
     return wine_dbg_sprintf("{%.8e, %.8e, %.8e, %.8e}",
             v->x, v->y, v->z, v->w);
-}
-
-const char *debug_const_bo_address(const struct wined3d_const_bo_address *address)
-{
-    if (!address)
-        return "(null)";
-    return wine_dbg_sprintf("{%#lx:%p}", address->buffer_object, address->addr);
-}
-
-const char *debug_bo_address(const struct wined3d_bo_address *address)
-{
-    return debug_const_bo_address((const struct wined3d_const_bo_address *)address);
 }
 
 const char *debug_d3dformat(enum wined3d_format_id format_id)
@@ -4515,6 +4499,9 @@ const char *debug_d3dusage(DWORD usage)
 
     init_debug_buffer(&buffer, "0");
 #define WINED3DUSAGE_TO_STR(x) if (usage & x) { debug_append(&buffer, #x, " | "); usage &= ~x; }
+    WINED3DUSAGE_TO_STR(WINED3DUSAGE_RENDERTARGET);
+    WINED3DUSAGE_TO_STR(WINED3DUSAGE_DEPTHSTENCIL);
+    WINED3DUSAGE_TO_STR(WINED3DUSAGE_WRITEONLY);
     WINED3DUSAGE_TO_STR(WINED3DUSAGE_SOFTWAREPROCESSING);
     WINED3DUSAGE_TO_STR(WINED3DUSAGE_DONOTCLIP);
     WINED3DUSAGE_TO_STR(WINED3DUSAGE_POINTS);
@@ -4527,6 +4514,7 @@ const char *debug_d3dusage(DWORD usage)
     WINED3DUSAGE_TO_STR(WINED3DUSAGE_DMAP);
     WINED3DUSAGE_TO_STR(WINED3DUSAGE_TEXTAPI);
     WINED3DUSAGE_TO_STR(WINED3DUSAGE_LEGACY_CUBEMAP);
+    WINED3DUSAGE_TO_STR(WINED3DUSAGE_TEXTURE);
     WINED3DUSAGE_TO_STR(WINED3DUSAGE_OWNDC);
     WINED3DUSAGE_TO_STR(WINED3DUSAGE_STATICDECL);
     WINED3DUSAGE_TO_STR(WINED3DUSAGE_OVERLAY);
@@ -4778,6 +4766,7 @@ const char *debug_d3drenderstate(enum wined3d_render_state state)
         D3DSTATE_TO_STR(WINED3D_RS_COLORWRITEENABLE5);
         D3DSTATE_TO_STR(WINED3D_RS_COLORWRITEENABLE6);
         D3DSTATE_TO_STR(WINED3D_RS_COLORWRITEENABLE7);
+        D3DSTATE_TO_STR(WINED3D_RS_BLENDFACTOR);
         D3DSTATE_TO_STR(WINED3D_RS_SRGBWRITEENABLE);
         D3DSTATE_TO_STR(WINED3D_RS_DEPTHBIAS);
         D3DSTATE_TO_STR(WINED3D_RS_WRAP8);
@@ -5026,8 +5015,6 @@ const char *debug_d3dstate(DWORD state)
         return "STATE_STREAM_OUTPUT";
     if (STATE_IS_BLEND(state))
         return "STATE_BLEND";
-    if (STATE_IS_BLEND_FACTOR(state))
-        return "STATE_BLEND_FACTOR";
 
     return wine_dbg_sprintf("UNKNOWN_STATE(%#x)", state);
 }
@@ -6058,7 +6045,7 @@ void gen_ffp_frag_op(const struct wined3d_context *context, const struct wined3d
 
     for (i = 0; i < d3d_info->limits.ffp_blend_stages; ++i)
     {
-        struct wined3d_texture *texture;
+        const struct wined3d_texture *texture;
 
         settings->op[i].padding = 0;
         if (state->texture_states[i][WINED3D_TSS_COLOR_OP] == WINED3D_TOP_DISABLE)
@@ -6087,7 +6074,7 @@ void gen_ffp_frag_op(const struct wined3d_context *context, const struct wined3d
             }
             else
             {
-                switch (wined3d_texture_gl(texture)->target)
+                switch (texture->target)
                 {
                     case GL_TEXTURE_1D:
                         settings->op[i].tex_type = WINED3D_GL_RES_TYPE_TEX_1D;
@@ -6148,7 +6135,7 @@ void gen_ffp_frag_op(const struct wined3d_context *context, const struct wined3d
             GLenum texture_dimensions;
 
             texture = state->textures[0];
-            texture_dimensions = wined3d_texture_gl(texture)->target;
+            texture_dimensions = texture->target;
 
             if (texture_dimensions == GL_TEXTURE_2D || texture_dimensions == GL_TEXTURE_RECTANGLE_ARB)
             {
@@ -6354,11 +6341,11 @@ void add_ffp_frag_shader(struct wine_rb_tree *shaders, struct ffp_frag_desc *des
  * not care for the colorop or correct gl texture unit (when using nvrc).
  * Requires the caller to activate the correct unit. */
 /* Context activation is done by the caller (state handler). */
-void texture_activate_dimensions(struct wined3d_texture *texture, const struct wined3d_gl_info *gl_info)
+void texture_activate_dimensions(const struct wined3d_texture *texture, const struct wined3d_gl_info *gl_info)
 {
     if (texture)
     {
-        switch (wined3d_texture_gl(texture)->target)
+        switch (texture->target)
         {
             case GL_TEXTURE_2D:
                 gl_info->gl_ops.gl.p_glDisable(GL_TEXTURE_3D);
@@ -6663,6 +6650,7 @@ const char *wined3d_debug_location(DWORD location)
     LOCATION_TO_STR(WINED3D_LOCATION_DRAWABLE);
     LOCATION_TO_STR(WINED3D_LOCATION_RB_MULTISAMPLE);
     LOCATION_TO_STR(WINED3D_LOCATION_RB_RESOLVED);
+    LOCATION_TO_STR(WINED3D_LOCATION_PERSISTENT_MAP);
 #undef LOCATION_TO_STR
     if (location)
         FIXME("Unrecognized location flag(s) %#x.\n", location);

@@ -4,7 +4,6 @@ IMPORTLIB = crypt32
 IMPORTS   = user32 advapi32 bcrypt
 DELAYIMPORTS = cryptnet
 EXTRALIBS = $(SECURITY_LIBS)
-EXTRAINCL = $(GNUTLS_CFLAGS)
 
 C_SRCS = \
 	base64.c \
@@ -22,7 +21,6 @@ C_SRCS = \
 	msg.c \
 	object.c \
 	oid.c \
-	pfx.c \
 	proplist.c \
 	protectdata.c \
 	provstore.c \

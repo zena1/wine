@@ -32,7 +32,6 @@ PO_SRCS = \
 	rm.po \
 	ro.po \
 	ru.po \
-	si.po \
 	sk.po \
 	sl.po \
 	sr_RS@cyrillic.po \

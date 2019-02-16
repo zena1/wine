@@ -2119,7 +2119,7 @@ static void test_IsWow64Process(void)
 
     if (!pIsWow64Process)
     {
-        win_skip("IsWow64Process is not available\n");
+        skip("IsWow64Process is not available\n");
         return;
     }
 
@@ -3757,7 +3757,7 @@ static void test_largepages(void)
     SIZE_T size;
 
     if (!pGetLargePageMinimum) {
-        win_skip("No GetLargePageMinimum support.\n");
+        skip("No GetLargePageMinimum support.\n");
         return;
     }
     size = pGetLargePageMinimum();

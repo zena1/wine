@@ -71,7 +71,7 @@ void WINAPI DECLSPEC_HOTPATCH XInputEnable(BOOL enable)
     }
 }
 
-DWORD WINAPI DECLSPEC_HOTPATCH XInputSetState(DWORD index, XINPUT_VIBRATION* vibration)
+DWORD WINAPI XInputSetState(DWORD index, XINPUT_VIBRATION* vibration)
 {
     TRACE("(index %u, vibration %p)\n", index, vibration);
 
@@ -85,31 +85,13 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputSetState(DWORD index, XINPUT_VIBRATION* vib
     return HID_set_state(&controllers[index], vibration);
 }
 
-/* Some versions of SteamOverlayRenderer hot-patch XInputGetStateEx() and call
- * XInputGetState() in the hook, so we need a wrapper. */
-static DWORD xinput_get_state(DWORD index, XINPUT_STATE *state)
-{
-    HID_find_gamepads(controllers);
-
-    if (index >= XUSER_MAX_COUNT)
-        return ERROR_BAD_ARGUMENTS;
-    if (!controllers[index].connected)
-        return ERROR_DEVICE_NOT_CONNECTED;
-
-    HID_update_state(&controllers[index]);
-    memcpy(state, &controllers[index].state, sizeof(XINPUT_STATE));
-
-    return ERROR_SUCCESS;
-}
-
-
 DWORD WINAPI DECLSPEC_HOTPATCH XInputGetState(DWORD index, XINPUT_STATE* state)
 {
     DWORD ret;
 
     TRACE("(index %u, state %p)!\n", index, state);
 
-    ret = xinput_get_state(index, state);
+    ret = XInputGetStateEx(index, state);
     if (ret != ERROR_SUCCESS)
         return ret;
 
@@ -123,10 +105,20 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetStateEx(DWORD index, XINPUT_STATE* state
 {
     TRACE("(index %u, state %p)!\n", index, state);
 
-    return xinput_get_state(index, state);
+    HID_find_gamepads(controllers);
+
+    if (index >= XUSER_MAX_COUNT)
+        return ERROR_BAD_ARGUMENTS;
+    if (!controllers[index].connected)
+        return ERROR_DEVICE_NOT_CONNECTED;
+
+    HID_update_state(&controllers[index]);
+    memcpy(state, &controllers[index].state, sizeof(XINPUT_STATE));
+
+    return ERROR_SUCCESS;
 }
 
-DWORD WINAPI DECLSPEC_HOTPATCH XInputGetKeystroke(DWORD index, DWORD reserved, PXINPUT_KEYSTROKE keystroke)
+DWORD WINAPI XInputGetKeystroke(DWORD index, DWORD reserved, PXINPUT_KEYSTROKE keystroke)
 {
     static int warn_once;
 
@@ -141,7 +133,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetKeystroke(DWORD index, DWORD reserved, P
     return ERROR_NOT_SUPPORTED;
 }
 
-DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilities(DWORD index, DWORD flags, XINPUT_CAPABILITIES* capabilities)
+DWORD WINAPI XInputGetCapabilities(DWORD index, DWORD flags, XINPUT_CAPABILITIES* capabilities)
 {
     TRACE("(index %u, flags 0x%x, capabilities %p)\n", index, flags, capabilities);
 
@@ -159,7 +151,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilities(DWORD index, DWORD flags, X
     return ERROR_SUCCESS;
 }
 
-DWORD WINAPI DECLSPEC_HOTPATCH XInputGetDSoundAudioDeviceGuids(DWORD index, GUID* render_guid, GUID* capture_guid)
+DWORD WINAPI XInputGetDSoundAudioDeviceGuids(DWORD index, GUID* render_guid, GUID* capture_guid)
 {
     FIXME("(index %u, render guid %p, capture guid %p) Stub!\n", index, render_guid, capture_guid);
 
@@ -171,7 +163,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetDSoundAudioDeviceGuids(DWORD index, GUID
     return ERROR_NOT_SUPPORTED;
 }
 
-DWORD WINAPI DECLSPEC_HOTPATCH XInputGetBatteryInformation(DWORD index, BYTE type, XINPUT_BATTERY_INFORMATION* battery)
+DWORD WINAPI XInputGetBatteryInformation(DWORD index, BYTE type, XINPUT_BATTERY_INFORMATION* battery)
 {
     static int once;
 

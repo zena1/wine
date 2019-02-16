@@ -658,13 +658,13 @@ static	LRESULT G711_DriverDetails(PACMDRIVERDETAILSW add)
     add->cFilterTags = 0;
     add->hicon = NULL;
     MultiByteToWideChar( CP_ACP, 0, "Microsoft CCITT G.711", -1,
-                         add->szShortName, ARRAY_SIZE( add->szShortName ));
+                         add->szShortName, sizeof(add->szShortName)/sizeof(WCHAR) );
     MultiByteToWideChar( CP_ACP, 0, "Wine G711 converter", -1,
-                         add->szLongName, ARRAY_SIZE( add->szLongName ));
+                         add->szLongName, sizeof(add->szLongName)/sizeof(WCHAR) );
     MultiByteToWideChar( CP_ACP, 0, "Brought to you by the Wine team...", -1,
-                         add->szCopyright, ARRAY_SIZE( add->szCopyright ));
+                         add->szCopyright, sizeof(add->szCopyright)/sizeof(WCHAR) );
     MultiByteToWideChar( CP_ACP, 0, "Refer to LICENSE file", -1,
-                         add->szLicensing, ARRAY_SIZE( add->szLicensing ));
+                         add->szLicensing, sizeof(add->szLicensing)/sizeof(WCHAR) );
     add->szFeatures[0] = 0;
 
     return MMSYSERR_NOERROR;

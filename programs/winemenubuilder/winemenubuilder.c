@@ -409,7 +409,7 @@ static HRESULT convert_to_native_icon(IStream *icoFile, int *indices, int numInd
         WINE_ERR("error 0x%08X creating output file %s\n", hr, wine_dbgstr_w(dosOutputFileName));
         goto end;
     }
-    hr = IWICBitmapEncoder_Initialize(encoder, outputFile, WICBitmapEncoderNoCache);
+    hr = IWICBitmapEncoder_Initialize(encoder, outputFile, GENERIC_WRITE);
     if (FAILED(hr))
     {
         WINE_ERR("error 0x%08X initializing encoder\n", hr);
@@ -1476,13 +1476,13 @@ static BOOL write_desktop_entry(const char *unix_link, const char *location, con
             wine_get_config_dir(), wine_path, path, args);
     fprintf(file, "Type=Application\n");
     fprintf(file, "StartupNotify=true\n");
-    if (descr && *descr)
+    if (descr && lstrlenA(descr))
         fprintf(file, "Comment=%s\n", descr);
-    if (workdir && *workdir)
+    if (workdir && lstrlenA(workdir))
         fprintf(file, "Path=%s\n", workdir);
-    if (icon && *icon)
+    if (icon && lstrlenA(icon))
         fprintf(file, "Icon=%s\n", icon);
-    if (wmclass && *wmclass)
+    if (wmclass && lstrlenA(wmclass))
         fprintf(file, "StartupWMClass=%s\n", wmclass);
 
     fclose(file);

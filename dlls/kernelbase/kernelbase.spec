@@ -206,9 +206,9 @@
 @ stdcall CreatePrivateObjectSecurityEx(ptr ptr ptr ptr long long long ptr) advapi32.CreatePrivateObjectSecurityEx
 @ stdcall CreatePrivateObjectSecurityWithMultipleInheritance(ptr ptr ptr ptr long long long long ptr) advapi32.CreatePrivateObjectSecurityWithMultipleInheritance
 @ stdcall CreateProcessA(str str ptr ptr long long ptr str ptr ptr) kernel32.CreateProcessA
-@ stdcall CreateProcessAsUserA(long str str ptr ptr long long ptr str ptr ptr) kernel32.CreateProcessAsUserA
-@ stdcall CreateProcessAsUserW(long wstr wstr ptr ptr long long ptr wstr ptr ptr) kernel32.CreateProcessAsUserW
-@ stdcall CreateProcessInternalA(long str str ptr ptr long long ptr str ptr ptr ptr) kernel32.CreateProcessInternalA
+@ stdcall CreateProcessAsUserA(long str str ptr ptr long long ptr str ptr ptr) advapi32.CreateProcessAsUserA
+@ stdcall CreateProcessAsUserW(long wstr wstr ptr ptr long long ptr wstr ptr ptr) advapi32.CreateProcessAsUserW
+# @ stub CreateProcessInternalA
 @ stdcall CreateProcessInternalW(long wstr wstr ptr ptr long long ptr wstr ptr ptr ptr) kernel32.CreateProcessInternalW
 @ stdcall CreateProcessW(wstr wstr ptr ptr long long ptr wstr ptr ptr) kernel32.CreateProcessW
 @ stdcall CreateRemoteThread(long ptr long ptr long long ptr) kernel32.CreateRemoteThread
@@ -471,7 +471,7 @@
 # @ stub GetCurrentTargetPlatformContext
 @ stdcall -norelay GetCurrentThread() kernel32.GetCurrentThread
 @ stdcall -norelay GetCurrentThreadId() kernel32.GetCurrentThreadId
-@ stdcall GetCurrentThreadStackLimits(ptr ptr) kernel32.GetCurrentThreadStackLimits
+# @ stub GetCurrentThreadStackLimits
 @ stdcall GetDateFormatA(long long ptr str ptr long) kernel32.GetDateFormatA
 @ stdcall GetDateFormatEx(wstr long ptr wstr ptr long wstr) kernel32.GetDateFormatEx
 @ stdcall GetDateFormatW(long long ptr wstr ptr long) kernel32.GetDateFormatW
@@ -631,7 +631,7 @@
 # @ stub GetProcessImageFileNameW
 # @ stub GetProcessInformation
 # @ stub GetProcessMemoryInfo
-@ stdcall GetProcessMitigationPolicy(long long ptr long) kernel32.GetProcessMitigationPolicy
+# @ stub GetProcessMitigationPolicy
 @ stub GetProcessPreferredUILanguages
 @ stdcall GetProcessPriorityBoost(long ptr) kernel32.GetProcessPriorityBoost
 @ stdcall GetProcessShutdownParameters(ptr ptr) kernel32.GetProcessShutdownParameters
@@ -1288,8 +1288,8 @@
 # @ stub RegKrnResetAppKeyLoaded
 # @ stub RegKrnSetDllHasThreadStateGlobal
 # @ stub RegKrnSetTermsrvRegistryExtensionFlags
-@ stdcall RegLoadAppKeyA(str ptr long long long) advapi32.RegLoadAppKeyA
-@ stdcall RegLoadAppKeyW(wstr ptr long long long) advapi32.RegLoadAppKeyW
+# @ stub RegLoadAppKeyA
+# @ stub RegLoadAppKeyW
 @ stdcall -private RegLoadKeyA(long str str) kernel32.RegLoadKeyA
 @ stdcall -private RegLoadKeyW(long wstr wstr) kernel32.RegLoadKeyW
 @ stdcall -private RegLoadMUIStringA(long str str long ptr long str) kernel32.RegLoadMUIStringA
@@ -1696,10 +1696,10 @@
 @ stdcall WaitForThreadpoolWorkCallbacks(ptr long) kernel32.WaitForThreadpoolWorkCallbacks
 # @ stub WaitForUserPolicyForegroundProcessingInternal
 @ stdcall WaitNamedPipeW(wstr long) kernel32.WaitNamedPipeW
-@ stdcall WaitOnAddress(ptr ptr long long)
+# @ stub WaitOnAddress
 @ stdcall WakeAllConditionVariable(ptr) kernel32.WakeAllConditionVariable
-@ stdcall WakeByAddressAll(ptr) ntdll.RtlWakeAddressAll
-@ stdcall WakeByAddressSingle(ptr) ntdll.RtlWakeAddressSingle
+# @ stub WakeByAddressAll
+# @ stub WakeByAddressSingle
 @ stdcall WakeConditionVariable(ptr) kernel32.WakeConditionVariable
 # @ stub WerGetFlags
 @ stdcall WerRegisterFile(wstr long long) kernel32.WerRegisterFile

@@ -19,7 +19,6 @@
 
 #include "config.h"
 
-#include <assert.h>
 #include <stdarg.h>
 
 #define COBJMACROS
@@ -185,7 +184,6 @@ static HRESULT find_decoder(IStream *pIStream, const GUID *pguidVendor,
                             IWICBitmapDecoder_Release(*decoder);
                             IWICBitmapDecoderInfo_Release(decoderinfo);
                             IUnknown_Release(unkdecoderinfo);
-                            IEnumUnknown_Release(enumdecoders);
                             *decoder = NULL;
                             return res;
                         }
@@ -492,8 +490,9 @@ static HRESULT WINAPI ImagingFactory_CreateBitmap(IWICImagingFactory2 *iface,
     return BitmapImpl_Create(uiWidth, uiHeight, 0, 0, NULL, 0, pixelFormat, option, ppIBitmap);
 }
 
-static HRESULT create_bitmap_from_source_rect(IWICBitmapSource *piBitmapSource, const WICRect *rect,
-    WICBitmapCreateCacheOption option, IWICBitmap **ppIBitmap)
+static HRESULT WINAPI ImagingFactory_CreateBitmapFromSource(IWICImagingFactory2 *iface,
+    IWICBitmapSource *piBitmapSource, WICBitmapCreateCacheOption option,
+    IWICBitmap **ppIBitmap)
 {
     IWICBitmap *result;
     IWICBitmapLock *lock;
@@ -507,28 +506,12 @@ static HRESULT create_bitmap_from_source_rect(IWICBitmapSource *piBitmapSource, 
     IWICPixelFormatInfo2 *formatinfo;
     WICPixelFormatNumericRepresentation format_type;
 
-    assert(!rect || option == WICBitmapCacheOnLoad);
+    TRACE("(%p,%p,%u,%p)\n", iface, piBitmapSource, option, ppIBitmap);
 
     if (!piBitmapSource || !ppIBitmap)
         return E_INVALIDARG;
 
-    if (option == WICBitmapNoCache && SUCCEEDED(IWICBitmapSource_QueryInterface(piBitmapSource,
-            &IID_IWICBitmap, (void **)&result)))
-    {
-        *ppIBitmap = result;
-        return S_OK;
-    }
-
     hr = IWICBitmapSource_GetSize(piBitmapSource, &width, &height);
-
-    if (SUCCEEDED(hr) && rect)
-    {
-        if (rect->X >= width || rect->Y >= height || rect->Width == 0 || rect->Height == 0)
-            return E_INVALIDARG;
-
-        width = min(width - rect->X, rect->Width);
-        height = min(height - rect->Y, rect->Height);
-    }
 
     if (SUCCEEDED(hr))
         hr = IWICBitmapSource_GetPixelFormat(piBitmapSource, &pixelformat);
@@ -560,14 +543,7 @@ static HRESULT create_bitmap_from_source_rect(IWICBitmapSource *piBitmapSource, 
         {
             UINT stride, buffersize;
             BYTE *buffer;
-
-            if (rect)
-            {
-                rc.X = rect->X;
-                rc.Y = rect->Y;
-            }
-            else
-                rc.X = rc.Y = 0;
+            rc.X = rc.Y = 0;
             rc.Width = width;
             rc.Height = height;
 
@@ -620,30 +596,13 @@ static HRESULT create_bitmap_from_source_rect(IWICBitmapSource *piBitmapSource, 
     return hr;
 }
 
-static HRESULT WINAPI ImagingFactory_CreateBitmapFromSource(IWICImagingFactory2 *iface,
-    IWICBitmapSource *piBitmapSource, WICBitmapCreateCacheOption option,
-    IWICBitmap **ppIBitmap)
-{
-    TRACE("(%p,%p,%u,%p)\n", iface, piBitmapSource, option, ppIBitmap);
-
-    return create_bitmap_from_source_rect(piBitmapSource, NULL, option, ppIBitmap);
-}
-
 static HRESULT WINAPI ImagingFactory_CreateBitmapFromSourceRect(IWICImagingFactory2 *iface,
     IWICBitmapSource *piBitmapSource, UINT x, UINT y, UINT width, UINT height,
     IWICBitmap **ppIBitmap)
 {
-    WICRect rect;
-
-    TRACE("(%p,%p,%u,%u,%u,%u,%p)\n", iface, piBitmapSource, x, y, width,
+    FIXME("(%p,%p,%u,%u,%u,%u,%p): stub\n", iface, piBitmapSource, x, y, width,
         height, ppIBitmap);
-
-    rect.X = x;
-    rect.Y = y;
-    rect.Width = width;
-    rect.Height = height;
-
-    return create_bitmap_from_source_rect(piBitmapSource, &rect, WICBitmapCacheOnLoad, ppIBitmap);
+    return E_NOTIMPL;
 }
 
 static HRESULT WINAPI ImagingFactory_CreateBitmapFromMemory(IWICImagingFactory2 *iface,

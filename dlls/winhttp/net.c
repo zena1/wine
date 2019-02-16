@@ -173,15 +173,15 @@ static void winsock_init(void)
     InitOnceExecuteOnce( &once, winsock_startup, NULL, NULL );
 }
 
-static void set_blocking( struct netconn *conn, BOOL blocking )
+static void set_blocking( netconn_t *conn, BOOL blocking )
 {
     ULONG state = !blocking;
     ioctlsocket( conn->socket, FIONBIO, &state );
 }
 
-struct netconn *netconn_create( struct hostdata *host, const struct sockaddr_storage *sockaddr, int timeout )
+netconn_t *netconn_create( hostdata_t *host, const struct sockaddr_storage *sockaddr, int timeout )
 {
-    struct netconn *conn;
+    netconn_t *conn;
     unsigned int addr_len;
     BOOL ret = FALSE;
 
@@ -225,7 +225,7 @@ struct netconn *netconn_create( struct hostdata *host, const struct sockaddr_sto
             FD_ZERO( &set );
             FD_SET( conn->socket, &set );
             if ((res = select( conn->socket + 1, NULL, &set, NULL, &timeval )) > 0) ret = TRUE;
-            else if (!res) SetLastError( ERROR_WINHTTP_TIMEOUT );
+            else if (!res) set_last_error( ERROR_WINHTTP_TIMEOUT );
         }
     }
 
@@ -233,7 +233,7 @@ struct netconn *netconn_create( struct hostdata *host, const struct sockaddr_sto
 
     if (!ret)
     {
-        WARN("unable to connect to host (%u)\n", GetLastError());
+        WARN("unable to connect to host (%u)\n", get_last_error());
         closesocket( conn->socket );
         heap_free( conn );
         return NULL;
@@ -241,7 +241,7 @@ struct netconn *netconn_create( struct hostdata *host, const struct sockaddr_sto
     return conn;
 }
 
-void netconn_close( struct netconn *conn )
+void netconn_close( netconn_t *conn )
 {
     if (conn->secure)
     {
@@ -255,7 +255,7 @@ void netconn_close( struct netconn *conn )
     heap_free(conn);
 }
 
-BOOL netconn_secure_connect( struct netconn *conn, WCHAR *hostname, DWORD security_flags, CredHandle *cred_handle,
+BOOL netconn_secure_connect( netconn_t *conn, WCHAR *hostname, DWORD security_flags, CredHandle *cred_handle,
                              BOOL check_revocation)
 {
     SecBuffer out_buf = {0, SECBUFFER_TOKEN, NULL}, in_bufs[2] = {{0, SECBUFFER_TOKEN}, {0, SECBUFFER_EMPTY}};
@@ -378,7 +378,7 @@ BOOL netconn_secure_connect( struct netconn *conn, WCHAR *hostname, DWORD securi
         heap_free(conn->ssl_buf);
         conn->ssl_buf = NULL;
         DeleteSecurityContext(&ctx);
-        SetLastError(res ? res : ERROR_WINHTTP_SECURE_CHANNEL_ERROR);
+        set_last_error(res ? res : ERROR_WINHTTP_SECURE_CHANNEL_ERROR);
         return FALSE;
     }
 
@@ -389,7 +389,7 @@ BOOL netconn_secure_connect( struct netconn *conn, WCHAR *hostname, DWORD securi
     return TRUE;
 }
 
-static BOOL send_ssl_chunk(struct netconn *conn, const void *msg, size_t size)
+static BOOL send_ssl_chunk(netconn_t *conn, const void *msg, size_t size)
 {
     SecBuffer bufs[4] = {
         {conn->ssl_sizes.cbHeader, SECBUFFER_STREAM_HEADER, conn->ssl_buf},
@@ -415,7 +415,7 @@ static BOOL send_ssl_chunk(struct netconn *conn, const void *msg, size_t size)
     return TRUE;
 }
 
-BOOL netconn_send( struct netconn *conn, const void *msg, size_t len, int *sent )
+BOOL netconn_send( netconn_t *conn, const void *msg, size_t len, int *sent )
 {
     if (conn->secure)
     {
@@ -439,7 +439,7 @@ BOOL netconn_send( struct netconn *conn, const void *msg, size_t len, int *sent 
     return ((*sent = sock_send( conn->socket, msg, len, 0 )) != -1);
 }
 
-static BOOL read_ssl_chunk(struct netconn *conn, void *buf, SIZE_T buf_size, SIZE_T *ret_size, BOOL *eof)
+static BOOL read_ssl_chunk(netconn_t *conn, void *buf, SIZE_T buf_size, SIZE_T *ret_size, BOOL *eof)
 {
     const SIZE_T ssl_buf_size = conn->ssl_sizes.cbHeader+conn->ssl_sizes.cbMaximumMessage+conn->ssl_sizes.cbTrailer;
     SecBuffer bufs[4];
@@ -530,7 +530,7 @@ static BOOL read_ssl_chunk(struct netconn *conn, void *buf, SIZE_T buf_size, SIZ
     return TRUE;
 }
 
-BOOL netconn_recv( struct netconn *conn, void *buf, size_t len, int flags, int *recvd )
+BOOL netconn_recv( netconn_t *conn, void *buf, size_t len, int flags, int *recvd )
 {
     *recvd = 0;
     if (!len) return TRUE;
@@ -582,12 +582,12 @@ BOOL netconn_recv( struct netconn *conn, void *buf, size_t len, int flags, int *
     return ((*recvd = sock_recv( conn->socket, buf, len, flags )) != -1);
 }
 
-ULONG netconn_query_data_available( struct netconn *conn )
+ULONG netconn_query_data_available( netconn_t *conn )
 {
     return conn->secure ? conn->peek_len : 0;
 }
 
-DWORD netconn_set_timeout( struct netconn *netconn, BOOL send, int value )
+DWORD netconn_set_timeout( netconn_t *netconn, BOOL send, int value )
 {
     int opt = send ? SO_SNDTIMEO : SO_RCVTIMEO;
     if (setsockopt( netconn->socket, SOL_SOCKET, opt, (void *)&value, sizeof(value) ) == -1)
@@ -599,7 +599,7 @@ DWORD netconn_set_timeout( struct netconn *netconn, BOOL send, int value )
     return ERROR_SUCCESS;
 }
 
-BOOL netconn_is_alive( struct netconn *netconn )
+BOOL netconn_is_alive( netconn_t *netconn )
 {
     int len;
     char b;
@@ -651,54 +651,52 @@ static DWORD resolve_hostname( const WCHAR *name, INTERNET_PORT port, struct soc
     return ERROR_SUCCESS;
 }
 
-struct async_resolve
+struct resolve_args
 {
     const WCHAR             *hostname;
     INTERNET_PORT            port;
-    struct sockaddr_storage *addr;
-    DWORD                    result;
-    HANDLE                   done;
+    struct sockaddr_storage *sa;
 };
 
-static void CALLBACK resolve_proc( TP_CALLBACK_INSTANCE *instance, void *ctx )
+static DWORD CALLBACK resolve_proc( LPVOID arg )
 {
-    struct async_resolve *async = ctx;
-    async->result = resolve_hostname( async->hostname, async->port, async->addr );
-    SetEvent( async->done );
+    struct resolve_args *ra = arg;
+    return resolve_hostname( ra->hostname, ra->port, ra->sa );
 }
 
-BOOL netconn_resolve( WCHAR *hostname, INTERNET_PORT port, struct sockaddr_storage *addr, int timeout )
+BOOL netconn_resolve( WCHAR *hostname, INTERNET_PORT port, struct sockaddr_storage *sa, int timeout )
 {
     DWORD ret;
 
-    if (!timeout) ret = resolve_hostname( hostname, port, addr );
-    else
+    if (timeout)
     {
-        struct async_resolve async;
+        DWORD status;
+        HANDLE thread;
+        struct resolve_args ra;
 
-        async.hostname = hostname;
-        async.port     = port;
-        async.addr     = addr;
-        if (!(async.done = CreateEventW( NULL, FALSE, FALSE, NULL ))) return FALSE;
-        if (!TrySubmitThreadpoolCallback( resolve_proc, &async, NULL ))
-        {
-            CloseHandle( async.done );
-            return FALSE;
-        }
-        if (WaitForSingleObject( async.done, timeout ) != WAIT_OBJECT_0) ret = ERROR_WINHTTP_TIMEOUT;
-        else ret = async.result;
-        CloseHandle( async.done );
+        ra.hostname = hostname;
+        ra.port     = port;
+        ra.sa       = sa;
+
+        thread = CreateThread( NULL, 0, resolve_proc, &ra, 0, NULL );
+        if (!thread) return FALSE;
+
+        status = WaitForSingleObject( thread, timeout );
+        if (status == WAIT_OBJECT_0) GetExitCodeThread( thread, &ret );
+        else ret = ERROR_WINHTTP_TIMEOUT;
+        CloseHandle( thread );
     }
+    else ret = resolve_hostname( hostname, port, sa );
 
     if (ret)
     {
-        SetLastError( ret );
+        set_last_error( ret );
         return FALSE;
     }
     return TRUE;
 }
 
-const void *netconn_get_certificate( struct netconn *conn )
+const void *netconn_get_certificate( netconn_t *conn )
 {
     const CERT_CONTEXT *ret;
     SECURITY_STATUS res;
@@ -708,7 +706,7 @@ const void *netconn_get_certificate( struct netconn *conn )
     return res == SEC_E_OK ? ret : NULL;
 }
 
-int netconn_get_cipher_strength( struct netconn *conn )
+int netconn_get_cipher_strength( netconn_t *conn )
 {
     SecPkgContext_ConnectionInfo conn_info;
     SECURITY_STATUS res;

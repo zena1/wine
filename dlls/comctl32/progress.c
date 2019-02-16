@@ -652,24 +652,23 @@ static LRESULT WINAPI ProgressWindowProc(HWND hwnd, UINT message,
 
     case PBM_STEPIT:
     {
-        int oldVal = infoPtr->CurVal;
-
-        if (infoPtr->MinVal != infoPtr->MaxVal)
+	INT oldVal;
+        oldVal = infoPtr->CurVal;
+        infoPtr->CurVal += infoPtr->Step;
+        if (infoPtr->CurVal > infoPtr->MaxVal)
         {
-            infoPtr->CurVal += infoPtr->Step;
-            if (infoPtr->CurVal > infoPtr->MaxVal)
-                infoPtr->CurVal = (infoPtr->CurVal - infoPtr->MinVal) % (infoPtr->MaxVal - infoPtr->MinVal) + infoPtr->MinVal;
-            if (infoPtr->CurVal < infoPtr->MinVal)
-                infoPtr->CurVal = (infoPtr->CurVal - infoPtr->MinVal) % (infoPtr->MaxVal - infoPtr->MinVal) + infoPtr->MaxVal;
-
-            if (oldVal != infoPtr->CurVal)
-            {
-                TRACE("PBM_STEPIT: current pos changed from %d to %d\n", oldVal, infoPtr->CurVal);
-                PROGRESS_Invalidate( infoPtr, oldVal, infoPtr->CurVal );
-                UpdateWindow( infoPtr->Self );
-            }
+            infoPtr->CurVal = (infoPtr->CurVal - infoPtr->MinVal) % (infoPtr->MaxVal - infoPtr->MinVal) + infoPtr->MinVal;
         }
-
+        if (infoPtr->CurVal < infoPtr->MinVal)
+        {
+            infoPtr->CurVal = (infoPtr->CurVal - infoPtr->MinVal) % (infoPtr->MaxVal - infoPtr->MinVal) + infoPtr->MaxVal;
+        }
+        if(oldVal != infoPtr->CurVal)
+	{
+	    TRACE("PBM_STEPIT: current pos changed from %d to %d\n", oldVal, infoPtr->CurVal);
+            PROGRESS_Invalidate( infoPtr, oldVal, infoPtr->CurVal );
+            UpdateWindow( infoPtr->Self );
+	}
         return oldVal;
     }
 

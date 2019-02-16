@@ -315,9 +315,6 @@ static void test_createport(void)
     ok(port == NULL, "Get IDirectMusicPort pointer? %p\n", port);
     ok(portparams.dwValidParams == 0, "portparams struct was filled in?\n");
 
-    hr = IDirectMusicPerformance8_CloseDown(perf);
-    ok(hr == S_OK, "CloseDown failed: %08x\n", hr);
-
     IDirectMusic_Release(music);
     IDirectMusicPerformance_Release(perf);
 }

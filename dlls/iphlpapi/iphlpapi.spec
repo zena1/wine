@@ -78,7 +78,7 @@
 @ stdcall GetBestInterfaceEx( ptr ptr )
 @ stub GetBestInterfaceFromStack
 @ stdcall GetBestRoute( long long ptr )
-@ stdcall GetBestRoute2( ptr long ptr ptr long ptr ptr )
+#@ stub GetBestRoute2
 @ stub GetBestRouteFromStack
 #@ stub GetCurrentThreadCompartmentId
 @ stdcall GetExtendedTcpTable( ptr ptr long long long long )
@@ -106,7 +106,7 @@
 @ stdcall GetIpForwardTable2( long ptr )
 @ stub GetIpForwardTableFromStack
 #@ stub GetIpInterfaceEntry
-@ stdcall GetIpInterfaceTable( long ptr )
+#@ stub GetIpInterfaceTable
 #@ stub GetIpNetEntry2
 @ stdcall GetIpNetTable( ptr ptr long )
 @ stdcall GetIpNetTable2( long ptr )

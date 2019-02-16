@@ -176,7 +176,7 @@ static HRESULT WINAPI mfsession_Close(IMFMediaSession *iface)
 
     FIXME("(%p)\n", This);
 
-    return S_OK;
+    return E_NOTIMPL;
 }
 
 static HRESULT WINAPI mfsession_Shutdown(IMFMediaSession *iface)

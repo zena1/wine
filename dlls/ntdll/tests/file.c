@@ -87,8 +87,6 @@ static NTSTATUS (WINAPI *pNtQueryFullAttributesFile)(const OBJECT_ATTRIBUTES*, F
 static NTSTATUS (WINAPI *pNtFlushBuffersFile)(HANDLE, IO_STATUS_BLOCK*);
 static NTSTATUS (WINAPI *pNtQueryEaFile)(HANDLE,PIO_STATUS_BLOCK,PVOID,ULONG,BOOLEAN,PVOID,ULONG,PULONG,BOOLEAN);
 
-static WCHAR fooW[] = {'f','o','o',0};
-
 static inline BOOL is_signaled( HANDLE obj )
 {
     return WaitForSingleObject( obj, 0 ) == WAIT_OBJECT_0;
@@ -357,6 +355,7 @@ static void open_file_test(void)
 {
     static const WCHAR testdirW[] = {'o','p','e','n','f','i','l','e','t','e','s','t',0};
     static const char testdata[] = "Hello World";
+    static WCHAR fooW[] = {'f','o','o',0};
     NTSTATUS status;
     HANDLE dir, root, handle, file;
     WCHAR path[MAX_PATH], tmpfile[MAX_PATH];
@@ -978,32 +977,6 @@ static void test_set_io_completion(void)
     ok( info[1].IoStatusBlock.Information == size, "wrong information %#lx\n",
         info[1].IoStatusBlock.Information );
     ok( U(info[1].IoStatusBlock).Status == 56, "wrong status %#x\n", U(info[1].IoStatusBlock).Status);
-
-    res = pNtSetIoCompletion( h, 123, 456, 789, size );
-    ok( res == STATUS_SUCCESS, "NtSetIoCompletion failed: %#x\n", res );
-
-    res = pNtSetIoCompletion( h, 12, 34, 56, size );
-    ok( res == STATUS_SUCCESS, "NtSetIoCompletion failed: %#x\n", res );
-
-    count = 0xdeadbeef;
-    res = pNtRemoveIoCompletionEx( h, info, 1, &count, NULL, FALSE );
-    ok( res == STATUS_SUCCESS, "NtRemoveIoCompletionEx failed: %#x\n", res );
-    ok( count == 1, "wrong count %u\n", count );
-    ok( info[0].CompletionKey == 123, "wrong key %#lx\n", info[0].CompletionKey );
-    ok( info[0].CompletionValue == 456, "wrong value %#lx\n", info[0].CompletionValue );
-    ok( info[0].IoStatusBlock.Information == size, "wrong information %#lx\n",
-        info[0].IoStatusBlock.Information );
-    ok( U(info[0].IoStatusBlock).Status == 789, "wrong status %#x\n", U(info[0].IoStatusBlock).Status);
-
-    count = 0xdeadbeef;
-    res = pNtRemoveIoCompletionEx( h, info, 1, &count, NULL, FALSE );
-    ok( res == STATUS_SUCCESS, "NtRemoveIoCompletionEx failed: %#x\n", res );
-    ok( count == 1, "wrong count %u\n", count );
-    ok( info[0].CompletionKey == 12, "wrong key %#lx\n", info[0].CompletionKey );
-    ok( info[0].CompletionValue == 34, "wrong value %#lx\n", info[0].CompletionValue );
-    ok( info[0].IoStatusBlock.Information == size, "wrong information %#lx\n",
-        info[0].IoStatusBlock.Information );
-    ok( U(info[0].IoStatusBlock).Status == 56, "wrong status %#x\n", U(info[0].IoStatusBlock).Status);
 
     apc_count = 0;
     QueueUserAPC( user_apc_proc, GetCurrentThread(), (ULONG_PTR)&apc_count );
@@ -3427,24 +3400,6 @@ static void test_file_all_name_information(void)
     HeapFree( GetProcessHeap(), 0, file_name );
 }
 
-#define test_completion_flags(a,b) _test_completion_flags(__LINE__,a,b)
-static void _test_completion_flags(unsigned line, HANDLE handle, DWORD expected_flags)
-{
-    FILE_IO_COMPLETION_NOTIFICATION_INFORMATION info;
-    IO_STATUS_BLOCK io;
-    NTSTATUS status;
-
-    info.Flags = 0xdeadbeef;
-    status = pNtQueryInformationFile(handle, &io, &info, sizeof(info),
-                                     FileIoCompletionNotificationInformation);
-    ok_(__FILE__,line)(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
-    ok_(__FILE__,line)(io.Status == STATUS_SUCCESS, "Status = %x\n", io.Status);
-    ok_(__FILE__,line)(io.Information == sizeof(info), "Information = %lu\n", io.Information);
-    /* FILE_SKIP_SET_USER_EVENT_ON_FAST_IO is not supported on win2k3 */
-    ok_(__FILE__,line)((info.Flags & ~FILE_SKIP_SET_USER_EVENT_ON_FAST_IO) == expected_flags,
-                       "got %08x\n", info.Flags);
-}
-
 static void test_file_completion_information(void)
 {
     static const char buf[] = "testdata";
@@ -3461,9 +3416,9 @@ static void test_file_completion_information(void)
     if (!(h = create_temp_file(0))) return;
 
     status = pNtSetInformationFile(h, &io, &info, sizeof(info) - 1, FileIoCompletionNotificationInformation);
-    ok(status == STATUS_INFO_LENGTH_MISMATCH || broken(status == STATUS_INVALID_INFO_CLASS /* XP */),
+    ok(status == STATUS_INFO_LENGTH_MISMATCH || status == STATUS_INVALID_INFO_CLASS /* XP */,
        "expected STATUS_INFO_LENGTH_MISMATCH, got %08x\n", status);
-    if (status != STATUS_INFO_LENGTH_MISMATCH)
+    if (status == STATUS_INVALID_INFO_CLASS || status == STATUS_NOT_IMPLEMENTED)
     {
         win_skip("FileIoCompletionNotificationInformation class not supported\n");
         CloseHandle(h);
@@ -3480,31 +3435,18 @@ static void test_file_completion_information(void)
     info.Flags = FILE_SKIP_SET_EVENT_ON_HANDLE;
     status = pNtSetInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
     ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
-    test_completion_flags(h, FILE_SKIP_SET_EVENT_ON_HANDLE);
 
     info.Flags = FILE_SKIP_SET_USER_EVENT_ON_FAST_IO;
     status = pNtSetInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
     ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
-    test_completion_flags(h, FILE_SKIP_SET_EVENT_ON_HANDLE);
-
-    info.Flags = 0;
-    status = pNtSetInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
-    ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
-    test_completion_flags(h, FILE_SKIP_SET_EVENT_ON_HANDLE);
-
-    info.Flags = FILE_SKIP_COMPLETION_PORT_ON_SUCCESS;
-    status = pNtSetInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
-    ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
-    test_completion_flags(h, FILE_SKIP_SET_EVENT_ON_HANDLE | FILE_SKIP_COMPLETION_PORT_ON_SUCCESS);
-
-    info.Flags = 0xdeadbeef;
-    status = pNtSetInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
-    ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
-    test_completion_flags(h, FILE_SKIP_SET_EVENT_ON_HANDLE | FILE_SKIP_COMPLETION_PORT_ON_SUCCESS);
 
     CloseHandle(h);
     if (!(h = create_temp_file(FILE_FLAG_OVERLAPPED))) return;
-    test_completion_flags(h, 0);
+
+    info.Flags = ~0U;
+    status = pNtQueryInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
+    ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
+    ok(!(info.Flags & FILE_SKIP_COMPLETION_PORT_ON_SUCCESS), "got %08x\n", info.Flags);
 
     memset(&ov, 0, sizeof(ov));
     ov.hEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
@@ -3539,7 +3481,11 @@ static void test_file_completion_information(void)
     info.Flags = FILE_SKIP_COMPLETION_PORT_ON_SUCCESS;
     status = pNtSetInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
     ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
-    test_completion_flags(h, FILE_SKIP_COMPLETION_PORT_ON_SUCCESS);
+
+    info.Flags = 0;
+    status = pNtQueryInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
+    ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
+    ok((info.Flags & FILE_SKIP_COMPLETION_PORT_ON_SUCCESS) != 0, "got %08x\n", info.Flags);
 
     for (i = 0; i < 10; i++)
     {
@@ -3565,7 +3511,11 @@ static void test_file_completion_information(void)
     info.Flags = 0;
     status = pNtSetInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
     ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
-    test_completion_flags(h, FILE_SKIP_COMPLETION_PORT_ON_SUCCESS);
+
+    info.Flags = 0;
+    status = pNtQueryInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
+    ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
+    ok((info.Flags & FILE_SKIP_COMPLETION_PORT_ON_SUCCESS) != 0, "got %08x\n", info.Flags);
 
     for (i = 0; i < 10; i++)
     {
@@ -3655,100 +3605,6 @@ static void test_file_access_information(void)
     ok( info.AccessFlags == 0x13019f, "got %08x\n", info.AccessFlags );
 
     CloseHandle( h );
-}
-
-static void test_file_mode(void)
-{
-    UNICODE_STRING file_name, pipe_dev_name, mountmgr_dev_name, mailslot_dev_name;
-    WCHAR tmp_path[MAX_PATH], dos_file_name[MAX_PATH];
-    FILE_MODE_INFORMATION mode;
-    OBJECT_ATTRIBUTES attr;
-    IO_STATUS_BLOCK io;
-    HANDLE file;
-    unsigned i;
-    DWORD res, access;
-    NTSTATUS status;
-
-    const struct {
-        UNICODE_STRING *file_name;
-        ULONG options;
-        ULONG mode;
-        BOOL todo;
-    } option_tests[] = {
-        { &file_name, 0, 0 },
-        { &file_name, FILE_NON_DIRECTORY_FILE, 0 },
-        { &file_name, FILE_NON_DIRECTORY_FILE | FILE_SEQUENTIAL_ONLY, FILE_SEQUENTIAL_ONLY },
-        { &file_name, FILE_WRITE_THROUGH, FILE_WRITE_THROUGH },
-        { &file_name, FILE_SYNCHRONOUS_IO_ALERT, FILE_SYNCHRONOUS_IO_ALERT },
-        { &file_name, FILE_NO_INTERMEDIATE_BUFFERING, FILE_NO_INTERMEDIATE_BUFFERING },
-        { &file_name, FILE_SYNCHRONOUS_IO_NONALERT | FILE_NON_DIRECTORY_FILE, FILE_SYNCHRONOUS_IO_NONALERT },
-        { &file_name, FILE_DELETE_ON_CLOSE, 0 },
-        { &file_name, FILE_RANDOM_ACCESS | FILE_NO_COMPRESSION, 0 },
-        { &pipe_dev_name, 0, 0 },
-        { &pipe_dev_name, FILE_SYNCHRONOUS_IO_ALERT, FILE_SYNCHRONOUS_IO_ALERT },
-        { &mailslot_dev_name, 0, 0 },
-        { &mailslot_dev_name, FILE_SYNCHRONOUS_IO_ALERT, FILE_SYNCHRONOUS_IO_ALERT, TRUE },
-        { &mountmgr_dev_name, 0, 0 },
-        { &mountmgr_dev_name, FILE_SYNCHRONOUS_IO_ALERT, FILE_SYNCHRONOUS_IO_ALERT }
-    };
-
-    static WCHAR pipe_devW[] = {'\\','?','?','\\','P','I','P','E','\\'};
-    static WCHAR mailslot_devW[] = {'\\','?','?','\\','M','A','I','L','S','L','O','T','\\'};
-    static WCHAR mountmgr_devW[] =
-        {'\\','?','?','\\','M','o','u','n','t','P','o','i','n','t','M','a','n','a','g','e','r'};
-
-    GetTempPathW(MAX_PATH, tmp_path);
-    res = GetTempFileNameW(tmp_path, fooW, 0, dos_file_name);
-    ok(res, "GetTempFileNameW failed: %u\n", GetLastError());
-    pRtlDosPathNameToNtPathName_U( dos_file_name, &file_name, NULL, NULL );
-
-    pipe_dev_name.Buffer = pipe_devW;
-    pipe_dev_name.Length = sizeof(pipe_devW);
-    pipe_dev_name.MaximumLength = sizeof(pipe_devW);
-
-    mailslot_dev_name.Buffer = mailslot_devW;
-    mailslot_dev_name.Length = sizeof(mailslot_devW);
-    mailslot_dev_name.MaximumLength = sizeof(mailslot_devW);
-
-    mountmgr_dev_name.Buffer = mountmgr_devW;
-    mountmgr_dev_name.Length = sizeof(mountmgr_devW);
-    mountmgr_dev_name.MaximumLength = sizeof(mountmgr_devW);
-
-    attr.Length = sizeof(attr);
-    attr.RootDirectory = 0;
-    attr.Attributes = OBJ_CASE_INSENSITIVE;
-    attr.SecurityDescriptor = NULL;
-    attr.SecurityQualityOfService = NULL;
-
-    for (i = 0; i < ARRAY_SIZE(option_tests); i++)
-    {
-        attr.ObjectName = option_tests[i].file_name;
-        access = SYNCHRONIZE;
-
-        if (option_tests[i].file_name == &file_name)
-        {
-            file = CreateFileW(dos_file_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0);
-            ok(file != INVALID_HANDLE_VALUE, "CreateFile failed: %u\n", GetLastError());
-            CloseHandle(file);
-            access |= GENERIC_WRITE | DELETE;
-        }
-
-        status = pNtOpenFile(&file, access, &attr, &io, 0, option_tests[i].options);
-        ok(status == STATUS_SUCCESS, "[%u] NtOpenFile failed: %x\n", i, status);
-
-        memset(&mode, 0xcc, sizeof(mode));
-        status = pNtQueryInformationFile(file, &io, &mode, sizeof(mode), FileModeInformation);
-        ok(status == STATUS_SUCCESS, "[%u] can't get FileModeInformation: %x\n", i, status);
-        todo_wine_if(option_tests[i].todo)
-        ok(mode.Mode == option_tests[i].mode, "[%u] Mode = %x, expected %x\n",
-           i, mode.Mode, option_tests[i].mode);
-
-        pNtClose(file);
-        if (option_tests[i].file_name == &file_name)
-            DeleteFileW(dos_file_name);
-    }
-
-    pRtlFreeUnicodeString(&file_name);
 }
 
 static void test_query_volume_information_file(void)
@@ -4821,9 +4677,11 @@ static void test_flush_buffers_file(void)
     ok(hfileread != INVALID_HANDLE_VALUE, "could not open temp file, error %d.\n", GetLastError());
 
     status = pNtFlushBuffersFile(hfile, NULL);
+    todo_wine
     ok(status == STATUS_ACCESS_VIOLATION, "expected STATUS_ACCESS_VIOLATION, got %#x.\n", status);
 
     status = pNtFlushBuffersFile(hfile, (IO_STATUS_BLOCK *)0xdeadbeaf);
+    todo_wine
     ok(status == STATUS_ACCESS_VIOLATION, "expected STATUS_ACCESS_VIOLATION, got %#x.\n", status);
 
     status = pNtFlushBuffersFile(hfile, &io_status_block);
@@ -5164,7 +5022,6 @@ START_TEST(file)
     test_file_completion_information();
     test_file_id_information();
     test_file_access_information();
-    test_file_mode();
     test_query_volume_information_file();
     test_query_attribute_information_file();
     test_ioctl();

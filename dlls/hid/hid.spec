@@ -1,4 +1,4 @@
-@ stdcall HidD_FlushQueue(ptr)
+@ stub HidD_FlushQueue
 @ stdcall HidD_FreePreparsedData(ptr)
 @ stdcall HidD_GetAttributes(long ptr)
 @ stub HidD_GetConfiguration
@@ -36,7 +36,7 @@
 @ stdcall HidP_MaxUsageListLength(long long ptr)
 @ stub HidP_SetData
 @ stub HidP_SetScaledUsageValue
-@ stdcall HidP_SetUsageValue(long long long long long ptr ptr long)
+@ stub HidP_SetUsageValue
 @ stub HidP_SetUsageValueArray
 @ stub HidP_SetUsages
 @ stdcall HidP_TranslateUsagesToI8042ScanCodes(ptr long long ptr ptr ptr)

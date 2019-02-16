@@ -144,7 +144,7 @@ FTMarshalImpl_GetUnmarshalClass (LPMARSHAL iface, REFIID riid, void *pv, DWORD d
     if (dwDestContext == MSHCTX_INPROC || dwDestContext == MSHCTX_CROSSCTX)
         *pCid = CLSID_InProcFreeMarshaler;
     else
-        *pCid = CLSID_StdMarshal;
+        *pCid = CLSID_DfMarshal;
     return S_OK;
 }
 

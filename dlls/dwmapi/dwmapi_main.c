@@ -146,7 +146,7 @@ HRESULT WINAPI DwmGetTransportAttributes(BOOL *pfIsRemoting, BOOL *pfIsConnected
 {
     FIXME("(%p, %p, %p) stub\n", pfIsRemoting, pfIsConnected, pDwGeneration);
 
-    return DWM_E_COMPOSITIONDISABLED;
+    return E_NOTIMPL;
 }
 
 /**********************************************************************
@@ -286,12 +286,3 @@ HRESULT WINAPI DwmSetIconicThumbnail(HWND hwnd, HBITMAP hbmp, DWORD flags)
     FIXME("(%p %p %x) stub\n", hwnd, hbmp, flags);
     return S_OK;
 };
-
-/**********************************************************************
- *           DwmpGetColorizationParameters         (DWMAPI.@)
- */
-HRESULT WINAPI DwmpGetColorizationParameters(void *params)
-{
-    FIXME("(%p) stub\n", params);
-    return E_NOTIMPL;
-}

@@ -19,6 +19,4 @@ C_SRCS = \
 
 IDL_SRCS = dinput_classes.idl
 
-RC_SRCS = \
-	dinput.rc \
-	version.rc
+RC_SRCS = dinput.rc

@@ -1125,7 +1125,6 @@ GpStatus WINGDIPAPI GdipDeletePrivateFontCollection(GpFontCollection **fontColle
         return InvalidParameter;
 
     for (i = 0; i < (*fontCollection)->count; i++) heap_free((*fontCollection)->FontFamilies[i]);
-    heap_free((*fontCollection)->FontFamilies);
     heap_free(*fontCollection);
 
     return Ok;
@@ -1494,13 +1493,6 @@ static WCHAR *load_ttf_name_id( const BYTE *mem, DWORD_PTR size, DWORD id )
     return NULL;
 }
 
-struct add_font_param
-{
-    GpFontCollection *collection;
-    BOOL is_system;
-    GpStatus stat;
-};
-
 static INT CALLBACK add_font_proc(const LOGFONTW *lfw, const TEXTMETRICW *ntm, DWORD type, LPARAM lParam);
 
 /*****************************************************************************
@@ -1528,7 +1520,6 @@ GpStatus WINGDIPAPI GdipPrivateAddMemoryFont(GpFontCollection* fontCollection,
         ret = InvalidParameter;
     else
     {
-        struct add_font_param param;
         HDC hdc;
         LOGFONTW lfw;
 
@@ -1542,10 +1533,8 @@ GpStatus WINGDIPAPI GdipPrivateAddMemoryFont(GpFontCollection* fontCollection,
         lstrcpyW(lfw.lfFaceName, name);
         lfw.lfPitchAndFamily = 0;
 
-        param.collection = fontCollection;
-        param.is_system = FALSE;
-        if (!EnumFontFamiliesExW(hdc, &lfw, add_font_proc, (LPARAM)&param, 0))
-            ret = param.stat;
+        if (!EnumFontFamiliesExW(hdc, &lfw, add_font_proc, (LPARAM)fontCollection, 0))
+            ret = OutOfMemory;
 
         DeleteDC(hdc);
     }
@@ -1617,13 +1606,9 @@ void free_installed_fonts(void)
 static INT CALLBACK add_font_proc(const LOGFONTW *lfw, const TEXTMETRICW *ntm,
         DWORD type, LPARAM lParam)
 {
-    struct add_font_param *param = (struct add_font_param *)lParam;
-    GpFontCollection *fonts = param->collection;
+    GpFontCollection* fonts = (GpFontCollection*)lParam;
     GpFontFamily* family;
-    GpStatus stat;
     int i;
-
-    param->stat = Ok;
 
     if (type == RASTER_FONTTYPE)
         return 1;
@@ -1641,10 +1626,7 @@ static INT CALLBACK add_font_proc(const LOGFONTW *lfw, const TEXTMETRICW *ntm,
         GpFontFamily** new_family_list = heap_alloc(new_alloc_count*sizeof(void*));
 
         if (!new_family_list)
-        {
-            param->stat = OutOfMemory;
             return 0;
-        }
 
         memcpy(new_family_list, fonts->FontFamilies, fonts->count*sizeof(void*));
         heap_free(fonts->FontFamilies);
@@ -1652,14 +1634,8 @@ static INT CALLBACK add_font_proc(const LOGFONTW *lfw, const TEXTMETRICW *ntm,
         fonts->allocated = new_alloc_count;
     }
 
-    if ((stat = GdipCreateFontFamilyFromName(lfw->lfFaceName, NULL, &family)) != Ok)
-    {
-        WARN("Failed to create font family for %s, status %d.\n", debugstr_w(lfw->lfFaceName), stat);
-        if (param->is_system)
-            return 1;
-        param->stat = stat;
+    if (GdipCreateFontFamilyFromName(lfw->lfFaceName, NULL, &family) != Ok)
         return 0;
-    }
 
     /* skip duplicates */
     for (i=0; i<fonts->count; i++)
@@ -1686,7 +1662,6 @@ GpStatus WINGDIPAPI GdipNewInstalledFontCollection(
 
     if (installedFontCollection.count == 0)
     {
-        struct add_font_param param;
         HDC hdc;
         LOGFONTW lfw;
 
@@ -1696,13 +1671,11 @@ GpStatus WINGDIPAPI GdipNewInstalledFontCollection(
         lfw.lfFaceName[0] = 0;
         lfw.lfPitchAndFamily = 0;
 
-        param.collection = &installedFontCollection;
-        param.is_system = TRUE;
-        if (!EnumFontFamiliesExW(hdc, &lfw, add_font_proc, (LPARAM)&param, 0))
+        if (!EnumFontFamiliesExW(hdc, &lfw, add_font_proc, (LPARAM)&installedFontCollection, 0))
         {
             free_installed_fonts();
             DeleteDC(hdc);
-            return param.stat;
+            return OutOfMemory;
         }
 
         DeleteDC(hdc);

@@ -2776,20 +2776,18 @@ HRESULT WINAPI D3DXCreateTextureShader(const DWORD *function, ID3DXTextureShader
 
 static unsigned int get_instr_length(const DWORD *byte_code, unsigned int major, unsigned int minor)
 {
-    DWORD opcode = *byte_code & 0xffff;
     unsigned int len = 0;
-
-    if (opcode == D3DSIO_COMMENT)
-        return (*byte_code & D3DSI_COMMENTSIZE_MASK) >> D3DSI_COMMENTSIZE_SHIFT;
 
     if (major > 1)
         return (*byte_code & D3DSI_INSTLENGTH_MASK) >> D3DSI_INSTLENGTH_SHIFT;
 
-    switch (opcode)
+    switch (*byte_code & 0xffff)
     {
         case D3DSIO_END:
             ERR("Unexpected END token.\n");
             return 0;
+        case D3DSIO_COMMENT:
+            return (*byte_code & D3DSI_COMMENTSIZE_MASK) >> D3DSI_COMMENTSIZE_SHIFT;
         case D3DSIO_DEF:
         case D3DSIO_DEFI:
             return 5;

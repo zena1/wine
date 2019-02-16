@@ -1302,9 +1302,6 @@ static HRESULT copypixels_to_8bppGray(struct FormatConverter *This, const WICRec
         return hr;
     }
 
-    if (!prc)
-        return copypixels_to_24bppBGR(This, NULL, cbStride, cbBufferSize, pbBuffer, source_format);
-
     srcstride = 3 * prc->Width;
     srcdatasize = srcstride * prc->Height;
 
@@ -1338,7 +1335,7 @@ static HRESULT copypixels_to_8bppGray(struct FormatConverter *This, const WICRec
     return hr;
 }
 
-static UINT rgb_to_palette_index(BYTE bgr[3], WICColor *colors, UINT count)
+static UINT rgb_to_palette_index(BYTE r, BYTE g, BYTE b, WICColor *colors, UINT count)
 {
     UINT best_diff, best_index, i;
 
@@ -1348,15 +1345,15 @@ static UINT rgb_to_palette_index(BYTE bgr[3], WICColor *colors, UINT count)
     for (i = 0; i < count; i++)
     {
         BYTE pal_r, pal_g, pal_b;
-        UINT diff_r, diff_g, diff_b, diff;
+        DWORD diff_r, diff_g, diff_b, diff;
 
         pal_r = colors[i] >> 16;
         pal_g = colors[i] >> 8;
         pal_b = colors[i];
 
-        diff_r = bgr[2] - pal_r;
-        diff_g = bgr[1] - pal_g;
-        diff_b = bgr[0] - pal_b;
+        diff_r = r - pal_r;
+        diff_g = g - pal_g;
+        diff_b = b - pal_b;
 
         diff = diff_r * diff_r + diff_g * diff_g + diff_b * diff_b;
         if (diff == 0) return i;
@@ -1387,9 +1384,6 @@ static HRESULT copypixels_to_8bppIndexed(struct FormatConverter *This, const WIC
         return S_OK;
     }
 
-    if (!prc)
-        return copypixels_to_24bppBGR(This, NULL, cbStride, cbBufferSize, pbBuffer, source_format);
-
     if (!This->palette) return WINCODEC_ERR_WRONGSTATE;
 
     hr = IWICPalette_GetColors(This->palette, 256, colors, &count);
@@ -1413,7 +1407,7 @@ static HRESULT copypixels_to_8bppIndexed(struct FormatConverter *This, const WIC
 
             for (x = 0; x < prc->Width; x++)
             {
-                dst[x] = rgb_to_palette_index(bgr, colors, count);
+                dst[x] = rgb_to_palette_index(bgr[2], bgr[1], bgr[0], colors, count);
                 bgr += 3;
             }
             src += srcstride;
@@ -1587,7 +1581,7 @@ static HRESULT WINAPI FormatConverter_CopyPixels(IWICFormatConverter *iface,
     FormatConverter *This = impl_from_IWICFormatConverter(iface);
     WICRect rc;
     HRESULT hr;
-    TRACE("(%p,%s,%u,%u,%p)\n", iface, debug_wic_rect(prc), cbStride, cbBufferSize, pbBuffer);
+    TRACE("(%p,%p,%u,%u,%p)\n", iface, prc, cbStride, cbBufferSize, pbBuffer);
 
     if (This->source)
     {

@@ -48,9 +48,17 @@ BOOL WINAPI DllMain(HINSTANCE hdll, DWORD reason, LPVOID reserved)
    return TRUE;
 }
 
-BOOL WINAPI D3DX11CheckVersion(UINT d3d_sdk_ver, UINT d3dx_sdk_ver)
+/***********************************************************************
+ * D3DX11CheckVersion
+ *
+ * Checks whether we are compiling against the correct d3d and d3dx library.
+ */
+BOOL WINAPI D3DX11CheckVersion(UINT d3dsdkversion, UINT d3dxsdkversion)
 {
-    return d3d_sdk_ver == D3D11_SDK_VERSION && d3dx_sdk_ver == D3DX11_SDK_VERSION;
+    if ((d3dsdkversion == D3D11_SDK_VERSION) && (d3dxsdkversion == 43))
+        return TRUE;
+
+    return FALSE;
 }
 
 HRESULT WINAPI D3DX11FilterTexture(ID3D11DeviceContext *context, ID3D11Resource *texture, UINT src_level, UINT filter)

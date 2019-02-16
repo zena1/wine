@@ -104,23 +104,13 @@ static UINT STREAMS_fetch_stream(struct tagMSIVIEW *view, UINT row, UINT col, IS
     return ERROR_SUCCESS;
 }
 
-static UINT STREAMS_set_string( struct tagMSIVIEW *view, UINT row, UINT col, const WCHAR *val, int len )
-{
-    ERR("Cannot modify primary key.\n");
-    return ERROR_FUNCTION_FAILED;
-}
-
-static UINT STREAMS_set_stream( MSIVIEW *view, UINT row, UINT col, IStream *stream )
+static UINT STREAMS_get_row( struct tagMSIVIEW *view, UINT row, MSIRECORD **rec )
 {
     MSISTREAMSVIEW *sv = (MSISTREAMSVIEW *)view;
-    IStream *prev;
 
-    TRACE("view %p, row %u, col %u, stream %p.\n", view, row, col, stream);
+    TRACE("%p %d %p\n", sv, row, rec);
 
-    prev = sv->db->streams[row].stream;
-    IStream_AddRef(sv->db->streams[row].stream = stream);
-    if (prev) IStream_Release(prev);
-    return ERROR_SUCCESS;
+    return msi_view_get_row( sv->db, view, row, rec );
 }
 
 static UINT STREAMS_set_row(struct tagMSIVIEW *view, UINT row, MSIRECORD *rec, UINT mask)
@@ -137,7 +127,7 @@ static UINT STREAMS_set_row(struct tagMSIVIEW *view, UINT row, MSIRECORD *rec, U
         const WCHAR *name = MSI_RecordGetString( rec, 1 );
 
         if (!name) return ERROR_INVALID_PARAMETER;
-        sv->db->streams[row].str_index = msi_add_string( sv->db->strings, name, -1, FALSE );
+        sv->db->streams[row].str_index = msi_add_string( sv->db->strings, name, -1, StringNonPersistent );
     }
     if (mask & 2)
     {
@@ -371,13 +361,40 @@ static UINT STREAMS_delete(struct tagMSIVIEW *view)
     return ERROR_SUCCESS;
 }
 
+static UINT STREAMS_find_matching_rows(struct tagMSIVIEW *view, UINT col,
+                                       UINT val, UINT *row, MSIITERHANDLE *handle)
+{
+    MSISTREAMSVIEW *sv = (MSISTREAMSVIEW *)view;
+    UINT index = PtrToUlong(*handle);
+
+    TRACE("(%p, %d, %d, %p, %p)\n", view, col, val, row, handle);
+
+    if (!col || col > sv->num_cols)
+        return ERROR_INVALID_PARAMETER;
+
+    while (index < sv->db->num_streams)
+    {
+        if (sv->db->streams[index].str_index == val)
+        {
+            *row = index;
+            break;
+        }
+        index++;
+    }
+
+    *handle = UlongToPtr(++index);
+
+    if (index > sv->db->num_streams)
+        return ERROR_NO_MORE_ITEMS;
+
+    return ERROR_SUCCESS;
+}
+
 static const MSIVIEWOPS streams_ops =
 {
     STREAMS_fetch_int,
     STREAMS_fetch_stream,
-    NULL,
-    STREAMS_set_string,
-    STREAMS_set_stream,
+    STREAMS_get_row,
     STREAMS_set_row,
     STREAMS_insert_row,
     STREAMS_delete_row,
@@ -387,6 +404,8 @@ static const MSIVIEWOPS streams_ops =
     STREAMS_get_column_info,
     STREAMS_modify,
     STREAMS_delete,
+    STREAMS_find_matching_rows,
+    NULL,
     NULL,
     NULL,
     NULL,
@@ -435,7 +454,7 @@ static UINT append_stream( MSIDATABASE *db, const WCHAR *name, IStream *stream )
     if (!streams_resize_table( db, db->num_streams + 1 ))
         return ERROR_OUTOFMEMORY;
 
-    db->streams[i].str_index = msi_add_string( db->strings, name, -1, FALSE );
+    db->streams[i].str_index = msi_add_string( db->strings, name, -1, StringNonPersistent );
     db->streams[i].stream = stream;
     db->num_streams++;
 

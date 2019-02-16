@@ -27,6 +27,7 @@
 #include "windef.h"
 #include "winbase.h"
 #define USE_COM_CONTEXT_DEF
+#include "initguid.h"
 #include "objbase.h"
 #include "shlguid.h"
 #include "urlmon.h" /* for CLSID_FileProtocol */
@@ -36,7 +37,6 @@
 #include "ctxtcall.h"
 
 #include "wine/test.h"
-#include "initguid.h"
 
 #define DEFINE_EXPECT(func) \
     static BOOL expect_ ## func = FALSE, called_ ## func = FALSE
@@ -95,7 +95,9 @@ static const GUID IID_Testiface5 = { 0x62222222, 0x1234, 0x1234, { 0x12, 0x34, 0
 static const GUID IID_Testiface6 = { 0x72222222, 0x1234, 0x1234, { 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0 } };
 static const GUID IID_TestPS = { 0x66666666, 0x8888, 0x7777, { 0x66, 0x66, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55 } };
 
+DEFINE_GUID(CLSID_InProcFreeMarshaler, 0x0000033a,0x0000,0x0000,0xc0,0x00,0x00,0x00,0x00,0x00,0x00,0x46);
 DEFINE_GUID(CLSID_testclsid, 0xacd014c7,0x9535,0x4fac,0x8b,0x53,0xa4,0x8c,0xa7,0xf4,0xd7,0x26);
+DEFINE_GUID(CLSID_GlobalOptions, 0x0000034b,0x0000,0x0000,0xc0,0x00,0x00,0x00,0x00,0x00,0x00,0x46);
 
 static const WCHAR stdfont[] = {'S','t','d','F','o','n','t',0};
 static const WCHAR wszNonExistent[] = {'N','o','n','E','x','i','s','t','e','n','t',0};
@@ -788,7 +790,7 @@ static HRESULT WINAPI MessageFilter_QueryInterface(IMessageFilter *iface, REFIID
     if (ppvObj == NULL) return E_POINTER;
 
     if (IsEqualGUID(riid, &IID_IUnknown) ||
-        IsEqualGUID(riid, &IID_IMessageFilter))
+        IsEqualGUID(riid, &IID_IClassFactory))
     {
         *ppvObj = iface;
         IMessageFilter_AddRef(iface);
@@ -3308,14 +3310,14 @@ static ULONG WINAPI testinitialize_Release(IInitializeSpy *iface)
 
 static HRESULT WINAPI testinitialize_PreInitialize(IInitializeSpy *iface, DWORD coinit, DWORD aptrefs)
 {
-    ok(coinit == (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE), "Unexpected init flags %#x.\n", coinit);
-    return S_OK;
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
 }
 
 static HRESULT WINAPI testinitialize_PostInitialize(IInitializeSpy *iface, HRESULT hr, DWORD coinit, DWORD aptrefs)
 {
-    ok(coinit == (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE), "Unexpected init flags %#x.\n", coinit);
-    return hr;
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
 }
 
 static HRESULT WINAPI testinitialize_PreUninitialize(IInitializeSpy *iface, DWORD aptrefs)
@@ -3363,28 +3365,32 @@ static void test_IInitializeSpy(void)
     cookie.LowPart = 1;
     hr = CoRegisterInitializeSpy(&testinitialize, &cookie);
     ok(hr == S_OK, "got 0x%08x\n", hr);
+todo_wine {
     ok(cookie.HighPart == GetCurrentThreadId(), "got high part 0x%08x, expected 0x%08x\n", cookie.HighPart,
         GetCurrentThreadId());
     ok(cookie.LowPart == 0, "got wrong low part 0x%x\n", cookie.LowPart);
-
+}
     /* register same instance one more time */
     cookie1.HighPart = 0;
     cookie1.LowPart = 0;
     hr = CoRegisterInitializeSpy(&testinitialize, &cookie1);
+todo_wine {
     ok(hr == S_OK, "got 0x%08x\n", hr);
     ok(cookie1.HighPart == GetCurrentThreadId(), "got high part 0x%08x, expected 0x%08x\n", cookie1.HighPart,
         GetCurrentThreadId());
     ok(cookie1.LowPart == 1, "got wrong low part 0x%x\n", cookie1.LowPart);
-
+}
     cookie2.HighPart = 0;
     cookie2.LowPart = 0;
     hr = CoRegisterInitializeSpy(&testinitialize, &cookie2);
+todo_wine {
     ok(hr == S_OK, "got 0x%08x\n", hr);
     ok(cookie2.HighPart == GetCurrentThreadId(), "got high part 0x%08x, expected 0x%08x\n", cookie2.HighPart,
         GetCurrentThreadId());
     ok(cookie2.LowPart == 2, "got wrong low part 0x%x\n", cookie2.LowPart);
-
+}
     hr = CoRevokeInitializeSpy(cookie1);
+todo_wine
     ok(hr == S_OK, "got 0x%08x\n", hr);
 
     hr = CoRevokeInitializeSpy(cookie1);
@@ -3393,24 +3399,22 @@ static void test_IInitializeSpy(void)
     cookie1.HighPart = 0;
     cookie1.LowPart = 0;
     hr = CoRegisterInitializeSpy(&testinitialize, &cookie1);
+todo_wine {
     ok(hr == S_OK, "got 0x%08x\n", hr);
     ok(cookie1.HighPart == GetCurrentThreadId(), "got high part 0x%08x, expected 0x%08x\n", cookie1.HighPart,
         GetCurrentThreadId());
     ok(cookie1.LowPart == 1, "got wrong low part 0x%x\n", cookie1.LowPart);
-
-    hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    ok(hr == S_OK, "Failed to initialize COM, hr %#x.\n", hr);
-
+}
     hr = CoRevokeInitializeSpy(cookie);
     ok(hr == S_OK, "got 0x%08x\n", hr);
 
     hr = CoRevokeInitializeSpy(cookie1);
+todo_wine
     ok(hr == S_OK, "got 0x%08x\n", hr);
 
     hr = CoRevokeInitializeSpy(cookie2);
+todo_wine
     ok(hr == S_OK, "got 0x%08x\n", hr);
-
-    CoUninitialize();
 }
 
 static HRESULT g_persistfile_qi_ret;

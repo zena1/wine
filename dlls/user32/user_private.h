@@ -33,7 +33,6 @@
 
 #define GET_WORD(ptr)  (*(const WORD *)(ptr))
 #define GET_DWORD(ptr) (*(const DWORD *)(ptr))
-#define GET_LONG(ptr) (*(const LONG *)(ptr))
 
 #define WM_SYSTIMER	    0x0118
 #define WM_POPUPSYSTEMMENU  0x0313
@@ -175,6 +174,7 @@ struct wm_char_mapping_data
 /* no attempt is made to keep the layout compatible with the Windows one */
 struct user_thread_info
 {
+    DPI_AWARENESS                 dpi_awareness;          /* DPI awareness */
     HANDLE                        server_queue;           /* Handle to server-side queue */
     DWORD                         wake_mask;              /* Current queue wake mask */
     DWORD                         changed_mask;           /* Current queue changed mask */
@@ -183,19 +183,19 @@ struct user_thread_info
     WORD                          hook_call_depth;        /* Number of recursively called hook procs */
     WORD                          hook_unicode;           /* Is current hook unicode? */
     HHOOK                         hook;                   /* Current hook */
-    UINT                          active_hooks;           /* Bitmap of active hooks */
-    DPI_AWARENESS                 dpi_awareness;          /* DPI awareness */
-    INPUT_MESSAGE_SOURCE          msg_source;             /* Message source for current message */
     struct received_message_info *receive_info;           /* Message being currently received */
     struct wm_char_mapping_data  *wmchar_data;            /* Data for WM_CHAR mappings */
     DWORD                         GetMessageTimeVal;      /* Value for GetMessageTime */
     DWORD                         GetMessagePosVal;       /* Value for GetMessagePos */
     ULONG_PTR                     GetMessageExtraInfoVal; /* Value for GetMessageExtraInfo */
+    UINT                          active_hooks;           /* Bitmap of active hooks */
     DWORD                         last_get_msg;           /* Last time of Get/PeekMessage call */
     struct user_key_state_info   *key_state;              /* Cache of global key state */
     HWND                          top_window;             /* Desktop window */
     HWND                          msg_window;             /* HWND_MESSAGE parent window */
     RAWINPUT                     *rawinput;
+    HWND                          foreground_wnd;         /* Cache of the foreground window */
+    DWORD                         foreground_wnd_epoch;   /* Counter to invalidate foreground window */
 };
 
 C_ASSERT( sizeof(struct user_thread_info) <= sizeof(((TEB *)0)->Win32ClientInfo) );

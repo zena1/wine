@@ -3537,16 +3537,14 @@ static void test_dpi_context(void)
 {
     DPI_AWARENESS awareness;
     DPI_AWARENESS_CONTEXT context;
-    ULONG_PTR i, flags;
+    ULONG_PTR i;
     BOOL ret;
     UINT dpi;
     HDC hdc = GetDC( 0 );
 
     context = pGetThreadDpiAwarenessContext();
-    /* Windows 10 >= 1709 adds extra 0x6000 flags */
-    flags = (ULONG_PTR)context & 0x6000;
     todo_wine
-        ok( context == (DPI_AWARENESS_CONTEXT)(0x10 | flags), "wrong context %p\n", context );
+        ok( context == (DPI_AWARENESS_CONTEXT)0x10, "wrong context %p\n", context );
     awareness = pGetAwarenessFromDpiAwarenessContext( context );
     todo_wine
         ok( awareness == DPI_AWARENESS_UNAWARE, "wrong awareness %u\n", awareness );
@@ -3563,11 +3561,10 @@ static void test_dpi_context(void)
     ok( !ret, "got %d\n", ret );
     ok( GetLastError() == ERROR_INVALID_PARAMETER, "wrong error %u\n", GetLastError() );
     SetLastError( 0xdeadbeef );
-    ret = pSetProcessDpiAwarenessContext( (DPI_AWARENESS_CONTEXT)-6 );
+    ret = pSetProcessDpiAwarenessContext( (DPI_AWARENESS_CONTEXT)-5 );
     ok( !ret, "got %d\n", ret );
     ok( GetLastError() == ERROR_INVALID_PARAMETER, "wrong error %u\n", GetLastError() );
     ret = pSetProcessDpiAwarenessContext( DPI_AWARENESS_CONTEXT_SYSTEM_AWARE );
-    todo_wine
     ok( ret, "got %d\n", ret );
     ok( pIsProcessDPIAware(), "not aware\n" );
     real_dpi = pGetDpiForSystem();
@@ -3588,11 +3585,9 @@ static void test_dpi_context(void)
     ok( GetLastError() == ERROR_ACCESS_DENIED, "wrong error %u\n", GetLastError() );
     ret = pGetProcessDpiAwarenessInternal( 0, &awareness );
     ok( ret, "got %d\n", ret );
-    todo_wine
     ok( awareness == DPI_AWARENESS_SYSTEM_AWARE, "wrong value %d\n", awareness );
     ret = pGetProcessDpiAwarenessInternal( GetCurrentProcess(), &awareness );
     ok( ret, "got %d\n", ret );
-    todo_wine
     ok( awareness == DPI_AWARENESS_SYSTEM_AWARE, "wrong value %d\n", awareness );
     ret = pGetProcessDpiAwarenessInternal( (HANDLE)0xdeadbeef, &awareness );
     ok( ret, "got %d\n", ret );
@@ -3601,24 +3596,20 @@ static void test_dpi_context(void)
     ret = pIsProcessDPIAware();
     ok(ret, "got %d\n", ret);
     context = pGetThreadDpiAwarenessContext();
-    todo_wine
-    ok( context == (DPI_AWARENESS_CONTEXT)(0x11 | flags), "wrong context %p\n", context );
+    ok( context == (DPI_AWARENESS_CONTEXT)0x11, "wrong context %p\n", context );
     awareness = pGetAwarenessFromDpiAwarenessContext( context );
-    todo_wine
     ok( awareness == DPI_AWARENESS_SYSTEM_AWARE, "wrong awareness %u\n", awareness );
     SetLastError( 0xdeadbeef );
     context = pSetThreadDpiAwarenessContext( 0 );
     ok( !context, "got %p\n", context );
     ok( GetLastError() == ERROR_INVALID_PARAMETER, "wrong error %u\n", GetLastError() );
     SetLastError( 0xdeadbeef );
-    context = pSetThreadDpiAwarenessContext( (DPI_AWARENESS_CONTEXT)-6 );
+    context = pSetThreadDpiAwarenessContext( (DPI_AWARENESS_CONTEXT)-5 );
     ok( !context, "got %p\n", context );
     ok( GetLastError() == ERROR_INVALID_PARAMETER, "wrong error %u\n", GetLastError() );
     context = pSetThreadDpiAwarenessContext( DPI_AWARENESS_CONTEXT_UNAWARE );
-    todo_wine
-    ok( context == (DPI_AWARENESS_CONTEXT)(0x80000011 | flags), "wrong context %p\n", context );
+    ok( context == (DPI_AWARENESS_CONTEXT)0x80000011, "wrong context %p\n", context );
     awareness = pGetAwarenessFromDpiAwarenessContext( context );
-    todo_wine
     ok( awareness == DPI_AWARENESS_SYSTEM_AWARE, "wrong awareness %u\n", awareness );
     dpi = pGetDpiForSystem();
     ok( dpi == USER_DEFAULT_SCREEN_DPI, "wrong dpi %u\n", dpi );
@@ -3626,11 +3617,11 @@ static void test_dpi_context(void)
     ok( dpi == USER_DEFAULT_SCREEN_DPI, "wrong dpi %u\n", dpi );
     ok( !pIsProcessDPIAware(), "still aware\n" );
     context = pGetThreadDpiAwarenessContext();
-    ok( context == (DPI_AWARENESS_CONTEXT)(0x10 | flags), "wrong context %p\n", context );
+    ok( context == (DPI_AWARENESS_CONTEXT)0x10, "wrong context %p\n", context );
     awareness = pGetAwarenessFromDpiAwarenessContext( context );
     ok( awareness == DPI_AWARENESS_UNAWARE, "wrong awareness %u\n", awareness );
     context = pSetThreadDpiAwarenessContext( DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE );
-    ok( context == (DPI_AWARENESS_CONTEXT)(0x10 | flags), "wrong context %p\n", context );
+    ok( context == (DPI_AWARENESS_CONTEXT)0x10, "wrong context %p\n", context );
     awareness = pGetAwarenessFromDpiAwarenessContext( context );
     ok( awareness == DPI_AWARENESS_UNAWARE, "wrong awareness %u\n", awareness );
     dpi = pGetDpiForSystem();
@@ -3651,26 +3642,21 @@ static void test_dpi_context(void)
     ok( dpi == real_dpi, "wrong dpi %u\n", dpi );
     ok( pIsProcessDPIAware(), "not aware\n" );
     context = pGetThreadDpiAwarenessContext();
-    ok( context == (DPI_AWARENESS_CONTEXT)(0x11 | flags), "wrong context %p\n", context );
-    context = pSetThreadDpiAwarenessContext( (DPI_AWARENESS_CONTEXT)(0x80000010 | flags) );
-    ok( context == (DPI_AWARENESS_CONTEXT)(0x11 | flags), "wrong context %p\n", context );
+    ok( context == (DPI_AWARENESS_CONTEXT)0x11, "wrong context %p\n", context );
+    context = pSetThreadDpiAwarenessContext( (DPI_AWARENESS_CONTEXT)0x80000010 );
+    ok( context == (DPI_AWARENESS_CONTEXT)0x11, "wrong context %p\n", context );
     context = pGetThreadDpiAwarenessContext();
-    todo_wine
-    ok( context == (DPI_AWARENESS_CONTEXT)(0x11 | flags), "wrong context %p\n", context );
-    context = pSetThreadDpiAwarenessContext( (DPI_AWARENESS_CONTEXT)(0x80000011 | flags) );
-    todo_wine
-    ok( context == (DPI_AWARENESS_CONTEXT)(0x80000011 | flags), "wrong context %p\n", context );
+    ok( context == (DPI_AWARENESS_CONTEXT)0x11, "wrong context %p\n", context );
+    context = pSetThreadDpiAwarenessContext( (DPI_AWARENESS_CONTEXT)0x80000011 );
+    ok( context == (DPI_AWARENESS_CONTEXT)0x80000011, "wrong context %p\n", context );
     context = pGetThreadDpiAwarenessContext();
-    todo_wine
-    ok( context == (DPI_AWARENESS_CONTEXT)(0x11 | flags), "wrong context %p\n", context );
+    ok( context == (DPI_AWARENESS_CONTEXT)0x11, "wrong context %p\n", context );
     context = pSetThreadDpiAwarenessContext( (DPI_AWARENESS_CONTEXT)0x12 );
-    todo_wine
-    ok( context == (DPI_AWARENESS_CONTEXT)(0x80000011 | flags), "wrong context %p\n", context );
+    ok( context == (DPI_AWARENESS_CONTEXT)0x80000011, "wrong context %p\n", context );
     context = pSetThreadDpiAwarenessContext( context );
-    ok( context == (DPI_AWARENESS_CONTEXT)(0x12), "wrong context %p\n", context );
+    ok( context == (DPI_AWARENESS_CONTEXT)0x12, "wrong context %p\n", context );
     context = pGetThreadDpiAwarenessContext();
-    todo_wine
-    ok( context == (DPI_AWARENESS_CONTEXT)(0x11 | flags), "wrong context %p\n", context );
+    ok( context == (DPI_AWARENESS_CONTEXT)0x11, "wrong context %p\n", context );
     for (i = 0; i < 0x100; i++)
     {
         awareness = pGetAwarenessFromDpiAwarenessContext( (DPI_AWARENESS_CONTEXT)i );
@@ -3711,18 +3697,6 @@ static void test_dpi_context(void)
         case (ULONG_PTR)DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE:
             ok( awareness == i, "%lx: wrong value %u\n", ~i, awareness );
             ok( pIsValidDpiAwarenessContext( (DPI_AWARENESS_CONTEXT)~i ), "%lx: not valid\n", ~i );
-            break;
-        case (ULONG_PTR)DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2:
-            if (pIsValidDpiAwarenessContext( (DPI_AWARENESS_CONTEXT)~i ))
-                ok( awareness == DPI_AWARENESS_PER_MONITOR_AWARE, "%lx: wrong value %u\n", ~i, awareness );
-            else
-                ok( awareness == DPI_AWARENESS_INVALID, "%lx: wrong value %u\n", ~i, awareness );
-            break;
-        case (ULONG_PTR)DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED:
-            if (pIsValidDpiAwarenessContext( (DPI_AWARENESS_CONTEXT)~i ))
-                ok( awareness == DPI_AWARENESS_UNAWARE, "%lx: wrong value %u\n", ~i, awareness );
-            else
-                ok( awareness == DPI_AWARENESS_INVALID, "%lx: wrong value %u\n", ~i, awareness );
             break;
         default:
             ok( awareness == DPI_AWARENESS_INVALID, "%lx: wrong value %u\n", ~i, awareness );
@@ -3831,11 +3805,10 @@ static void test_dpi_window(void)
             ok( dpi == (j == DPI_AWARENESS_UNAWARE ? USER_DEFAULT_SCREEN_DPI : real_dpi),
                 "%lu/%lu: got %u / %u\n", i, j, dpi, real_dpi );
             ret = SetParent( child, hwnd );
-            ok( ret != 0 || GetLastError() == ERROR_INVALID_STATE,
-                "SetParent failed err %u\n", GetLastError() );
+            ok( ret != 0, "SetParent failed err %u\n", GetLastError() );
             context = pGetWindowDpiAwarenessContext( child );
             awareness = pGetAwarenessFromDpiAwarenessContext( context );
-            ok( awareness == (ret ? i : j), "%lu/%lu: wrong awareness %u\n", i, j, awareness );
+            ok( awareness == i, "%lu/%lu: wrong awareness %u\n", i, j, awareness );
             dpi = pGetDpiForWindow( child );
             ok( dpi == (i == DPI_AWARENESS_UNAWARE ? USER_DEFAULT_SCREEN_DPI : real_dpi),
                 "%lu/%lu: got %u / %u\n", i, j, dpi, real_dpi );

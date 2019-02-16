@@ -203,7 +203,6 @@ interface IUPnPNAT : IDispatch
 };
 
 [
-    id(2),
     uuid(1c565858-f302-471e-b409-f180aa4abec6),
     version(1.0)
 ]
@@ -214,7 +213,7 @@ library NATUPNPLib
     [
         vi_progid("HNetCfg.NATUPnP"),
         progid("HNetCfg.NATUPnP.1"),
-        threading(apartment),
+        threading(both),
         uuid(ae1e00aa-3fd5-403c-8a27-2bbdc30cd0e1)
     ]
     coclass UPnPNAT

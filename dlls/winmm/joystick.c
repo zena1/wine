@@ -68,23 +68,12 @@ static	WINE_JOYSTICK	JOY_Sticks[MAXJOYSTICK];
  */
 static	BOOL JOY_LoadDriver(DWORD dwJoyID)
 {
-    static BOOL winejoystick_missing = FALSE;
-
-    if (dwJoyID >= MAXJOYSTICK || winejoystick_missing)
+    if (dwJoyID >= MAXJOYSTICK)
 	return FALSE;
     if (JOY_Sticks[dwJoyID].hDriver)
 	return TRUE;
 
     JOY_Sticks[dwJoyID].hDriver = OpenDriverA("winejoystick.drv", 0, dwJoyID);
-
-    if (!JOY_Sticks[dwJoyID].hDriver)
-    {
-        WARN("OpenDriverA(\"winejoystick.drv\") failed\n");
-
-        /* The default driver is missing, don't attempt to load it again */
-        winejoystick_missing = TRUE;
-    }
-
     return (JOY_Sticks[dwJoyID].hDriver != 0);
 }
 

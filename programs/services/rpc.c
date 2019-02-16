@@ -75,22 +75,20 @@ struct sc_manager_handle       /* service control manager handle */
     struct scmdatabase *db;
 };
 
+struct sc_service_handle       /* service handle */
+{
+    struct sc_handle hdr;
+    struct service_entry *service_entry;
+};
+
 struct sc_notify_handle
 {
     struct sc_handle hdr;
+    struct sc_service_handle *service;
     HANDLE event;
     DWORD notify_mask;
     LONG ref;
     SC_RPC_NOTIFY_PARAMS_LIST *params_list;
-};
-
-struct sc_service_handle       /* service handle */
-{
-    struct sc_handle hdr;
-    struct list entry;
-    BOOL status_notified;
-    struct service_entry *service_entry;
-    struct sc_notify_handle *notify;
 };
 
 static void sc_notify_retain(struct sc_notify_handle *notify)
@@ -313,11 +311,12 @@ static void SC_RPC_HANDLE_destroy(SC_RPC_HANDLE handle)
         {
             struct sc_service_handle *service = (struct sc_service_handle *)hdr;
             service_lock(service->service_entry);
-            list_remove(&service->entry);
-            if (service->notify)
+            if (service->service_entry->notify &&
+                    service->service_entry->notify->service == service)
             {
-                SetEvent(service->notify->event);
-                sc_notify_release(service->notify);
+                SetEvent(service->service_entry->notify->event);
+                sc_notify_release(service->service_entry->notify);
+                service->service_entry->notify = NULL;
             }
             service_unlock(service->service_entry);
             release_service(service->service_entry);
@@ -431,14 +430,8 @@ static DWORD create_handle_for_service(struct service_entry *entry, DWORD dwDesi
 
     service->hdr.type = SC_HTYPE_SERVICE;
     service->hdr.access = dwDesiredAccess;
-    service->notify = NULL;
-    service->status_notified = FALSE;
     RtlMapGenericMask(&service->hdr.access, &g_svc_generic);
-
-    service_lock(entry);
     service->service_entry = entry;
-    list_add_tail(&entry->handles, &service->entry);
-    service_unlock(entry);
 
     *phService = &service->hdr;
     return ERROR_SUCCESS;
@@ -836,7 +829,7 @@ static void fill_status_process(SERVICE_STATUS_PROCESS *status, struct service_e
     status->dwServiceFlags  = 0;
 }
 
-static void fill_notify(struct sc_notify_handle *notify, struct service_entry *service)
+static void fill_notify(struct sc_notify_handle *notify)
 {
     SC_RPC_NOTIFY_PARAMS_LIST *list;
     SERVICE_NOTIFY_STATUS_CHANGE_PARAMS_2 *cparams;
@@ -849,7 +842,7 @@ static void fill_notify(struct sc_notify_handle *notify, struct service_entry *s
     cparams = (SERVICE_NOTIFY_STATUS_CHANGE_PARAMS_2 *)(list + 1);
 
     cparams->dwNotifyMask = notify->notify_mask;
-    fill_status_process(&cparams->ServiceStatus, service);
+    fill_status_process(&cparams->ServiceStatus, notify->service->service_entry);
     cparams->dwNotificationStatus = ERROR_SUCCESS;
     cparams->dwNotificationTriggered = 1 << (cparams->ServiceStatus.dwCurrentState - SERVICE_STOPPED);
     cparams->pszServiceNames = NULL;
@@ -868,7 +861,7 @@ DWORD __cdecl svcctl_SetServiceStatus(
     SC_RPC_HANDLE hServiceStatus,
     LPSERVICE_STATUS lpServiceStatus)
 {
-    struct sc_service_handle *service, *service_handle;
+    struct sc_service_handle *service;
     struct process_entry *process;
     DWORD err, mask;
 
@@ -896,19 +889,17 @@ DWORD __cdecl svcctl_SetServiceStatus(
     }
 
     mask = 1 << (service->service_entry->status.dwCurrentState - SERVICE_STOPPED);
-    LIST_FOR_EACH_ENTRY(service_handle, &service->service_entry->handles, struct sc_service_handle, entry)
+    if (service->service_entry->notify &&
+            (service->service_entry->notify->notify_mask & mask))
     {
-        struct sc_notify_handle *notify = service_handle->notify;
-        if (notify && (notify->notify_mask & mask))
-        {
-            fill_notify(notify, service->service_entry);
-            sc_notify_release(notify);
-            service_handle->notify = NULL;
-            service_handle->status_notified = TRUE;
-        }
-        else
-            service_handle->status_notified = FALSE;
+        struct sc_notify_handle *notify = service->service_entry->notify;
+        fill_notify(notify);
+        service->service_entry->notify = NULL;
+        sc_notify_release(notify);
+        service->service_entry->status_notified = TRUE;
     }
+    else
+        service->service_entry->status_notified = FALSE;
 
     service_unlock(service->service_entry);
 
@@ -1739,29 +1730,32 @@ DWORD __cdecl svcctl_NotifyServiceStatusChange(
     notify->hdr.type = SC_HTYPE_NOTIFY;
     notify->hdr.access = 0;
 
+    notify->service = service;
+
     notify->event = CreateEventW(NULL, TRUE, FALSE, NULL);
 
     notify->notify_mask = params.u.params->dwNotifyMask;
 
     service_lock(service->service_entry);
 
-    if (service->notify)
+    if (service->service_entry->notify)
     {
         service_unlock(service->service_entry);
-        sc_notify_release(notify);
+        HeapFree(GetProcessHeap(), 0, notify);
         return ERROR_ALREADY_REGISTERED;
     }
 
     mask = 1 << (service->service_entry->status.dwCurrentState - SERVICE_STOPPED);
-    if (!service->status_notified && (notify->notify_mask & mask))
+    if (!service->service_entry->status_notified &&
+            (notify->notify_mask & mask))
     {
-        fill_notify(notify, service->service_entry);
-        service->status_notified = TRUE;
+        fill_notify(notify);
+        service->service_entry->status_notified = TRUE;
     }
     else
     {
         sc_notify_retain(notify);
-        service->notify = notify;
+        service->service_entry->notify = notify;
     }
 
     sc_notify_retain(notify);

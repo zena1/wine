@@ -81,7 +81,7 @@ struct wait_work_item
     ULONG Flags;
     HANDLE CompletionEvent;
     LONG DeleteCount;
-    int CallbackInProgress;
+    BOOLEAN CallbackInProgress;
 };
 
 struct timer_queue;
@@ -520,14 +520,9 @@ static DWORD CALLBACK wait_thread_proc(LPVOID Arg)
                     wait_work_item->Context );
                 TimerOrWaitFired = TRUE;
             }
-            interlocked_xchg( &wait_work_item->CallbackInProgress, TRUE );
-            if (wait_work_item->CompletionEvent)
-            {
-                TRACE( "Work has been canceled.\n" );
-                break;
-            }
+            wait_work_item->CallbackInProgress = TRUE;
             wait_work_item->Callback( wait_work_item->Context, TimerOrWaitFired );
-            interlocked_xchg( &wait_work_item->CallbackInProgress, FALSE );
+            wait_work_item->CallbackInProgress = FALSE;
 
             if (wait_work_item->Flags & WT_EXECUTEONLYONCE)
                 break;
@@ -541,8 +536,7 @@ static DWORD CALLBACK wait_thread_proc(LPVOID Arg)
     {
         completion_event = wait_work_item->CompletionEvent;
         delete_wait_work_item( wait_work_item );
-        if (completion_event && completion_event != INVALID_HANDLE_VALUE)
-            NtSetEvent( completion_event, NULL );
+        if (completion_event) NtSetEvent( completion_event, NULL );
     }
 
     return 0;
@@ -633,16 +627,14 @@ NTSTATUS WINAPI RtlDeregisterWaitEx(HANDLE WaitHandle, HANDLE CompletionEvent)
     struct wait_work_item *wait_work_item = WaitHandle;
     NTSTATUS status;
     HANDLE LocalEvent = NULL;
-    int CallbackInProgress;
+    BOOLEAN CallbackInProgress;
 
     TRACE( "(%p %p)\n", WaitHandle, CompletionEvent );
 
     if (WaitHandle == NULL)
         return STATUS_INVALID_HANDLE;
 
-    interlocked_xchg_ptr( &wait_work_item->CompletionEvent, INVALID_HANDLE_VALUE );
     CallbackInProgress = wait_work_item->CallbackInProgress;
-    TRACE( "callback in progress %u\n", CallbackInProgress );
     if (CompletionEvent == INVALID_HANDLE_VALUE || !CallbackInProgress)
     {
         status = NtCreateEvent( &LocalEvent, EVENT_ALL_ACCESS, NULL, NotificationEvent, FALSE );
@@ -664,7 +656,6 @@ NTSTATUS WINAPI RtlDeregisterWaitEx(HANDLE WaitHandle, HANDLE CompletionEvent)
     }
     else if (LocalEvent)
     {
-        TRACE( "Waiting for completion event\n" );
         NtWaitForSingleObject( LocalEvent, FALSE, NULL );
         status = STATUS_SUCCESS;
     }

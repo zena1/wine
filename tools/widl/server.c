@@ -55,7 +55,6 @@ static void write_function_stub(const type_t *iface, const var_t *func, unsigned
     unsigned char explicit_fc, implicit_fc;
     int has_full_pointer = is_full_pointer_function(func);
     const var_t *handle_var = get_func_handle_var( iface, func, &explicit_fc, &implicit_fc );
-    type_t *ret_type = type_function_get_rettype(func->type);
 
     if (is_interpreted_func( iface, func )) return;
 
@@ -76,7 +75,7 @@ static void write_function_stub(const type_t *iface, const var_t *func, unsigned
     indent++;
     write_remoting_arguments(server, indent, func, "__frame->", PASS_OUT, PHASE_FREE);
 
-    if (!is_void(ret_type))
+    if (!is_void(type_function_get_rettype(func->type)))
         write_remoting_arguments(server, indent, func, "__frame->", PASS_RETURN, PHASE_FREE);
 
     if (has_full_pointer)
@@ -155,16 +154,9 @@ static void write_function_stub(const type_t *iface, const var_t *func, unsigned
     assign_stub_out_args(server, indent, func, "__frame->");
 
     /* Call the real server function */
-    if (is_context_handle(ret_type))
-    {
-        print_server("__frame->_RetVal = NDRSContextUnmarshall((char*)0, _pRpcMessage->DataRepresentation);\n");
-        print_server("*((");
-        write_type_decl(server, ret_type, NULL);
-        fprintf(server, "*)NDRSContextValue(__frame->_RetVal)) = ");
-    }
-    else
-        print_server("%s", is_void(ret_type) ? "" : "__frame->_RetVal = ");
-    fprintf(server, "%s%s", prefix_server, get_name(func));
+    print_server("%s%s%s",
+                 is_void(type_function_get_rettype(func->type)) ? "" : "__frame->_RetVal = ",
+                 prefix_server, get_name(func));
 
     if (type_get_function_args(func->type))
     {
@@ -205,7 +197,7 @@ static void write_function_stub(const type_t *iface, const var_t *func, unsigned
     {
         write_remoting_arguments(server, indent, func, "__frame->", PASS_OUT, PHASE_BUFFERSIZE);
 
-        if (!is_void(ret_type))
+        if (!is_void(type_function_get_rettype(func->type)))
             write_remoting_arguments(server, indent, func, "__frame->", PASS_RETURN, PHASE_BUFFERSIZE);
 
         print_server("_pRpcMessage->BufferLength = __frame->_StubMsg.BufferLength;\n");
@@ -224,7 +216,7 @@ static void write_function_stub(const type_t *iface, const var_t *func, unsigned
     write_remoting_arguments(server, indent, func, "__frame->", PASS_OUT, PHASE_MARSHAL);
 
     /* marshall the return value */
-    if (!is_void(ret_type))
+    if (!is_void(type_function_get_rettype(func->type)))
         write_remoting_arguments(server, indent, func, "__frame->", PASS_RETURN, PHASE_MARSHAL);
 
     indent--;
@@ -552,6 +544,26 @@ void write_server(const statement_list_t *stmts)
     if (!server)
         return;
 
-    write_server_routines( stmts );
+    if (do_win32 && do_win64)
+    {
+        fprintf(server, "#ifndef _WIN64\n\n");
+        pointer_size = 4;
+        write_server_routines( stmts );
+        fprintf(server, "\n#else /* _WIN64 */\n\n");
+        pointer_size = 8;
+        write_server_routines( stmts );
+        fprintf(server, "\n#endif /* _WIN64 */\n");
+    }
+    else if (do_win32)
+    {
+        pointer_size = 4;
+        write_server_routines( stmts );
+    }
+    else if (do_win64)
+    {
+        pointer_size = 8;
+        write_server_routines( stmts );
+    }
+
     fclose(server);
 }

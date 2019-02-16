@@ -635,7 +635,7 @@ static HRESULT ddraw_create_swapchain(struct ddraw *ddraw, HWND window, BOOL win
     swapchain_desc.backbuffer_width = mode.width;
     swapchain_desc.backbuffer_height = mode.height;
     swapchain_desc.backbuffer_format = mode.format_id;
-    swapchain_desc.backbuffer_bind_flags = 0;
+    swapchain_desc.backbuffer_usage = 0;
     swapchain_desc.backbuffer_count = 1;
     swapchain_desc.swap_effect = WINED3D_SWAP_EFFECT_DISCARD;
     swapchain_desc.device_window = window;
@@ -937,6 +937,7 @@ static HRESULT ddraw_set_cooperative_level(struct ddraw *ddraw, HWND window,
                 goto done;
             }
 
+            wined3d_stateblock_capture(stateblock);
             rtv = wined3d_device_get_rendertarget_view(ddraw->wined3d_device, 0);
             /* Rendering to ddraw->wined3d_frontbuffer. */
             if (rtv && !wined3d_rendertarget_view_get_sub_resource_parent(rtv))
@@ -1772,7 +1773,7 @@ static HRESULT WINAPI ddraw7_GetFourCCCodes(IDirectDraw7 *iface, DWORD *NumCodes
     for (i = 0; i < ARRAY_SIZE(formats); ++i)
     {
         if (SUCCEEDED(wined3d_check_device_format(ddraw->wined3d, WINED3DADAPTER_DEFAULT, WINED3D_DEVICE_TYPE_HAL,
-                mode.format_id, 0, 0, WINED3D_RTYPE_TEXTURE_2D, formats[i])))
+                mode.format_id, 0, WINED3D_RTYPE_TEXTURE_2D, formats[i])))
         {
             if (count < outsize)
                 Codes[count] = formats[i];
@@ -2094,31 +2095,15 @@ static HRESULT WINAPI d3d1_Initialize(IDirect3D *iface, REFIID riid)
 static HRESULT WINAPI ddraw7_FlipToGDISurface(IDirectDraw7 *iface)
 {
     struct ddraw *ddraw = impl_from_IDirectDraw7(iface);
-    IDirectDrawSurface7 *gdi_surface;
-    struct ddraw_surface *gdi_impl;
-    HRESULT hr;
 
     TRACE("iface %p.\n", iface);
 
-    wined3d_mutex_lock();
+    ddraw->flags |= DDRAW_GDI_FLIP;
 
-    if (FAILED(hr = IDirectDraw7_GetGDISurface(iface, &gdi_surface)))
-    {
-        WARN("Failed to retrieve GDI surface, hr %#x.\n", hr);
-        wined3d_mutex_unlock();
-        return hr;
-    }
+    if (ddraw->primary)
+        ddraw_surface_update_frontbuffer(ddraw->primary, NULL, FALSE, 0);
 
-    gdi_impl = impl_from_IDirectDrawSurface7(gdi_surface);
-    if (gdi_impl->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER)
-        hr = DD_OK;
-    else
-        hr = IDirectDrawSurface7_Flip(&ddraw->primary->IDirectDrawSurface7_iface, gdi_surface, DDFLIP_WAIT);
-    IDirectDrawSurface7_Release(gdi_surface);
-
-    wined3d_mutex_unlock();
-
-    return hr;
+    return DD_OK;
 }
 
 static HRESULT WINAPI ddraw4_FlipToGDISurface(IDirectDraw4 *iface)
@@ -2296,24 +2281,21 @@ static HRESULT WINAPI ddraw4_TestCooperativeLevel(IDirectDraw4 *iface)
  *  DDERR_NOTFOUND if the GDI surface wasn't found
  *
  *****************************************************************************/
-static HRESULT WINAPI ddraw7_GetGDISurface(IDirectDraw7 *iface, IDirectDrawSurface7 **surface)
+static HRESULT WINAPI ddraw7_GetGDISurface(IDirectDraw7 *iface, IDirectDrawSurface7 **GDISurface)
 {
     struct ddraw *ddraw = impl_from_IDirectDraw7(iface);
-    struct ddraw_surface *ddraw_surface;
 
-    TRACE("iface %p, surface %p.\n", iface, surface);
+    TRACE("iface %p, surface %p.\n", iface, GDISurface);
 
     wined3d_mutex_lock();
 
-    if (!ddraw->gdi_surface || !(ddraw_surface = wined3d_texture_get_sub_resource_parent(ddraw->gdi_surface, 0)))
+    if (!(*GDISurface = &ddraw->primary->IDirectDrawSurface7_iface))
     {
-        WARN("GDI surface not available.\n");
-        *surface = NULL;
+        WARN("Primary not created yet.\n");
         wined3d_mutex_unlock();
         return DDERR_NOTFOUND;
     }
-    *surface = &ddraw_surface->IDirectDrawSurface7_iface;
-    IDirectDrawSurface7_AddRef(*surface);
+    IDirectDrawSurface7_AddRef(*GDISurface);
 
     wined3d_mutex_unlock();
 
@@ -4548,8 +4530,8 @@ static HRESULT WINAPI d3d7_EnumZBufferFormats(IDirect3D7 *iface, REFCLSID device
 
     for (i = 0; i < ARRAY_SIZE(formats); ++i)
     {
-        if (SUCCEEDED(wined3d_check_device_format(ddraw->wined3d, WINED3DADAPTER_DEFAULT, type,
-                mode.format_id, 0, WINED3D_BIND_DEPTH_STENCIL, WINED3D_RTYPE_TEXTURE_2D, formats[i])))
+        if (SUCCEEDED(wined3d_check_device_format(ddraw->wined3d, WINED3DADAPTER_DEFAULT, type, mode.format_id,
+                WINED3DUSAGE_DEPTHSTENCIL, WINED3D_RTYPE_TEXTURE_2D, formats[i])))
         {
             DDPIXELFORMAT pformat;
 
@@ -4573,7 +4555,7 @@ static HRESULT WINAPI d3d7_EnumZBufferFormats(IDirect3D7 *iface, REFCLSID device
      * pixel format, so we use dwZBufferBitDepth=32. Some games expect 24. Windows Vista and
      * newer enumerate both versions, so we do the same(bug 22434) */
     if (SUCCEEDED(wined3d_check_device_format(ddraw->wined3d, WINED3DADAPTER_DEFAULT, type, mode.format_id,
-            0, WINED3D_BIND_DEPTH_STENCIL, WINED3D_RTYPE_TEXTURE_2D, WINED3DFMT_X8D24_UNORM)))
+            WINED3DUSAGE_DEPTHSTENCIL, WINED3D_RTYPE_TEXTURE_2D, WINED3DFMT_X8D24_UNORM)))
     {
         DDPIXELFORMAT x8d24 =
         {
@@ -5054,7 +5036,7 @@ static HRESULT CDECL device_parent_create_swapchain_texture(struct wined3d_devic
         parent_ops = &ddraw_null_wined3d_parent_ops;
 
     if (FAILED(hr = wined3d_texture_create(ddraw->wined3d_device, desc, 1, 1,
-            texture_flags, NULL, ddraw, parent_ops, texture)))
+            texture_flags | WINED3D_TEXTURE_CREATE_MAPPABLE, NULL, ddraw, parent_ops, texture)))
     {
         WARN("Failed to create texture, hr %#x.\n", hr);
         return hr;

@@ -619,7 +619,7 @@ static HRESULT WINAPI convert_DataConvert(IDataConvert* iface,
         {
             WCHAR szBuff[39];
             const GUID *id = (const GUID *)src;
-            static const WCHAR format[] = {
+            WCHAR format[] = {
                 '{','%','0','8','X','-','%','0','4','X','-','%','0','4','X','-',
                 '%','0','2','X','%','0','2','X','-',
                 '%','0','2','X','%','0','2','X','%','0','2','X','%','0','2','X','%','0','2','X','%','0','2','X','}',0};
@@ -638,7 +638,7 @@ static HRESULT WINAPI convert_DataConvert(IDataConvert* iface,
                 hr = E_OUTOFMEMORY;
             else
             {
-                static const char hexchars[] = "0123456789ABCDEF";
+                const char hexchars[] = "0123456789ABCDEF";
                 WCHAR *s = *d;
                 unsigned char *p = src;
                 while (src_len > 0)

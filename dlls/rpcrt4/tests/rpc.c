@@ -649,15 +649,15 @@ static void test_RpcStringBindingParseA(void)
     ok(options == NULL, "options was %p instead of NULL\n", options);
 }
 
-static void test_RpcExceptionFilter(const char *func_name)
+static void test_I_RpcExceptionFilter(void)
 {
     ULONG exception;
     int retval;
-    int (WINAPI *pRpcExceptionFilter)(ULONG) = (void *)GetProcAddress(GetModuleHandleA("rpcrt4.dll"), func_name);
+    int (WINAPI *pI_RpcExceptionFilter)(ULONG) = (void *)GetProcAddress(GetModuleHandleA("rpcrt4.dll"), "I_RpcExceptionFilter");
 
-    if (!pRpcExceptionFilter)
+    if (!pI_RpcExceptionFilter)
     {
-        win_skip("%s not exported\n", func_name);
+        win_skip("I_RpcExceptionFilter not exported\n");
         return;
     }
 
@@ -668,7 +668,7 @@ static void test_RpcExceptionFilter(const char *func_name)
         if (exception == 0x40000005) exception = 0x80000000;
         if (exception == 0x80000005) exception = 0xc0000000;
 
-        retval = pRpcExceptionFilter(exception);
+        retval = pI_RpcExceptionFilter(exception);
         switch (exception)
         {
         case STATUS_DATATYPE_MISALIGNMENT:
@@ -679,17 +679,17 @@ static void test_RpcExceptionFilter(const char *func_name)
         case STATUS_INSTRUCTION_MISALIGNMENT:
         case STATUS_STACK_OVERFLOW:
         case STATUS_POSSIBLE_DEADLOCK:
-            ok(retval == EXCEPTION_CONTINUE_SEARCH, "%s(0x%x) should have returned %d instead of %d\n",
-               func_name, exception, EXCEPTION_CONTINUE_SEARCH, retval);
+            ok(retval == EXCEPTION_CONTINUE_SEARCH, "I_RpcExceptionFilter(0x%x) should have returned %d instead of %d\n",
+               exception, EXCEPTION_CONTINUE_SEARCH, retval);
             break;
         case STATUS_GUARD_PAGE_VIOLATION:
         case STATUS_IN_PAGE_ERROR:
         case STATUS_HANDLE_NOT_CLOSABLE:
-            trace("%s(0x%x) returned %d\n", func_name, exception, retval);
+            trace("I_RpcExceptionFilter(0x%x) returned %d\n", exception, retval);
             break;
         default:
-            ok(retval == EXCEPTION_EXECUTE_HANDLER, "%s(0x%x) should have returned %d instead of %d\n",
-               func_name, exception, EXCEPTION_EXECUTE_HANDLER, retval);
+            ok(retval == EXCEPTION_EXECUTE_HANDLER, "I_RpcExceptionFilter(0x%x) should have returned %d instead of %d\n",
+               exception, EXCEPTION_EXECUTE_HANDLER, retval);
         }
     }
 }
@@ -1198,8 +1198,7 @@ START_TEST( rpc )
     test_towers();
     test_I_RpcMapWin32Status();
     test_RpcStringBindingParseA();
-    test_RpcExceptionFilter("I_RpcExceptionFilter");
-    test_RpcExceptionFilter("RpcExceptionFilter");
+    test_I_RpcExceptionFilter();
     test_RpcStringBindingFromBinding();
     test_UuidCreate();
     test_UuidCreateSequential();

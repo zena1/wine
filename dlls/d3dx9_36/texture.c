@@ -1323,7 +1323,6 @@ static inline void fill_texture(const struct pixel_format_desc *format, BYTE *po
 
 HRESULT WINAPI D3DXFillTexture(struct IDirect3DTexture9 *texture, LPD3DXFILL2D function, void *funcdata)
 {
-    IDirect3DSurface9 *surface, *temp_surface;
     DWORD miplevels;
     DWORD m, x, y;
     D3DSURFACE_DESC desc;
@@ -1332,34 +1331,26 @@ HRESULT WINAPI D3DXFillTexture(struct IDirect3DTexture9 *texture, LPD3DXFILL2D f
     D3DXVECTOR2 coord, size;
     const struct pixel_format_desc *format;
     BYTE *data;
-    HRESULT hr;
 
-    TRACE("texture %p, function %p, funcdata %p.\n", texture, function, funcdata);
-
-    if (!texture || !function)
+    if (texture == NULL || function == NULL)
         return D3DERR_INVALIDCALL;
 
     miplevels = IDirect3DBaseTexture9_GetLevelCount(texture);
 
     for (m = 0; m < miplevels; m++)
     {
-        if (FAILED(hr = IDirect3DTexture9_GetLevelDesc(texture, m, &desc)))
-            return hr;
+        if (FAILED(IDirect3DTexture9_GetLevelDesc(texture, m, &desc)))
+            return D3DERR_INVALIDCALL;
 
         format = get_format_info(desc.Format);
         if (format->type != FORMAT_ARGB && format->type != FORMAT_ARGBF16 && format->type != FORMAT_ARGBF)
         {
-            FIXME("Unsupported texture format %#x.\n", desc.Format);
+            FIXME("Unsupported texture format %#x\n", desc.Format);
             return D3DERR_INVALIDCALL;
         }
 
-        if (FAILED(hr = IDirect3DTexture9_GetSurfaceLevel(texture, m, &surface)))
-            return hr;
-        if (FAILED(hr = lock_surface(surface, &lock_rect, &temp_surface, TRUE)))
-        {
-            IDirect3DSurface9_Release(surface);
-            return hr;
-        }
+        if (FAILED(IDirect3DTexture9_LockRect(texture, m, &lock_rect, NULL, D3DLOCK_DISCARD)))
+            return D3DERR_INVALIDCALL;
 
         size.x = 1.0f / desc.Width;
         size.y = 1.0f / desc.Height;
@@ -1381,12 +1372,7 @@ HRESULT WINAPI D3DXFillTexture(struct IDirect3DTexture9 *texture, LPD3DXFILL2D f
                 fill_texture(format, data + y * lock_rect.Pitch + x * format->bytes_per_pixel, &value);
             }
         }
-        if (FAILED(hr = unlock_surface(surface, &lock_rect, temp_surface, TRUE)))
-        {
-            IDirect3DSurface9_Release(surface);
-            return hr;
-        }
-        IDirect3DSurface9_Release(surface);
+        IDirect3DTexture9_UnlockRect(texture, m);
     }
 
     return D3D_OK;

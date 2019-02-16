@@ -686,7 +686,6 @@ static HRESULT WINAPI FilterGraph2_RemoveFilter(IFilterGraph2 *iface, IBaseFilte
                 IBaseFilter_SetSyncSource(pFilter, NULL);
                 IBaseFilter_Release(pFilter);
                 list_remove(&entry->entry);
-                CoTaskMemFree(entry->name);
                 heap_free(entry);
                 This->version++;
                 /* Invalidate interfaces in the cache */
@@ -1800,9 +1799,6 @@ static HRESULT WINAPI FilterGraph2_AddSourceFilter(IFilterGraph2 *iface, LPCWSTR
     TRACE("File %s\n", debugstr_w(filename));
     TRACE("MajorType %s\n", debugstr_guid(&mt.majortype));
     TRACE("SubType %s\n", debugstr_guid(&mt.subtype));
-
-    CoTaskMemFree(filename);
-    FreeMediaType(&mt);
 
     if (ppFilter)
         *ppFilter = preader;

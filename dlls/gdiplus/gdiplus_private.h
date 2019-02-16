@@ -291,6 +291,8 @@ struct GpPathGradient{
 
 struct GpLineGradient{
     GpBrush brush;
+    GpPointF startpoint;
+    GpPointF endpoint;
     ARGB startcolor;
     ARGB endcolor;
     RectF rect;

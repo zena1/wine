@@ -100,15 +100,10 @@ struct tagTYPE42 {
 static BOOL LoadTable(HDC hdc, OTTable *table)
 {
     unsigned int i;
-    DWORD len;
 
     if(table->MS_tag == MS_MAKE_TAG('g','d','i','r')) return TRUE;
-    table->len = 0;
-    len = GetFontData(hdc, table->MS_tag, 0, NULL, 0);
-    if(len == GDI_ERROR) return FALSE;
-    table->data = HeapAlloc(GetProcessHeap(), 0, (len + 3) & ~3);
-    if(!table->data) return FALSE;
-    table->len = len;
+    table->len = GetFontData(hdc, table->MS_tag, 0, NULL, 0);
+    table->data = HeapAlloc(GetProcessHeap(), 0, (table->len + 3) & ~3 );
     memset(table->data + ((table->len - 1) & ~3), 0, sizeof(DWORD));
     GetFontData(hdc, table->MS_tag, 0, table->data, table->len);
     table->check = 0;
@@ -291,7 +286,7 @@ BOOL T42_download_glyph(PHYSDEV dev, DOWNLOAD *pdl, DWORD index,
     char *buf;
     TYPE42 *t42;
 
-    static const char glyph_def[] =
+    const char glyph_def[] = 
       "/%s findfont exch 1 index\n"
       "havetype42gdir\n"
       "{/GlyphDirectory get begin %d exch def end}\n"

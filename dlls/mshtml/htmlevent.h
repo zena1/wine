@@ -57,7 +57,7 @@ typedef enum {
     EVENTID_LAST
 } eventid_t;
 
-typedef struct DOMEvent {
+typedef struct {
     DispatchEx dispex;
     IDOMEvent IDOMEvent_iface;
     IDOMUIEvent IDOMUIEvent_iface;
@@ -65,8 +65,6 @@ typedef struct DOMEvent {
     IDOMKeyboardEvent IDOMKeyboardEvent_iface;
 
     LONG ref;
-    void *(*query_interface)(struct DOMEvent*,REFIID);
-    void (*destroy)(struct DOMEvent*);
 
     nsIDOMEvent *nsevent;
     nsIDOMUIEvent *ui_event;

@@ -46,6 +46,8 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(reg);
 
+extern KSHARED_USER_DATA* CDECL __wine_user_shared_data(void);
+
 /****************************************************************************
  *		QueryPerformanceCounter (KERNEL32.@)
  *
@@ -155,9 +157,6 @@ VOID WINAPI GetSystemInfo(
         default: si->dwProcessorType = PROCESSOR_ARM920;
         }
         break;
-    case PROCESSOR_ARCHITECTURE_ARM64:
-        si->dwProcessorType = 0;
-        break;
     default:
         FIXME("Unknown processor architecture %x\n", sci.Architecture);
         si->dwProcessorType = 0;
@@ -198,10 +197,18 @@ VOID WINAPI GetNativeSystemInfo(
  * 			IsProcessorFeaturePresent	[KERNEL32.@]
  *
  * Determine if the cpu supports a given feature.
+ * 
+ * RETURNS
+ *  TRUE, If the processor supports feature,
+ *  FALSE otherwise.
  */
-BOOL WINAPI IsProcessorFeaturePresent ( DWORD feature )
+BOOL WINAPI IsProcessorFeaturePresent (
+	DWORD feature	/* [in] Feature number, (PF_ constants from "winnt.h") */) 
 {
-    return RtlIsProcessorFeaturePresent( feature );
+  if (feature < PROCESSOR_FEATURE_MAX)
+    return __wine_user_shared_data()->ProcessorFeatures[feature];
+  else
+    return FALSE;
 }
 
 /***********************************************************************
@@ -322,14 +329,16 @@ WORD WINAPI GetMaximumProcessorGroupCount(void)
  */
 DWORD WINAPI GetMaximumProcessorCount(WORD group)
 {
-    SYSTEM_INFO si;
-    DWORD cpus;
+    TRACE("(%u)\n", group);
 
-    GetSystemInfo( &si );
-    cpus = si.dwNumberOfProcessors;
+    if (group && group != ALL_PROCESSOR_GROUPS)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
 
-    FIXME("semi-stub, returning %u\n", cpus);
-    return cpus;
+    /* Wine only counts active processors so far */
+    return system_info.NumberOfProcessors;
 }
 
 /***********************************************************************

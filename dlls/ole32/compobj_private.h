@@ -153,13 +153,6 @@ struct apartment
   BOOL main;               /* is this a main-threaded-apartment? (RO) */
 };
 
-struct init_spy
-{
-    struct list entry;
-    IInitializeSpy *spy;
-    unsigned int id;
-};
-
 /* this is what is stored in TEB->ReservedForOle */
 struct oletls
 {
@@ -167,7 +160,7 @@ struct oletls
     IErrorInfo       *errorinfo;   /* see errorinfo.c */
     IUnknown         *state;       /* see CoSetState */
     DWORD             apt_mask;    /* apartment mask (+0Ch on x86) */
-    void            *unknown0;
+    IInitializeSpy   *spy;         /* The "SPY" from CoInitializeSpy */
     DWORD            inits;        /* number of times CoInitializeEx called */
     DWORD            ole_inits;    /* number of times OleInitialize called */
     GUID             causality_id; /* unique identifier for each COM call */
@@ -178,7 +171,6 @@ struct oletls
     IUnknown        *call_state;    /* current call context (+3Ch on x86) */
     DWORD            unknown2[46];
     IUnknown        *cancel_object; /* cancel object set by CoSetCancelObject (+F8h on x86) */
-    struct list      spies;         /* Spies installed with CoRegisterInitializeSpy */
 };
 
 
@@ -270,12 +262,7 @@ APARTMENT *apartment_get_current_or_mta(void) DECLSPEC_HIDDEN;
 static inline struct oletls *COM_CurrentInfo(void)
 {
     if (!NtCurrentTeb()->ReservedForOle)
-    {
-        struct oletls *oletls = heap_alloc_zero(sizeof(*oletls));
-        if (oletls)
-            list_init(&oletls->spies);
-        NtCurrentTeb()->ReservedForOle = oletls;
-    }
+        NtCurrentTeb()->ReservedForOle = heap_alloc_zero(sizeof(struct oletls));
 
     return NtCurrentTeb()->ReservedForOle;
 }

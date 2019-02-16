@@ -70,7 +70,7 @@ HRESULT ddraw_surface_update_frontbuffer(struct ddraw_surface *surface,
     if (w <= 0 || h <= 0)
         return DD_OK;
 
-    if (surface->ddraw->swapchain_window)
+    if (surface->ddraw->swapchain_window && !(surface->ddraw->flags & DDRAW_GDI_FLIP))
     {
         /* Nothing to do, we control the frontbuffer, or at least the parts we
          * care about. */
@@ -5809,10 +5809,7 @@ static void STDMETHODCALLTYPE ddraw_surface_wined3d_object_destroyed(void *paren
         IDirectDrawClipper_Release(&surface->clipper->IDirectDrawClipper_iface);
 
     if (surface == surface->ddraw->primary)
-    {
         surface->ddraw->primary = NULL;
-        surface->ddraw->gdi_surface = NULL;
-    }
 
     wined3d_private_store_cleanup(&surface->private_store);
 
@@ -6077,7 +6074,6 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
     wined3d_desc.multisample_type = WINED3D_MULTISAMPLE_NONE;
     wined3d_desc.multisample_quality = 0;
     wined3d_desc.usage = 0;
-    wined3d_desc.bind_flags = 0;
     wined3d_desc.access = WINED3D_RESOURCE_ACCESS_GPU | WINED3D_RESOURCE_ACCESS_MAP_R | WINED3D_RESOURCE_ACCESS_MAP_W;
     wined3d_desc.width = desc->dwWidth;
     wined3d_desc.height = desc->dwHeight;
@@ -6131,27 +6127,21 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
     {
         if (!(desc->ddsCaps.dwCaps2 & (DDSCAPS2_TEXTUREMANAGE | DDSCAPS2_D3DTEXTUREMANAGE)))
         {
-            unsigned int bind_flags = 0;
             DWORD usage = 0;
 
             if (desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP)
-            {
-                usage |= WINED3DUSAGE_LEGACY_CUBEMAP;
-                bind_flags |= WINED3D_BIND_SHADER_RESOURCE;
-            }
+                usage |= WINED3DUSAGE_LEGACY_CUBEMAP | WINED3DUSAGE_TEXTURE;
             else if (desc->ddsCaps.dwCaps & DDSCAPS_TEXTURE)
-            {
-                bind_flags |= WINED3D_BIND_SHADER_RESOURCE;
-            }
+                usage |= WINED3DUSAGE_TEXTURE;
 
             if (desc->ddsCaps.dwCaps & DDSCAPS_ZBUFFER)
-                bind_flags |= WINED3D_BIND_DEPTH_STENCIL;
+                usage = WINED3DUSAGE_DEPTHSTENCIL;
             else if (desc->ddsCaps.dwCaps & DDSCAPS_3DDEVICE)
-                bind_flags |= WINED3D_BIND_RENDER_TARGET;
+                usage = WINED3DUSAGE_RENDERTARGET;
 
             if (!(ddraw->flags & DDRAW_NO3D) && SUCCEEDED(hr = wined3d_check_device_format(ddraw->wined3d,
                     WINED3DADAPTER_DEFAULT, WINED3D_DEVICE_TYPE_HAL, mode.format_id,
-                    usage, bind_flags, WINED3D_RTYPE_TEXTURE_2D, wined3d_desc.format)))
+                    usage, WINED3D_RTYPE_TEXTURE_2D, wined3d_desc.format)))
                 desc->ddsCaps.dwCaps |= DDSCAPS_VIDEOMEMORY;
             else
                 desc->ddsCaps.dwCaps |= DDSCAPS_SYSTEMMEMORY;
@@ -6174,21 +6164,6 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
 
     if (desc->ddsCaps.dwCaps & DDSCAPS_SYSTEMMEMORY)
     {
-        unsigned int bind_flags = 0;
-
-        if (desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP)
-        {
-            bind_flags |= WINED3D_BIND_SHADER_RESOURCE;
-        }
-        else if (desc->ddsCaps.dwCaps & DDSCAPS_TEXTURE)
-        {
-            bind_flags |= WINED3D_BIND_SHADER_RESOURCE;
-        }
-
-        if (desc->ddsCaps.dwCaps & DDSCAPS_ZBUFFER)
-            bind_flags |= WINED3D_BIND_DEPTH_STENCIL;
-        else if (desc->ddsCaps.dwCaps & DDSCAPS_3DDEVICE)
-            bind_flags |= WINED3D_BIND_RENDER_TARGET;
         /*
          * The ddraw RGB device allows to use system memory surfaces as rendering target.
          * This does not cause problems because the RGB device does software rasterization
@@ -6199,11 +6174,11 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
          */
         if ((desc->ddsCaps.dwCaps & DDSCAPS_3DDEVICE) &&
             SUCCEEDED(hr = wined3d_check_device_format(ddraw->wined3d, WINED3DADAPTER_DEFAULT,
-                        WINED3D_DEVICE_TYPE_HAL, mode.format_id, 0,
-                        bind_flags, WINED3D_RTYPE_TEXTURE_2D, wined3d_desc.format)))
+                        WINED3D_DEVICE_TYPE_HAL, mode.format_id, WINED3DUSAGE_RENDERTARGET,
+                        WINED3D_RTYPE_TEXTURE_2D, wined3d_desc.format)))
         {
             FIXME("Application wants to create rendering target in system memory, using video memory instead\n");
-            wined3d_desc.bind_flags = bind_flags;
+            wined3d_desc.usage |= WINED3DUSAGE_RENDERTARGET;
         }
         else
             wined3d_desc.access = WINED3D_RESOURCE_ACCESS_CPU
@@ -6214,11 +6189,11 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
         if (!(ddraw->flags & DDRAW_NO3D))
         {
             if (desc->ddsCaps.dwCaps & DDSCAPS_TEXTURE)
-                wined3d_desc.bind_flags |= WINED3D_BIND_SHADER_RESOURCE;
+                wined3d_desc.usage |= WINED3DUSAGE_TEXTURE;
             if (desc->ddsCaps.dwCaps & DDSCAPS_ZBUFFER)
-                wined3d_desc.bind_flags |= WINED3D_BIND_DEPTH_STENCIL;
+                wined3d_desc.usage |= WINED3DUSAGE_DEPTHSTENCIL;
             else if (desc->ddsCaps.dwCaps & DDSCAPS_3DDEVICE)
-                wined3d_desc.bind_flags |= WINED3D_BIND_RENDER_TARGET;
+                wined3d_desc.usage |= WINED3DUSAGE_RENDERTARGET;
         }
 
         if (desc->ddsCaps.dwCaps2 & (DDSCAPS2_TEXTUREMANAGE | DDSCAPS2_D3DTEXTUREMANAGE))
@@ -6233,9 +6208,7 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
             /* Videomemory adds localvidmem. This is mutually exclusive with
              * systemmemory and texturemanage. */
             desc->ddsCaps.dwCaps |= DDSCAPS_LOCALVIDMEM;
-            /* Dynamic resources can't be written by the GPU. */
-            if (!(wined3d_desc.bind_flags & (WINED3D_BIND_RENDER_TARGET | WINED3D_BIND_DEPTH_STENCIL)))
-                wined3d_desc.usage |= WINED3DUSAGE_DYNAMIC;
+            wined3d_desc.usage |= WINED3DUSAGE_DYNAMIC;
         }
     }
 
@@ -6383,8 +6356,6 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
         {
             mip = wined3d_texture_get_sub_resource_parent(wined3d_texture, i * levels + j);
             mip_desc = &mip->surface_desc;
-            if (desc->ddsCaps.dwCaps & DDSCAPS_MIPMAP)
-                mip_desc->u2.dwMipMapCount = levels - j;
 
             if (j)
             {
@@ -6503,10 +6474,7 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
     }
 
     if (surface_desc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
-    {
         ddraw->primary = root;
-        ddraw->gdi_surface = root->wined3d_texture;
-    }
     *surface = root;
 
     return DD_OK;

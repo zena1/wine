@@ -85,12 +85,6 @@ struct intensity_range
     BYTE b_min, b_max;
 };
 
-struct font_intensities
-{
-    struct intensity_range ranges[17];
-    struct font_gamma_ramp *gamma_ramp;
-};
-
 typedef struct dibdrv_physdev
 {
     struct gdi_physdev dev;
@@ -198,7 +192,7 @@ typedef struct primitive_funcs
     void             (* draw_glyph)(const dib_info *dst, const RECT *rc, const dib_info *glyph,
                                     const POINT *origin, DWORD text_pixel, const struct intensity_range *ranges);
     void    (* draw_subpixel_glyph)(const dib_info *dst, const RECT *rc, const dib_info *glyph,
-                                    const POINT *origin, DWORD text_pixel, const struct font_gamma_ramp *gamma_ramp);
+                                    const POINT *origin, DWORD text_pixel );
     DWORD             (* get_pixel)(const dib_info *dib, int x, int y);
     DWORD     (* colorref_to_pixel)(const dib_info *dib, COLORREF color);
     COLORREF  (* pixel_to_colorref)(const dib_info *dib, DWORD pixel);

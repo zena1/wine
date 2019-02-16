@@ -397,7 +397,7 @@ static struct object_type *thread_get_type( struct object *obj )
 static int thread_signaled( struct object *obj, struct wait_queue_entry *entry )
 {
     struct thread *mythread = (struct thread *)obj;
-    return mythread->state == TERMINATED && !mythread->exit_poll;
+    return (mythread->state == TERMINATED && !mythread->exit_poll);
 }
 
 static int thread_get_esync_fd( struct object *obj, enum esync_type *type )
@@ -1186,7 +1186,6 @@ static void check_terminated( void *arg )
     assert( thread->obj.ops == &thread_ops );
     assert( thread->state == TERMINATED );
 
-    /* don't wake up until the thread is really dead, to avoid race conditions */
     if (thread->unix_tid != -1 && !kill( thread->unix_tid, 0 ))
     {
         thread->exit_poll = add_timeout_user( -TICKS_PER_SEC / 1000, check_terminated, thread );
@@ -1220,12 +1219,8 @@ void kill_thread( struct thread *thread, int violent_death )
     kill_console_processes( thread, 0 );
     debug_exit_thread( thread );
     abandon_mutexes( thread );
-    if (violent_death)
-    {
-        send_thread_signal( thread, SIGQUIT );
-        check_terminated( thread );
-    }
-    else wake_up( &thread->obj, 0 );
+    if (violent_death) send_thread_signal( thread, SIGQUIT );
+    check_terminated( thread );
     cleanup_thread( thread );
     remove_process_thread( thread->process, thread );
     release_object( thread );

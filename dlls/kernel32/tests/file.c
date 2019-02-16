@@ -738,14 +738,6 @@ static void test_CopyFileA(void)
     ret = CopyFileA(source, dest, FALSE);
     ok(ret, "CopyFileA: error %d\n", GetLastError());
 
-    /* NULL checks */
-    retok = CopyFileA(NULL, dest, TRUE);
-    ok(!retok && GetLastError() == ERROR_PATH_NOT_FOUND,
-        "CopyFileA: ret = %d, unexpected error %d\n", retok, GetLastError());
-    retok = CopyFileA(source, NULL, TRUE);
-    ok(!retok && GetLastError() == ERROR_PATH_NOT_FOUND,
-        "CopyFileA: ret = %d, unexpected error %d\n", retok, GetLastError());
-
     /* copying from a read-locked source fails */
     hfile = CreateFileA(source, GENERIC_READ, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
     ok(hfile != INVALID_HANDLE_VALUE, "failed to open source file, error %d\n", GetLastError());
@@ -1175,13 +1167,6 @@ static void test_CopyFileEx(void)
     ok(!retok, "CopyFileExA unexpectedly succeeded\n");
     ok(GetLastError() == ERROR_REQUEST_ABORTED, "expected ERROR_REQUEST_ABORTED, got %d\n", GetLastError());
     ok(GetFileAttributesA(dest) == INVALID_FILE_ATTRIBUTES, "file was not deleted\n");
-
-    retok = CopyFileExA(source, NULL, copy_progress_cb, hfile, NULL, 0);
-    ok(!retok, "CopyFileExA unexpectedly succeeded\n");
-    ok(GetLastError() == ERROR_PATH_NOT_FOUND, "expected ERROR_PATH_NOT_FOUND, got %d\n", GetLastError());
-    retok = CopyFileExA(NULL, dest, copy_progress_cb, hfile, NULL, 0);
-    ok(!retok, "CopyFileExA unexpectedly succeeded\n");
-    ok(GetLastError() == ERROR_PATH_NOT_FOUND, "expected ERROR_PATH_NOT_FOUND, got %d\n", GetLastError());
 
     ret = DeleteFileA(source);
     ok(ret, "DeleteFileA failed with error %d\n", GetLastError());
@@ -4817,7 +4802,7 @@ static void test_GetFinalPathNameByHandleA(void)
 
     if (!pGetFinalPathNameByHandleA)
     {
-        win_skip("GetFinalPathNameByHandleA is missing\n");
+        skip("GetFinalPathNameByHandleA is missing\n");
         return;
     }
 
@@ -4910,7 +4895,7 @@ static void test_GetFinalPathNameByHandleW(void)
 
     if (!pGetFinalPathNameByHandleW)
     {
-        win_skip("GetFinalPathNameByHandleW is missing\n");
+        skip("GetFinalPathNameByHandleW is missing\n");
         return;
     }
 
@@ -5021,7 +5006,6 @@ static void test_SetFileInformationByHandle(void)
     FILE_STANDARD_INFO stdinfo = { {{0}},{{0}},0,FALSE,FALSE };
     FILE_COMPRESSION_INFO compressinfo;
     FILE_DISPOSITION_INFO dispinfo;
-    DECLSPEC_ALIGN(8) FILE_IO_PRIORITY_HINT_INFO hintinfo;
     char tempFileName[MAX_PATH];
     char tempPath[MAX_PATH];
     HANDLE file;
@@ -5056,28 +5040,6 @@ static void test_SetFileInformationByHandle(void)
 
     SetLastError(0xdeadbeef);
     ret = pSetFileInformationByHandle(file, FileAttributeTagInfo, &fileattrinfo, sizeof(fileattrinfo));
-    ok(!ret && GetLastError() == ERROR_INVALID_PARAMETER, "got %d, error %d\n", ret, GetLastError());
-
-    SetLastError(0xdeadbeef);
-    hintinfo.PriorityHint = MaximumIoPriorityHintType;
-    ret = pSetFileInformationByHandle(file, FileIoPriorityHintInfo, &hintinfo, sizeof(hintinfo));
-    ok(!ret && GetLastError() == ERROR_INVALID_PARAMETER, "got %d, error %d\n", ret, GetLastError());
-
-    hintinfo.PriorityHint = IoPriorityHintNormal;
-    ret = pSetFileInformationByHandle(file, FileIoPriorityHintInfo, &hintinfo, sizeof(hintinfo));
-    ok(ret, "setting FileIoPriorityHintInfo got %d, error %d\n", ret, GetLastError());
-
-    hintinfo.PriorityHint = IoPriorityHintVeryLow;
-    ret = pSetFileInformationByHandle(file, FileIoPriorityHintInfo, &hintinfo, sizeof(hintinfo));
-    ok(ret, "setting FileIoPriorityHintInfo got %d, error %d\n", ret, GetLastError());
-
-    SetLastError(0xdeadbeef);
-    ret = pSetFileInformationByHandle(file, FileIoPriorityHintInfo, &hintinfo, sizeof(hintinfo) - 1);
-    ok(!ret && GetLastError() == ERROR_BAD_LENGTH, "got %d, error %d\n", ret, GetLastError());
-
-    SetLastError(0xdeadbeef);
-    hintinfo.PriorityHint = IoPriorityHintVeryLow - 1;
-    ret = pSetFileInformationByHandle(file, FileIoPriorityHintInfo, &hintinfo, sizeof(hintinfo));
     ok(!ret && GetLastError() == ERROR_INVALID_PARAMETER, "got %d, error %d\n", ret, GetLastError());
 
     memset(&protinfo, 0, sizeof(protinfo));
@@ -5156,7 +5118,7 @@ static void test_post_completion(void)
 
     if (!pGetQueuedCompletionStatusEx)
     {
-        win_skip("GetQueuedCompletionStatusEx not available\n");
+        skip("GetQueuedCompletionStatusEx not available\n");
         CloseHandle( port );
         return;
     }

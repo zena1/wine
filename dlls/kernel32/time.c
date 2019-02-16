@@ -59,8 +59,6 @@ WINE_DEFAULT_DEBUG_CHANNEL(time);
 #define FILETIME2LL( pft, ll) \
     ll = (((LONGLONG)((pft)->dwHighDateTime))<<32) + (pft)-> dwLowDateTime ;
 
-static const WCHAR mui_stdW[] = { 'M','U','I','_','S','t','d',0 };
-static const WCHAR mui_dltW[] = { 'M','U','I','_','D','l','t',0 };
 
 static const int MonthLengths[2][12] =
 {
@@ -369,24 +367,6 @@ static BOOL reg_query_value(HKEY hkey, LPCWSTR name, DWORD type, void *data, DWO
     return TRUE;
 }
 
-static BOOL reg_load_mui_string(HKEY hkey, LPCWSTR value, LPWSTR buffer, DWORD size)
-{
-    static const WCHAR advapi32W[] = {'a','d','v','a','p','i','3','2','.','d','l','l',0};
-    DWORD (WINAPI *pRegLoadMUIStringW)(HKEY, LPCWSTR, LPWSTR, DWORD, DWORD *, DWORD, LPCWSTR);
-    HMODULE hDll;
-    BOOL ret = FALSE;
-
-    hDll = LoadLibraryExW(advapi32W, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
-    if (hDll) {
-        pRegLoadMUIStringW = (void *)GetProcAddress(hDll, "RegLoadMUIStringW");
-        if (pRegLoadMUIStringW &&
-            !pRegLoadMUIStringW(hkey, value, buffer, size, NULL, 0, NULL))
-            ret = TRUE;
-        FreeLibrary(hDll);
-    }
-    return ret;
-}
-
 /***********************************************************************
  *  TIME_GetSpecificTimeZoneInfo
  *
@@ -426,15 +406,8 @@ static BOOL TIME_GetSpecificTimeZoneInfo( const WCHAR *key_name, WORD year,
     if (!TIME_GetSpecificTimeZoneKey( key_name, &time_zone_key ))
         return FALSE;
 
-    if (!reg_load_mui_string( time_zone_key, mui_stdW, tzinfo->StandardName, sizeof(tzinfo->StandardName) ) &&
-        !reg_query_value( time_zone_key, stdW, REG_SZ, tzinfo->StandardName, sizeof(tzinfo->StandardName) ))
-    {
-        NtClose( time_zone_key );
-        return FALSE;
-    }
-
-    if (!reg_load_mui_string( time_zone_key, mui_dltW, tzinfo->DaylightName, sizeof(tzinfo->DaylightName) ) &&
-        !reg_query_value( time_zone_key, dltW, REG_SZ, tzinfo->DaylightName, sizeof(tzinfo->DaylightName) ))
+    if (!reg_query_value( time_zone_key, stdW, REG_SZ, tzinfo->StandardName, sizeof(tzinfo->StandardName)) ||
+        !reg_query_value( time_zone_key, dltW, REG_SZ, tzinfo->DaylightName, sizeof(tzinfo->DaylightName)))
     {
         NtClose( time_zone_key );
         return FALSE;
@@ -604,14 +577,17 @@ BOOL WINAPI SetSystemTimeAdjustment( DWORD dwTimeAdjustment, BOOL bTimeAdjustmen
  *  TIME_ZONE_ID_STANDARD   Current time is standard time
  *  TIME_ZONE_ID_DAYLIGHT   Current time is daylight savings time
  */
-DWORD WINAPI GetTimeZoneInformation( LPTIME_ZONE_INFORMATION ret )
+DWORD WINAPI GetTimeZoneInformation( LPTIME_ZONE_INFORMATION tzinfo )
 {
-    DYNAMIC_TIME_ZONE_INFORMATION tzinfo;
-    DWORD time_zone_id;
+    NTSTATUS status;
 
-    time_zone_id = GetDynamicTimeZoneInformation( &tzinfo );
-    memcpy( ret, &tzinfo, sizeof(*ret) );
-    return time_zone_id;
+    status = RtlQueryTimeZoneInformation( (RTL_TIME_ZONE_INFORMATION*)tzinfo );
+    if ( status != STATUS_SUCCESS )
+    {
+        SetLastError( RtlNtStatusToDosError(status) );
+        return TIME_ZONE_ID_INVALID;
+    }
+    return TIME_ZoneID( tzinfo );
 }
 
 /***********************************************************************
@@ -689,7 +665,8 @@ BOOL WINAPI SystemTimeToTzSpecificLocalTime(
     }
     else
     {
-        RtlQueryTimeZoneInformation((RTL_TIME_ZONE_INFORMATION *)&tzinfo);
+        if (GetTimeZoneInformation(&tzinfo) == TIME_ZONE_ID_INVALID)
+            return FALSE;
     }
 
     if (!SystemTimeToFileTime(lpUniversalTime, &ft))
@@ -734,7 +711,8 @@ BOOL WINAPI TzSpecificLocalTimeToSystemTime(
     }
     else
     {
-        RtlQueryTimeZoneInformation((RTL_TIME_ZONE_INFORMATION *)&tzinfo);
+        if (GetTimeZoneInformation(&tzinfo) == TIME_ZONE_ID_INVALID)
+            return FALSE;
     }
 
     if (!SystemTimeToFileTime(lpLocalTime, &ft))
@@ -1312,8 +1290,7 @@ VOID WINAPI GetSystemTime(LPSYSTEMTIME systime)
 BOOL WINAPI GetDaylightFlag(void)
 {
     TIME_ZONE_INFORMATION tzinfo;
-    RtlQueryTimeZoneInformation((RTL_TIME_ZONE_INFORMATION *)&tzinfo);
-    return (TIME_ZoneID(&tzinfo) == TIME_ZONE_ID_DAYLIGHT);
+    return GetTimeZoneInformation( &tzinfo) == TIME_ZONE_ID_DAYLIGHT;
 }
 
 /***********************************************************************
@@ -1460,7 +1437,6 @@ BOOL WINAPI GetSystemTimes(LPFILETIME lpIdleTime, LPFILETIME lpKernelTime, LPFIL
 DWORD WINAPI GetDynamicTimeZoneInformation(DYNAMIC_TIME_ZONE_INFORMATION *tzinfo)
 {
     NTSTATUS status;
-    HANDLE time_zone_key;
 
     status = RtlQueryDynamicTimeZoneInformation( (RTL_DYNAMIC_TIME_ZONE_INFORMATION*)tzinfo );
     if ( status != STATUS_SUCCESS )
@@ -1468,13 +1444,6 @@ DWORD WINAPI GetDynamicTimeZoneInformation(DYNAMIC_TIME_ZONE_INFORMATION *tzinfo
         SetLastError( RtlNtStatusToDosError(status) );
         return TIME_ZONE_ID_INVALID;
     }
-
-    if (!TIME_GetSpecificTimeZoneKey( tzinfo->TimeZoneKeyName, &time_zone_key ))
-        return TIME_ZONE_ID_INVALID;
-    reg_load_mui_string( time_zone_key, mui_stdW, tzinfo->StandardName, sizeof(tzinfo->StandardName) );
-    reg_load_mui_string( time_zone_key, mui_dltW, tzinfo->DaylightName, sizeof(tzinfo->DaylightName) );
-    NtClose( time_zone_key );
-
     return TIME_ZoneID( (TIME_ZONE_INFORMATION*)tzinfo );
 }
 

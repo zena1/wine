@@ -1,22 +1,22 @@
-@ stdcall -arch=i386 -norelay ExAcquireFastMutex(ptr)
-@ stdcall -arch=i386 -norelay ExReleaseFastMutex(ptr)
-@ stdcall -arch=i386 -norelay ExTryToAcquireFastMutex(ptr)
+@ stdcall -norelay ExAcquireFastMutex(ptr)
+@ stdcall -norelay ExReleaseFastMutex(ptr)
+@ stdcall -norelay ExTryToAcquireFastMutex(ptr)
 @ stub HalClearSoftwareInterrupt
 @ stub HalRequestSoftwareInterrupt
 @ stub HalSystemVectorDispatchEntry
-@ stdcall -arch=i386 -norelay KeAcquireInStackQueuedSpinLock(ptr ptr)
+@ stdcall -norelay KeAcquireInStackQueuedSpinLock(ptr ptr) ntoskrnl.exe.KeAcquireInStackQueuedSpinLock
 @ stub KeAcquireInStackQueuedSpinLockRaiseToSynch
 @ stub KeAcquireQueuedSpinLock
 @ stub KeAcquireQueuedSpinLockRaiseToSynch
 @ stub KeAcquireSpinLockRaiseToSynch
-@ stdcall -arch=i386 -norelay KeReleaseInStackQueuedSpinLock(ptr)
+@ stdcall -norelay KeReleaseInStackQueuedSpinLock(ptr) ntoskrnl.exe.KeReleaseInStackQueuedSpinLock
 @ stub KeReleaseQueuedSpinLock
 @ stub KeTryToAcquireQueuedSpinLock
 @ stub KeTryToAcquireQueuedSpinLockRaiseToSynch
-@ stdcall -arch=i386 -norelay KfAcquireSpinLock(ptr)
-@ stdcall -arch=arm,arm64,i386 -norelay KfLowerIrql(long)
-@ stdcall -arch=arm,arm64,i386 -norelay KfRaiseIrql(long)
-@ stdcall -arch=i386 -norelay KfReleaseSpinLock(ptr long)
+@ stdcall -norelay KfAcquireSpinLock(ptr)
+@ stdcall -norelay KfLowerIrql(long)
+@ stdcall -norelay KfRaiseIrql(long)
+@ stdcall -norelay KfReleaseSpinLock(ptr long)
 @ stub HalAcquireDisplayOwnership
 @ stub HalAdjustResourceList
 @ stub HalAllProcessorsStarted
@@ -68,25 +68,25 @@
 @ stub IoSetPartitionInformation
 @ stub IoWritePartitionTable
 @ stub KdComPortInUse
-@ stdcall -arch=i386 KeAcquireSpinLock(ptr ptr)
+@ stub KeAcquireSpinLock
 @ stub KeFlushWriteBuffer
-@ stdcall -arch=arm,arm64,i386 KeGetCurrentIrql()
+@ stdcall KeGetCurrentIrql()
 @ stub KeLowerIrql
 @ stdcall -ret64 KeQueryPerformanceCounter(ptr)
 @ stub KeRaiseIrql
 @ stub KeRaiseIrqlToDpcLevel
 @ stub KeRaiseIrqlToSynchLevel
-@ stdcall -arch=i386 KeReleaseSpinLock(ptr long)
+@ stdcall KeReleaseSpinLock(ptr long) ntoskrnl.exe.KeReleaseSpinLock
 @ stub KeStallExecutionProcessor
 @ stub READ_PORT_BUFFER_UCHAR
 @ stub READ_PORT_BUFFER_ULONG
 @ stub READ_PORT_BUFFER_USHORT
-@ stdcall -arch=arm,arm64,i386 READ_PORT_UCHAR(ptr)
-@ stdcall -arch=arm,arm64,i386 READ_PORT_ULONG(ptr)
+@ stdcall READ_PORT_UCHAR(ptr)
+@ stdcall READ_PORT_ULONG(ptr)
 @ stub READ_PORT_USHORT
 @ stub WRITE_PORT_BUFFER_UCHAR
 @ stub WRITE_PORT_BUFFER_ULONG
 @ stub WRITE_PORT_BUFFER_USHORT
-@ stdcall -arch=arm,arm64,i386 WRITE_PORT_UCHAR(ptr long)
-@ stdcall -arch=arm,arm64,i386 WRITE_PORT_ULONG(ptr long)
+@ stdcall WRITE_PORT_UCHAR(ptr long)
+@ stdcall WRITE_PORT_ULONG(ptr long)
 @ stub WRITE_PORT_USHORT

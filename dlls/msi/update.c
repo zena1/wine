@@ -113,7 +113,7 @@ static UINT UPDATE_execute( struct tagMSIVIEW *view, MSIRECORD *record )
 
     for ( i=0; i<row_count; i++ )
     {
-        r = msi_select_update( wv, values, i );
+        r = wv->ops->set_row( wv, i, values, (1 << col_count) - 1 );
         if (r != ERROR_SUCCESS)
             break;
     }
@@ -195,11 +195,17 @@ static UINT UPDATE_delete( struct tagMSIVIEW *view )
     return ERROR_SUCCESS;
 }
 
+static UINT UPDATE_find_matching_rows( struct tagMSIVIEW *view, UINT col, UINT val, UINT *row, MSIITERHANDLE *handle )
+{
+    TRACE("%p %d %d %p\n", view, col, val, *handle );
+
+    return ERROR_FUNCTION_FAILED;
+}
+
+
 static const MSIVIEWOPS update_ops =
 {
     UPDATE_fetch_int,
-    NULL,
-    NULL,
     NULL,
     NULL,
     NULL,
@@ -211,6 +217,8 @@ static const MSIVIEWOPS update_ops =
     UPDATE_get_column_info,
     UPDATE_modify,
     UPDATE_delete,
+    UPDATE_find_matching_rows,
+    NULL,
     NULL,
     NULL,
     NULL,

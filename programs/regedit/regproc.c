@@ -731,8 +731,11 @@ static WCHAR *quoted_value_name_state(struct parser *parser, WCHAR *pos)
 {
     WCHAR *val_name = pos, *p;
 
-    heap_free(parser->value_name);
-    parser->value_name = NULL;
+    if (parser->value_name)
+    {
+        heap_free(parser->value_name);
+        parser->value_name = NULL;
+    }
 
     if (!REGPROC_unescape_string(val_name, &p))
         goto invalid;

@@ -57,9 +57,7 @@ static struct error *alloc_error(void)
 
     ret->magic      = ERROR_MAGIC;
     InitializeCriticalSection( &ret->cs );
-#ifndef __MINGW32__
     ret->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": error.cs");
-#endif
 
     prop_init( error_props, count, ret->prop, &ret[1] );
     ret->prop_count = count;
@@ -68,9 +66,7 @@ static struct error *alloc_error(void)
 
 static void free_error( struct error *error )
 {
-#ifndef __MINGW32__
     error->cs.DebugInfo->Spare[0] = 0;
-#endif
     DeleteCriticalSection( &error->cs );
     heap_free( error );
 }
@@ -151,7 +147,6 @@ void WINAPI WsFreeError( WS_ERROR *handle )
 HRESULT WINAPI WsResetError( WS_ERROR *handle )
 {
     struct error *error = (struct error *)handle;
-    HRESULT hr = S_OK;
 
     TRACE( "%p\n", handle );
 
@@ -168,8 +163,7 @@ HRESULT WINAPI WsResetError( WS_ERROR *handle )
     reset_error( error );
 
     LeaveCriticalSection( &error->cs );
-    TRACE( "returning %08x\n", hr );
-    return hr;
+    return S_OK;
 }
 
 /**************************************************************************
@@ -196,7 +190,6 @@ HRESULT WINAPI WsGetErrorProperty( WS_ERROR *handle, WS_ERROR_PROPERTY_ID id, vo
     hr = prop_get( error->prop, error->prop_count, id, buf, size );
 
     LeaveCriticalSection( &error->cs );
-    TRACE( "returning %08x\n", hr );
     return hr;
 }
 
@@ -230,10 +223,14 @@ HRESULT WINAPI WsSetErrorProperty( WS_ERROR *handle, WS_ERROR_PROPERTY_ID id, co
         return E_INVALIDARG;
     }
 
-    if (id == WS_ERROR_PROPERTY_LANGID) hr = WS_E_INVALID_OPERATION;
-    else hr = prop_set( error->prop, error->prop_count, id, value, size );
+    if (id == WS_ERROR_PROPERTY_LANGID)
+    {
+        LeaveCriticalSection( &error->cs );
+        return WS_E_INVALID_OPERATION;
+    }
+
+    hr = prop_set( error->prop, error->prop_count, id, value, size );
 
     LeaveCriticalSection( &error->cs );
-    TRACE( "returning %08x\n", hr );
     return hr;
 }

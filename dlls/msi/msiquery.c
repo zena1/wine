@@ -287,7 +287,7 @@ UINT WINAPI MsiDatabaseOpenViewW(MSIHANDLE hdb,
     return ret;
 }
 
-UINT msi_view_refresh_row(MSIDATABASE *db, MSIVIEW *view, UINT row, MSIRECORD *rec)
+UINT msi_view_get_row(MSIDATABASE *db, MSIVIEW *view, UINT row, MSIRECORD **rec)
 {
     UINT row_count = 0, col_count = 0, i, ival, ret, type;
 
@@ -299,6 +299,13 @@ UINT msi_view_refresh_row(MSIDATABASE *db, MSIVIEW *view, UINT row, MSIRECORD *r
 
     if (!col_count)
         return ERROR_INVALID_PARAMETER;
+
+    if (row >= row_count)
+        return ERROR_NO_MORE_ITEMS;
+
+    *rec = MSI_CreateRecord(col_count);
+    if (!*rec)
+        return ERROR_FUNCTION_FAILED;
 
     for (i = 1; i <= col_count; i++)
     {
@@ -316,7 +323,7 @@ UINT msi_view_refresh_row(MSIDATABASE *db, MSIVIEW *view, UINT row, MSIRECORD *r
             ret = view->ops->fetch_stream(view, row, i, &stm);
             if ((ret == ERROR_SUCCESS) && stm)
             {
-                MSI_RecordSetIStream(rec, i, stm);
+                MSI_RecordSetIStream(*rec, i, stm);
                 IStream_Release(stm);
             }
             else
@@ -335,46 +342,26 @@ UINT msi_view_refresh_row(MSIDATABASE *db, MSIVIEW *view, UINT row, MSIRECORD *r
         if (! (type & MSITYPE_VALID))
             ERR("Invalid type!\n");
 
+        /* check if it's nul (0) - if so, don't set anything */
+        if (!ival)
+            continue;
+
         if (type & MSITYPE_STRING)
         {
             int len;
-            const WCHAR *sval = msi_string_lookup(db->strings, ival, &len);
-            msi_record_set_string(rec, i, sval, len);
+            const WCHAR *sval = msi_string_lookup( db->strings, ival, &len );
+            msi_record_set_string( *rec, i, sval, len );
         }
         else
         {
             if ((type & MSI_DATASIZEMASK) == 2)
-                MSI_RecordSetInteger(rec, i, ival ? ival - (1<<15) : MSI_NULL_INTEGER);
+                MSI_RecordSetInteger(*rec, i, ival - (1<<15));
             else
-                MSI_RecordSetInteger(rec, i, ival - (1u<<31));
+                MSI_RecordSetInteger(*rec, i, ival - (1u<<31));
         }
     }
 
     return ERROR_SUCCESS;
-}
-
-UINT msi_view_get_row(MSIDATABASE *db, MSIVIEW *view, UINT row, MSIRECORD **rec)
-{
-    UINT row_count = 0, col_count = 0, r;
-    MSIRECORD *object;
-
-    TRACE("view %p, row %u, rec %p.\n", view, row, rec);
-
-    if ((r = view->ops->get_dimensions(view, &row_count, &col_count)))
-        return r;
-
-    if (row >= row_count)
-        return ERROR_NO_MORE_ITEMS;
-
-    if (!(object = MSI_CreateRecord( col_count )))
-        return ERROR_OUTOFMEMORY;
-
-    if ((r = msi_view_refresh_row(db, view, row, object)))
-        msiobj_release( &object->hdr );
-    else
-        *rec = object;
-
-    return r;
 }
 
 UINT MSI_ViewFetch(MSIQUERY *query, MSIRECORD **prec)
@@ -709,7 +696,7 @@ UINT MSI_ViewModify( MSIQUERY *query, MSIMODIFY mode, MSIRECORD *rec )
     if ( mode == MSIMODIFY_UPDATE && rec->cookie != (UINT64)(ULONG_PTR)query )
         return ERROR_FUNCTION_FAILED;
 
-    r = view->ops->modify( view, mode, rec, query->row - 1 );
+    r = view->ops->modify( view, mode, rec, query->row );
     if (mode == MSIMODIFY_DELETE && r == ERROR_SUCCESS)
         query->row--;
 
@@ -837,55 +824,50 @@ MSIHANDLE WINAPI MsiGetLastErrorRecord( void )
     return 0;
 }
 
-UINT MSI_DatabaseApplyTransformW( MSIDATABASE *db, const WCHAR *transform, int error_cond )
+UINT MSI_DatabaseApplyTransformW( MSIDATABASE *db,
+                 LPCWSTR szTransformFile, int iErrorCond )
 {
-    HRESULT hr;
+    HRESULT r;
     UINT ret = ERROR_FUNCTION_FAILED;
-    IStorage *stg;
+    IStorage *stg = NULL;
     STATSTG stat;
 
-    TRACE( "%p %s %08x\n", db, debugstr_w(transform), error_cond );
+    TRACE("%p %s %d\n", db, debugstr_w(szTransformFile), iErrorCond);
 
-    if (*transform == ':')
+    r = StgOpenStorage( szTransformFile, NULL,
+           STGM_DIRECT|STGM_READ|STGM_SHARE_DENY_WRITE, NULL, 0, &stg);
+    if ( FAILED(r) )
     {
-        hr = IStorage_OpenStorage( db->storage, transform + 1, NULL, STGM_SHARE_EXCLUSIVE, NULL, 0, &stg );
-        if (FAILED( hr ))
-        {
-            WARN( "failed to open substorage transform 0x%08x\n", hr );
-            return ERROR_FUNCTION_FAILED;
-        }
-    }
-    else
-    {
-        hr = StgOpenStorage( transform, NULL, STGM_DIRECT|STGM_READ|STGM_SHARE_DENY_WRITE, NULL, 0, &stg );
-        if (FAILED( hr ))
-        {
-            WARN( "failed to open file transform 0x%08x\n", hr );
-            return ERROR_FUNCTION_FAILED;
-        }
+        WARN("failed to open transform 0x%08x\n", r);
+        return ret;
     }
 
-    hr = IStorage_Stat( stg, &stat, STATFLAG_NONAME );
-    if (FAILED( hr )) goto end;
-    if (!IsEqualGUID( &stat.clsid, &CLSID_MsiTransform )) goto end;
-    if (TRACE_ON( msi )) enum_stream_names( stg );
+    r = IStorage_Stat( stg, &stat, STATFLAG_NONAME );
+    if ( FAILED( r ) )
+        goto end;
+
+    if ( !IsEqualGUID( &stat.clsid, &CLSID_MsiTransform ) )
+        goto end;
+
+    if( TRACE_ON( msi ) )
+        enum_stream_names( stg );
 
     ret = msi_table_apply_transform( db, stg );
 
 end:
     IStorage_Release( stg );
+
     return ret;
 }
 
-UINT WINAPI MsiDatabaseApplyTransformW( MSIHANDLE hdb, const WCHAR *transform, int error_cond )
+UINT WINAPI MsiDatabaseApplyTransformW( MSIHANDLE hdb,
+                 LPCWSTR szTransformFile, int iErrorCond)
 {
     MSIDATABASE *db;
     UINT r;
 
-    if (error_cond) FIXME( "ignoring error conditions\n" );
-
     db = msihandle2msiinfo( hdb, MSIHANDLETYPE_DATABASE );
-    if (!db)
+    if( !db )
     {
         MSIHANDLE remote;
 
@@ -897,24 +879,27 @@ UINT WINAPI MsiDatabaseApplyTransformW( MSIHANDLE hdb, const WCHAR *transform, i
         return ERROR_SUCCESS;
     }
 
-    r = MSI_DatabaseApplyTransformW( db, transform, error_cond );
+    r = MSI_DatabaseApplyTransformW( db, szTransformFile, iErrorCond );
     msiobj_release( &db->hdr );
     return r;
 }
 
-UINT WINAPI MsiDatabaseApplyTransformA( MSIHANDLE hdb, const char *transform, int error_cond )
+UINT WINAPI MsiDatabaseApplyTransformA( MSIHANDLE hdb, 
+                 LPCSTR szTransformFile, int iErrorCond)
 {
-    WCHAR *wstr;
+    LPWSTR wstr;
     UINT ret;
 
-    TRACE( "%d %s %08x\n", hdb, debugstr_a(transform), error_cond );
+    TRACE("%d %s %d\n", hdb, debugstr_a(szTransformFile), iErrorCond);
 
-    wstr = strdupAtoW( transform );
-    if (transform && !wstr)
+    wstr = strdupAtoW( szTransformFile );
+    if( szTransformFile && !wstr )
         return ERROR_NOT_ENOUGH_MEMORY;
 
-    ret = MsiDatabaseApplyTransformW( hdb, wstr, error_cond );
+    ret = MsiDatabaseApplyTransformW( hdb, wstr, iErrorCond);
+
     msi_free( wstr );
+
     return ret;
 }
 

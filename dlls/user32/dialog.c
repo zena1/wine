@@ -131,8 +131,8 @@ static const WORD *DIALOG_GetControl32( const WORD *p, DLG_CONTROL_INFO *info,
 
     if (dialogEx)
     {
-        /* id is 4 bytes for DIALOGEX */
-        info->id = GET_LONG(p);
+        /* id is a DWORD for DIALOGEX */
+        info->id = GET_DWORD(p);
         p += 2;
     }
     else
@@ -692,10 +692,7 @@ static HWND DIALOG_CreateIndirect( HINSTANCE hInst, LPCVOID dlgTemplate,
                     SetFocus( focus );
                 }
                 else
-                {
-                    if (!(template.style & WS_CHILD))
-                        SetFocus( hwnd );
-                }
+                    SetFocus( hwnd );
             }
         }
 

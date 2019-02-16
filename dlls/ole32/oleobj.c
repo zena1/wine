@@ -41,8 +41,11 @@ WINE_DEFAULT_DEBUG_CHANNEL(ole);
 
 static void release_statdata(STATDATA *data)
 {
-    CoTaskMemFree(data->formatetc.ptd);
-    data->formatetc.ptd = NULL;
+    if(data->formatetc.ptd)
+    {
+        CoTaskMemFree(data->formatetc.ptd);
+        data->formatetc.ptd = NULL;
+    }
 
     if(data->pAdvSink)
     {

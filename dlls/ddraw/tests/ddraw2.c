@@ -1406,8 +1406,6 @@ static void test_viewport_object(void)
     IDirect3D2 *d3d;
     HRESULT hr;
     ULONG ref, old_d3d_ref;
-    D3DVIEWPORT vp;
-    D3DVIEWPORT2 vp2;
     IDirect3DViewport *viewport;
     IDirect3DViewport2 *viewport2, *another_vp, *test_vp;
     IDirect3DViewport3 *viewport3;
@@ -1415,12 +1413,6 @@ static void test_viewport_object(void)
     IUnknown *unknown;
     IDirect3DDevice2 *device;
     HWND window;
-    union
-    {
-        D3DVIEWPORT2 vp2;
-        D3DVIEWPORT vp1;
-        BYTE blob[1024];
-    } desc;
 
     window = create_window();
     ddraw = create_ddraw();
@@ -1446,64 +1438,52 @@ static void test_viewport_object(void)
     hr = IDirect3D2_CreateViewport(d3d, &viewport2, NULL);
     ok(SUCCEEDED(hr), "Failed to create viewport, hr %#x.\n", hr);
     ref = get_refcount((IUnknown *)viewport2);
-    ok(ref == 1, "Got unexpected refcount %u.\n", ref);
+    ok(ref == 1, "Initial IDirect3DViewport2 refcount is %u\n", ref);
     ref = get_refcount((IUnknown *)d3d);
-    ok(ref == old_d3d_ref, "Got unexpected refcount %u.\n", ref);
-
-    memset(&desc, 0, sizeof(desc));
-    hr = IDirect3DViewport2_GetViewport(viewport2, &desc.vp1);
-    todo_wine ok(hr == DDERR_INVALIDPARAMS, "Got unexpected hr %#x.\n", hr);
-    desc.vp1.dwSize = sizeof(desc.vp1) + 1;
-    hr = IDirect3DViewport2_GetViewport(viewport2, &desc.vp1);
-    todo_wine ok(hr == DDERR_INVALIDPARAMS, "Got unexpected hr %#x.\n", hr);
-    desc.vp1.dwSize = sizeof(desc.vp1) - 1;
-    hr = IDirect3DViewport2_GetViewport(viewport2, &desc.vp1);
-    todo_wine ok(hr == DDERR_INVALIDPARAMS, "Got unexpected hr %#x.\n", hr);
-    desc.vp1.dwSize = sizeof(desc.vp1);
-    hr = IDirect3DViewport2_GetViewport(viewport2, &desc.vp1);
-    ok(hr == D3DERR_VIEWPORTDATANOTSET, "Got unexpected hr %#x.\n", hr);
-    ok(desc.vp1.dwSize == sizeof(desc.vp1), "Got unexpected dwSize %u.\n", desc.vp1.dwSize);
-    hr = IDirect3DViewport2_GetViewport2(viewport2, &desc.vp2);
-    ok(hr == D3DERR_VIEWPORTDATANOTSET, "Got unexpected hr %#x.\n", hr);
-    ok(desc.vp2.dwSize == sizeof(desc.vp2), "Got unexpected dwSize %u.\n", desc.vp2.dwSize);
-    desc.vp2.dwSize = sizeof(desc.vp2) + 1;
-    hr = IDirect3DViewport2_GetViewport2(viewport2, &desc.vp2);
-    todo_wine ok(hr == DDERR_INVALIDPARAMS, "Got unexpected hr %#x.\n", hr);
+    ok(ref == old_d3d_ref, "IDirect3D2 refcount is %u\n", ref);
 
     gamma = (IDirectDrawGammaControl *)0xdeadbeef;
     hr = IDirect3DViewport2_QueryInterface(viewport2, &IID_IDirectDrawGammaControl, (void **)&gamma);
     ok(hr == E_NOINTERFACE, "Got unexpected hr %#x.\n", hr);
-    ok(!gamma, "Interface not set to NULL by failed QI call: %p\n", gamma);
+    ok(gamma == NULL, "Interface not set to NULL by failed QI call: %p\n", gamma);
+    if (SUCCEEDED(hr)) IDirectDrawGammaControl_Release(gamma);
     /* NULL iid: Segfaults */
 
     hr = IDirect3DViewport2_QueryInterface(viewport2, &IID_IDirect3DViewport, (void **)&viewport);
     ok(SUCCEEDED(hr), "Failed to QI IDirect3DViewport, hr %#x.\n", hr);
-    ref = get_refcount((IUnknown *)viewport);
-    ok(ref == 2, "Got unexpected refcount %u.\n", ref);
-    ref = get_refcount((IUnknown *)viewport2);
-    ok(ref == 2, "Got unexpected refcount %u.\n", ref);
-    IDirect3DViewport_Release(viewport);
-    viewport = NULL;
+    if (viewport)
+    {
+        ref = get_refcount((IUnknown *)viewport);
+        ok(ref == 2, "IDirect3DViewport refcount is %u\n", ref);
+        ref = get_refcount((IUnknown *)viewport2);
+        ok(ref == 2, "IDirect3DViewport2 refcount is %u\n", ref);
+        IDirect3DViewport_Release(viewport);
+        viewport = NULL;
+    }
 
     hr = IDirect3DViewport2_QueryInterface(viewport2, &IID_IDirect3DViewport3, (void **)&viewport3);
     ok(SUCCEEDED(hr) || hr == E_NOINTERFACE, "Failed to QI IDirect3DViewport3, hr %#x.\n", hr);
     if (viewport3)
     {
         ref = get_refcount((IUnknown *)viewport2);
-        ok(ref == 2, "Got unexpected refcount %u.\n", ref);
+        ok(ref == 2, "IDirect3DViewport2 refcount is %u\n", ref);
         ref = get_refcount((IUnknown *)viewport3);
-        ok(ref == 2, "Got unexpected refcount %u.\n", ref);
+        ok(ref == 2, "IDirect3DViewport3 refcount is %u\n", ref);
         IDirect3DViewport3_Release(viewport3);
     }
 
     hr = IDirect3DViewport2_QueryInterface(viewport2, &IID_IUnknown, (void **)&unknown);
     ok(SUCCEEDED(hr), "Failed to QI IUnknown, hr %#x.\n", hr);
-    ref = get_refcount((IUnknown *)viewport2);
-    ok(ref == 2, "Got unexpected refcount %u.\n", ref);
-    ref = get_refcount(unknown);
-    ok(ref == 2, "Got unexpected refcount %u.\n", ref);
-    IUnknown_Release(unknown);
+    if (unknown)
+    {
+        ref = get_refcount((IUnknown *)viewport2);
+        ok(ref == 2, "IDirect3DViewport2 refcount is %u\n", ref);
+        ref = get_refcount(unknown);
+        ok(ref == 2, "IUnknown refcount is %u\n", ref);
+        IUnknown_Release(unknown);
+    }
 
+    /* AddViewport(NULL): Segfault */
     hr = IDirect3DDevice2_DeleteViewport(device, NULL);
     ok(hr == DDERR_INVALIDPARAMS, "Got unexpected hr %#x.\n", hr);
     hr = IDirect3DDevice2_GetCurrentViewport(device, NULL);
@@ -1516,15 +1496,14 @@ static void test_viewport_object(void)
     hr = IDirect3DDevice2_SetCurrentViewport(device, another_vp);
     ok(hr == DDERR_INVALIDPARAMS, "Got unexpected hr %#x.\n", hr);
 
-    /* AddViewport(NULL): Segfault */
     hr = IDirect3DDevice2_AddViewport(device, viewport2);
     ok(SUCCEEDED(hr), "Failed to add viewport to device, hr %#x.\n", hr);
     ref = get_refcount((IUnknown *) viewport2);
-    ok(ref == 2, "viewport2 refcount is %u.\n", ref);
+    ok(ref == 2, "viewport2 refcount is %d\n", ref);
     hr = IDirect3DDevice2_AddViewport(device, another_vp);
     ok(SUCCEEDED(hr), "Failed to add viewport to device, hr %#x.\n", hr);
     ref = get_refcount((IUnknown *) another_vp);
-    ok(ref == 2, "another_vp refcount is %u.\n", ref);
+    ok(ref == 2, "another_vp refcount is %d\n", ref);
 
     test_vp = (IDirect3DViewport2 *) 0xbaadc0de;
     hr = IDirect3DDevice2_GetCurrentViewport(device, &test_vp);
@@ -1534,18 +1513,17 @@ static void test_viewport_object(void)
     hr = IDirect3DDevice2_SetCurrentViewport(device, viewport2);
     ok(SUCCEEDED(hr), "Failed to set current viewport, hr %#x.\n", hr);
     ref = get_refcount((IUnknown *) viewport2);
-    ok(ref == 3, "Got unexpected refcount %u.\n", ref);
+    ok(ref == 3, "viewport2 refcount is %d\n", ref);
     ref = get_refcount((IUnknown *) device);
-    ok(ref == 1, "Got unexpected refcount %u.\n", ref);
+    ok(ref == 1, "device refcount is %d\n", ref);
 
     test_vp = NULL;
     hr = IDirect3DDevice2_GetCurrentViewport(device, &test_vp);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     ok(test_vp == viewport2, "Got unexpected viewport %p\n", test_vp);
     ref = get_refcount((IUnknown *) viewport2);
-    ok(ref == 4, "Got unexpected refcount %u.\n", ref);
-    if (test_vp)
-        IDirect3DViewport2_Release(test_vp);
+    ok(ref == 4, "viewport2 refcount is %d\n", ref);
+    if(test_vp) IDirect3DViewport2_Release(test_vp);
 
     /* GetCurrentViewport with a viewport set and NULL input param: Segfault */
 
@@ -1556,79 +1534,44 @@ static void test_viewport_object(void)
     hr = IDirect3DDevice2_GetCurrentViewport(device, &test_vp);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     ok(test_vp == viewport2, "Got unexpected viewport %p\n", test_vp);
-    if (test_vp)
-        IDirect3DViewport2_Release(test_vp);
+    if(test_vp) IDirect3DViewport2_Release(test_vp);
 
     /* SetCurrentViewport properly releases the old viewport's reference */
     hr = IDirect3DDevice2_SetCurrentViewport(device, another_vp);
     ok(SUCCEEDED(hr), "Failed to set current viewport, hr %#x.\n", hr);
     ref = get_refcount((IUnknown *) viewport2);
-    ok(ref == 2, "Got unexpected refcount %u.\n", ref);
+    ok(ref == 2, "viewport2 refcount is %d\n", ref);
     ref = get_refcount((IUnknown *) another_vp);
-    ok(ref == 3, "Got unexpected refcount %u.\n", ref);
+    ok(ref == 3, "another_vp refcount is %d\n", ref);
 
     /* Deleting the viewport removes the reference added by AddViewport, but not
      * the one added by SetCurrentViewport. */
     hr = IDirect3DDevice2_DeleteViewport(device, another_vp);
     ok(SUCCEEDED(hr), "Failed to delete viewport from device, hr %#x.\n", hr);
     ref = get_refcount((IUnknown *) another_vp);
-    todo_wine ok(ref == 2, "Got unexpected refcount %u.\n", ref);
+    todo_wine ok(ref == 2, "IDirect3DViewport2 refcount is %d\n", ref);
 
     /* GetCurrentViewport fails though */
     test_vp = NULL;
     hr = IDirect3DDevice2_GetCurrentViewport(device, &test_vp);
     ok(hr == D3DERR_NOCURRENTVIEWPORT, "Got unexpected hr %#x.\n", hr);
-    ok(!test_vp, "Got unexpected viewport %p\n", test_vp);
+    ok(test_vp == NULL, "Got unexpected viewport %p\n", test_vp);
+    if(test_vp) IDirect3DViewport2_Release(test_vp);
 
     /* Setting a different viewport does not free the leaked reference. How
      * do I get rid of it? Leak the viewport for now. */
     hr = IDirect3DDevice2_SetCurrentViewport(device, viewport2);
     ok(SUCCEEDED(hr), "Failed to set current viewport, hr %#x.\n", hr);
     ref = get_refcount((IUnknown *) viewport2);
-    ok(ref == 3, "Got unexpected refcount %u.\n", ref);
+    ok(ref == 3, "viewport2 refcount is %d\n", ref);
     ref = get_refcount((IUnknown *) another_vp);
-    todo_wine ok(ref == 2, "Got unexpected refcount %u.\n", ref);
-
-    memset(&vp, 0, sizeof(vp));
-    memset(&vp, 0, sizeof(vp2));
-    vp.dwX = vp2.dwX = 0;
-    vp.dwY = vp2.dwY = 0;
-    vp.dwWidth = vp2.dwWidth = 640;
-    vp.dwHeight = vp2.dwHeight = 480;
-    vp.dvMinZ = vp2.dvMinZ = 0.0f;
-    vp.dvMaxZ = vp2.dvMaxZ = 1.0f;
-    vp.dvScaleX = vp.dwWidth / 2.0f;
-    vp.dvScaleY = vp.dwHeight / 2.0f;
-    vp.dvMaxX = 1.0f;
-    vp.dvMaxY = 1.0f;
-    vp2.dvClipX = -1.0f;
-    vp2.dvClipY =  1.0f;
-    vp2.dvClipWidth = 2.0f;
-    vp2.dvClipHeight = 2.0f;
-    hr = IDirect3DViewport2_SetViewport(viewport2, &vp);
-    ok(hr == DDERR_INVALIDPARAMS, "Got unexpected hr %#x.\n", hr);
-    hr = IDirect3DViewport2_SetViewport2(viewport2, &vp2);
-    ok(hr == DDERR_INVALIDPARAMS, "Got unexpected hr %#x.\n", hr);
-
-    vp.dwSize = sizeof(vp);
-    hr = IDirect3DViewport2_SetViewport(viewport2, &vp);
-    ok(SUCCEEDED(hr), "Failed to set viewport data, hr %#x.\n", hr);
-    vp2.dwSize = sizeof(vp2);
-    hr = IDirect3DViewport2_SetViewport2(viewport2, &vp2);
-    ok(SUCCEEDED(hr), "Failed to set viewport data, hr %#x.\n", hr);
+    todo_wine ok(ref == 2, "another_vp refcount is %d\n", ref);
 
     /* Destroying the device removes the viewport, but does not free the reference
      * added by SetCurrentViewport. */
     IDirect3DDevice2_Release(device);
     ref = get_refcount((IUnknown *) viewport2);
-    todo_wine ok(ref == 2, "Got unexpected refcount %u.\n", ref);
-
-    vp.dwSize = sizeof(vp);
-    hr = IDirect3DViewport2_SetViewport(viewport2, &vp);
-    ok(hr == D3DERR_VIEWPORTHASNODEVICE, "Got unexpected hr %#x.\n", hr);
-    vp2.dwSize = sizeof(vp2);
-    hr = IDirect3DViewport2_SetViewport2(viewport2, &vp2);
-    ok(hr == D3DERR_VIEWPORTHASNODEVICE, "Got unexpected hr %#x.\n", hr);
+    todo_wine ok(ref == 2, "viewport2 refcount is %d\n", ref);
 
     IDirect3DViewport2_Release(another_vp);
     IDirect3DViewport2_Release(viewport2);
@@ -2655,12 +2598,8 @@ static void test_coop_level_mode_set(void)
     static const struct message exclusive_focus_loss_messages[] =
     {
         {WM_ACTIVATE,           TRUE,   WA_INACTIVE},
-        {WM_WINDOWPOSCHANGING,  FALSE,  0}, /* Window resize due to mode change. */
-        {WM_WINDOWPOSCHANGED,   FALSE,  0},
-        {WM_SIZE,               TRUE,   SIZE_RESTORED}, /* Generated by DefWindowProc. */
         {WM_DISPLAYCHANGE,      FALSE,  0},
-        {WM_KILLFOCUS,          FALSE,  0},
-        {WM_WINDOWPOSCHANGING,  FALSE,  0}, /* Window minimized. */
+        {WM_WINDOWPOSCHANGING,  FALSE,  0},
         /* Like d3d8 and d3d9 ddraw seems to use SW_SHOWMINIMIZED instead of
          * SW_MINIMIZED, causing a recursive window activation that does not
          * produce the same result in Wine yet. Ignore the difference for now.
@@ -5003,7 +4942,7 @@ static void fill_surface(IDirectDrawSurface *surface, D3DCOLOR color)
 
     for (y = 0; y < surface_desc.dwHeight; ++y)
     {
-        ptr = (DWORD *)((BYTE *)surface_desc.lpSurface + y * U1(surface_desc).lPitch);
+        ptr = (DWORD *)((BYTE *)surface_desc.lpSurface + y * surface_desc.lPitch);
         for (x = 0; x < surface_desc.dwWidth; ++x)
         {
             ptr[x] = color;
@@ -6041,53 +5980,6 @@ static void test_surface_attachment(void)
     IDirectDrawSurface_Release(surface2);
     IDirectDrawSurface_Release(surface1);
 
-    /* Test depth surfaces of different sizes. */
-    memset(&surface_desc, 0, sizeof(surface_desc));
-    surface_desc.dwSize = sizeof(surface_desc);
-    surface_desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT;
-    surface_desc.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN | DDSCAPS_3DDEVICE;
-    surface_desc.dwWidth = 64;
-    surface_desc.dwHeight = 64;
-    hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &surface1, NULL);
-    ok(hr == D3D_OK, "Failed to create surface, hr %#x.\n", hr);
-
-    memset(&surface_desc, 0, sizeof(surface_desc));
-    surface_desc.dwSize = sizeof(surface_desc);
-    surface_desc.dwFlags = DDSD_CAPS | DDSD_PIXELFORMAT | DDSD_WIDTH | DDSD_HEIGHT;
-    surface_desc.ddsCaps.dwCaps = DDSCAPS_ZBUFFER;
-    surface_desc.ddpfPixelFormat.dwSize = sizeof(surface_desc.ddpfPixelFormat);
-    surface_desc.ddpfPixelFormat.dwFlags = DDPF_ZBUFFER;
-    U1(surface_desc.ddpfPixelFormat).dwZBufferBitDepth = 16;
-    U3(surface_desc.ddpfPixelFormat).dwZBitMask = 0x0000ffff;
-    surface_desc.dwWidth = 32;
-    surface_desc.dwHeight = 32;
-    hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &surface2, NULL);
-    ok(hr == D3D_OK, "Failed to create surface, hr %#x.\n", hr);
-    surface_desc.dwWidth = 64;
-    surface_desc.dwHeight = 64;
-    hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &surface3, NULL);
-    ok(hr == D3D_OK, "Failed to create surface, hr %#x.\n", hr);
-    surface_desc.dwWidth = 128;
-    surface_desc.dwHeight = 128;
-    hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &surface4, NULL);
-    ok(hr == D3D_OK, "Failed to create surface, hr %#x.\n", hr);
-
-    hr = IDirectDrawSurface_AddAttachedSurface(surface1, surface2);
-    todo_wine ok(hr == DDERR_CANNOTATTACHSURFACE, "Got unexpected hr %#x.\n", hr);
-    if (SUCCEEDED(hr))
-        IDirectDrawSurface2_DeleteAttachedSurface(surface1, 0, surface3);
-    hr = IDirectDrawSurface_AddAttachedSurface(surface1, surface3);
-    ok(hr == D3D_OK, "Failed to attach depth buffer, hr %#x.\n", hr);
-    hr = IDirectDrawSurface2_DeleteAttachedSurface(surface1, 0, surface3);
-    ok(hr == D3D_OK, "Failed to detach depth buffer, hr %#x.\n", hr);
-    hr = IDirectDrawSurface_AddAttachedSurface(surface1, surface4);
-    todo_wine ok(hr == DDERR_CANNOTATTACHSURFACE, "Got unexpected hr %#x.\n", hr);
-
-    IDirectDrawSurface2_Release(surface4);
-    IDirectDrawSurface2_Release(surface3);
-    IDirectDrawSurface2_Release(surface2);
-    IDirectDrawSurface2_Release(surface1);
-
     /* Test DeleteAttachedSurface() and automatic detachment of attached surfaces on release. */
     memset(&surface_desc, 0, sizeof(surface_desc));
     surface_desc.dwSize = sizeof(surface_desc);
@@ -6448,10 +6340,10 @@ static void test_create_surface_pitch(void)
 static void test_mipmap(void)
 {
     IDirectDrawSurface *surface1;
-    IDirectDrawSurface2 *surface, *surface_base, *surface_mip;
-    unsigned int i, mipmap_count;
+    IDirectDrawSurface2 *surface, *surface2;
     DDSURFACEDESC surface_desc;
     IDirectDraw2 *ddraw;
+    unsigned int i;
     ULONG refcount;
     HWND window;
     HRESULT hr;
@@ -6524,45 +6416,24 @@ static void test_mipmap(void)
         ok(U2(surface_desc).dwMipMapCount == tests[i].mipmap_count_out,
                 "Test %u: Got unexpected mipmap count %u.\n", i, U2(surface_desc).dwMipMapCount);
 
-        surface_base = surface;
-        IDirectDrawSurface2_AddRef(surface_base);
-        mipmap_count = U2(surface_desc).dwMipMapCount;
-        while (mipmap_count > 1)
+        if (U2(surface_desc).dwMipMapCount > 1)
         {
-            hr = IDirectDrawSurface2_GetAttachedSurface(surface_base, &caps, &surface_mip);
-            ok(SUCCEEDED(hr), "Test %u, %u: Failed to get attached surface, hr %#x.\n", i, mipmap_count, hr);
+            hr = IDirectDrawSurface2_GetAttachedSurface(surface, &caps, &surface2);
+            ok(SUCCEEDED(hr), "Test %u: Failed to get attached surface, hr %#x.\n", i, hr);
 
             memset(&surface_desc, 0, sizeof(surface_desc));
             surface_desc.dwSize = sizeof(surface_desc);
-            hr = IDirectDrawSurface2_GetSurfaceDesc(surface_base, &surface_desc);
-            ok(SUCCEEDED(hr), "Test %u, %u: Failed to get surface desc, hr %#x.\n", i, mipmap_count, hr);
-            ok(surface_desc.dwFlags & DDSD_MIPMAPCOUNT,
-                    "Test %u, %u: Got unexpected flags %#x.\n", i, mipmap_count, surface_desc.dwFlags);
-            ok(U2(surface_desc).dwMipMapCount == mipmap_count,
-                    "Test %u, %u: Got unexpected mipmap count %u.\n",
-                    i, mipmap_count, U2(surface_desc).dwMipMapCount);
-
+            hr = IDirectDrawSurface2_Lock(surface, NULL, &surface_desc, 0, NULL);
+            ok(SUCCEEDED(hr), "Test %u: Failed to lock surface, hr %#x.\n", i, hr);
             memset(&surface_desc, 0, sizeof(surface_desc));
             surface_desc.dwSize = sizeof(surface_desc);
-            hr = IDirectDrawSurface2_Lock(surface_base, NULL, &surface_desc, 0, NULL);
-            ok(SUCCEEDED(hr), "Test %u, %u: Failed to lock surface, hr %#x.\n", i, mipmap_count, hr);
-            ok(surface_desc.dwMipMapCount == mipmap_count,
-                    "Test %u, %u: unexpected change of mipmap count %u.\n",
-                    i, mipmap_count, surface_desc.dwMipMapCount);
-            memset(&surface_desc, 0, sizeof(surface_desc));
-            surface_desc.dwSize = sizeof(surface_desc);
-            hr = IDirectDrawSurface2_Lock(surface_mip, NULL, &surface_desc, 0, NULL);
-            ok(SUCCEEDED(hr), "Test %u, %u: Failed to lock surface, hr %#x.\n", i, mipmap_count, hr);
-            ok(surface_desc.dwMipMapCount == mipmap_count - 1,
-                    "Test %u, %u: Child mipmap count unexpected %u\n", i, mipmap_count, surface_desc.dwMipMapCount);
-            IDirectDrawSurface2_Unlock(surface_mip, NULL);
-            IDirectDrawSurface2_Unlock(surface_base, NULL);
+            hr = IDirectDrawSurface2_Lock(surface2, NULL, &surface_desc, 0, NULL);
+            ok(SUCCEEDED(hr), "Test %u: Failed to lock surface, hr %#x.\n", i, hr);
+            IDirectDrawSurface2_Unlock(surface2, NULL);
+            IDirectDrawSurface2_Unlock(surface, NULL);
 
-            IDirectDrawSurface2_Release(surface_base);
-            surface_base = surface_mip;
-            --mipmap_count;
+            IDirectDrawSurface2_Release(surface2);
         }
-        IDirectDrawSurface2_Release(surface_base);
 
         IDirectDrawSurface2_Release(surface);
     }
@@ -10293,11 +10164,11 @@ static void test_blt_z_alpha(void)
 
     for (i = 0; i < ARRAY_SIZE(blt_flags); ++i)
     {
-        U5(fx).dwFillColor = 0x3300ff00;
+        fx.dwFillColor = 0x3300ff00;
         hr = IDirectDrawSurface_Blt(src_surface, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
         ok(SUCCEEDED(hr), "Test %u: Got unexpected hr %#x.\n", i, hr);
 
-        U5(fx).dwFillColor = 0xccff0000;
+        fx.dwFillColor = 0xccff0000;
         hr = IDirectDrawSurface_Blt(dst_surface, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
         ok(SUCCEEDED(hr), "Test %u: Got unexpected hr %#x.\n", i, hr);
 
@@ -10363,7 +10234,7 @@ static void test_cross_device_blt(void)
     surface_desc.dwSize = sizeof(surface_desc);
     surface_desc.dwFlags = DDSD_CAPS | DDSD_BACKBUFFERCOUNT;
     surface_desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE | DDSCAPS_COMPLEX | DDSCAPS_FLIP | DDSCAPS_VIDEOMEMORY;
-    surface_desc.dwBackBufferCount = 2;
+    U5(surface_desc).dwBackBufferCount = 2;
     hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &surface, NULL);
     ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
 
@@ -12012,7 +11883,7 @@ static void test_ck_operation(void)
     surface_desc.dwWidth = 4;
     surface_desc.dwHeight = 1;
     surface_desc.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN;
-    surface_desc.ddpfPixelFormat.dwFlags = DDPF_RGB;
+    U4(surface_desc).ddpfPixelFormat.dwFlags = DDPF_RGB;
     U1(surface_desc.ddpfPixelFormat).dwRGBBitCount = 32;
     U2(surface_desc.ddpfPixelFormat).dwRBitMask = 0x00ff0000;
     U3(surface_desc.ddpfPixelFormat).dwGBitMask = 0x0000ff00;
@@ -12735,10 +12606,10 @@ static void test_clear(void)
 
     /* negative x, negative y.
      * Also ignored, except on WARP, which clears the entire screen. */
-    U1(rect_negneg).x1 = 640;
-    U2(rect_negneg).y1 = 240;
-    U3(rect_negneg).x2 = 320;
-    U4(rect_negneg).y2 = 0;
+    rect_negneg.x1 = 640;
+    rect_negneg.y1 = 240;
+    rect_negneg.x2 = 320;
+    rect_negneg.y2 = 0;
     viewport_set_background(device, viewport, green);
     hr = IDirect3DViewport2_Clear(viewport, 1, &rect_negneg, D3DCLEAR_TARGET);
     ok(SUCCEEDED(hr), "Failed to clear, hr %#x.\n", hr);
@@ -13065,7 +12936,7 @@ static void test_viewport(void)
     memset(&surface_desc, 0, sizeof(surface_desc));
     surface_desc.dwSize = sizeof(surface_desc);
     hr = IDirectDrawSurface_GetSurfaceDesc(ds, &surface_desc);
-    z_fmt = surface_desc.ddpfPixelFormat;
+    z_fmt = U4(surface_desc).ddpfPixelFormat;
 
     for (i = 0; i < ARRAY_SIZE(rt_sizes); ++i)
     {
@@ -13082,7 +12953,7 @@ static void test_viewport(void)
 
             surface_desc.dwFlags = DDSD_CAPS | DDSD_PIXELFORMAT | DDSD_WIDTH | DDSD_HEIGHT;
             surface_desc.ddsCaps.dwCaps = DDSCAPS_ZBUFFER;
-            surface_desc.ddpfPixelFormat = z_fmt;
+            U4(surface_desc).ddpfPixelFormat = z_fmt;
             hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &ds, NULL);
             ok(SUCCEEDED(hr), "Failed to create depth buffer, hr %#x (i %u).\n", hr, i);
             hr = IDirectDrawSurface_AddAttachedSurface(rt, ds);
@@ -13333,149 +13204,6 @@ static void test_find_device(void)
     IDirectDraw2_Release(ddraw);
 }
 
-static IDirectDraw2 *killfocus_ddraw;
-static IDirectDrawSurface *killfocus_surface;
-
-static LRESULT CALLBACK killfocus_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
-{
-    ULONG ref;
-
-    if (message == WM_KILLFOCUS)
-    {
-        ref = IDirectDrawSurface_Release(killfocus_surface);
-        ok(!ref, "Unexpected surface refcount %u.\n", ref);
-        ref = IDirectDraw2_Release(killfocus_ddraw);
-        ok(!ref, "Unexpected ddraw refcount %u.\n", ref);
-        killfocus_ddraw = NULL;
-    }
-
-    return DefWindowProcA(window, message, wparam, lparam);
-}
-
-static void test_killfocus(void)
-{
-    DDSURFACEDESC surface_desc;
-    HRESULT hr;
-    HWND window;
-    WNDCLASSA wc = {0};
-
-    wc.lpfnWndProc = killfocus_proc;
-    wc.lpszClassName = "ddraw_killfocus_wndproc_wc";
-    ok(RegisterClassA(&wc), "Failed to register window class.\n");
-
-    window = CreateWindowA("ddraw_killfocus_wndproc_wc", "d3d7_test", WS_OVERLAPPEDWINDOW,
-        0, 0, 640, 480, 0, 0, 0, 0);
-
-    killfocus_ddraw = create_ddraw();
-    ok(!!killfocus_ddraw, "Failed to create a ddraw object.\n");
-
-    hr = IDirectDraw2_SetCooperativeLevel(killfocus_ddraw, window, DDSCL_FULLSCREEN | DDSCL_EXCLUSIVE);
-    ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
-
-    memset(&surface_desc, 0, sizeof(surface_desc));
-    surface_desc.dwSize = sizeof(surface_desc);
-    surface_desc.dwFlags = DDSD_CAPS;
-    surface_desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
-    hr = IDirectDraw_CreateSurface(killfocus_ddraw, &surface_desc, &killfocus_surface, NULL);
-    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
-
-    SetForegroundWindow(GetDesktopWindow());
-    ok(!killfocus_ddraw, "WM_KILLFOCUS was not received.\n");
-
-    DestroyWindow(window);
-    UnregisterClassA("ddraw_killfocus_wndproc_wc", GetModuleHandleA(NULL));
-}
-
-static void test_gdi_surface(void)
-{
-    IDirectDrawSurface *primary, *backbuffer, *gdi_surface;
-    DDSCAPS caps = {DDSCAPS_BACKBUFFER};
-    DDSURFACEDESC surface_desc;
-    IDirectDraw2 *ddraw;
-    ULONG refcount;
-    HWND window;
-    HRESULT hr;
-
-    window = create_window();
-    ddraw = create_ddraw();
-    ok(!!ddraw, "Failed to create a ddraw object.\n");
-    hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
-    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
-
-    /* Retrieving the GDI surface requires a primary surface to exist. */
-    gdi_surface = (void *)0xc0dec0de;
-    hr = IDirectDraw2_GetGDISurface(ddraw, &gdi_surface);
-    ok(hr == DDERR_NOTFOUND, "Got unexpected hr %#x.\n", hr);
-    ok(!gdi_surface, "Got unexpected surface %p.\n", gdi_surface);
-
-    hr = IDirectDraw2_FlipToGDISurface(ddraw);
-    ok(hr == DDERR_NOTFOUND, "Got unexpected hr %#x.\n", hr);
-
-    memset(&surface_desc, 0, sizeof(surface_desc));
-    surface_desc.dwSize = sizeof(surface_desc);
-    surface_desc.dwFlags = DDSD_CAPS;
-    surface_desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
-    hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &primary, NULL);
-    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
-
-    hr = IDirectDraw2_GetGDISurface(ddraw, &gdi_surface);
-    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
-    ok(gdi_surface == primary, "Got unexpected surface %p, expected %p.\n", gdi_surface, primary);
-    IDirectDrawSurface_Release(gdi_surface);
-
-    /* Flipping to the GDI surface requires the primary surface to be
-     * flippable. */
-    hr = IDirectDraw2_FlipToGDISurface(ddraw);
-    ok(hr == DDERR_NOTFLIPPABLE, "Got unexpected hr %#x.\n", hr);
-
-    IDirectDrawSurface_Release(primary);
-
-    hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
-    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
-
-    memset(&surface_desc, 0, sizeof(surface_desc));
-    surface_desc.dwSize = sizeof(surface_desc);
-    surface_desc.dwFlags = DDSD_CAPS | DDSD_BACKBUFFERCOUNT;
-    surface_desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE | DDSCAPS_COMPLEX | DDSCAPS_FLIP;
-    U5(surface_desc).dwBackBufferCount = 1;
-    hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &primary, NULL);
-    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
-    hr = IDirectDrawSurface_GetAttachedSurface(primary, &caps, &backbuffer);
-    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
-    ok(backbuffer != primary, "Got unexpected backbuffer %p.\n", backbuffer);
-
-    hr = IDirectDraw2_GetGDISurface(ddraw, &gdi_surface);
-    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
-    ok(gdi_surface == primary, "Got unexpected surface %p, expected %p.\n", gdi_surface, primary);
-    IDirectDrawSurface_Release(gdi_surface);
-
-    hr = IDirectDrawSurface_Flip(primary, NULL, DDFLIP_WAIT);
-    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
-    hr = IDirectDraw2_GetGDISurface(ddraw, &gdi_surface);
-    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
-    ok(gdi_surface == backbuffer || broken(gdi_surface == primary),
-            "Got unexpected surface %p, expected %p.\n", gdi_surface, backbuffer);
-    IDirectDrawSurface_Release(gdi_surface);
-
-    hr = IDirectDraw2_FlipToGDISurface(ddraw);
-    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
-
-    hr = IDirectDraw2_GetGDISurface(ddraw, &gdi_surface);
-    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
-    ok(gdi_surface == primary, "Got unexpected surface %p, expected %p.\n", gdi_surface, primary);
-    IDirectDrawSurface_Release(gdi_surface);
-
-    hr = IDirectDraw2_FlipToGDISurface(ddraw);
-    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
-
-    IDirectDrawSurface_Release(backbuffer);
-    IDirectDrawSurface_Release(primary);
-
-    refcount = IDirectDraw2_Release(ddraw);
-    ok(!refcount, "%u references left.\n", refcount);
-    DestroyWindow(window);
-}
-
 START_TEST(ddraw2)
 {
     DDDEVICEIDENTIFIER identifier;
@@ -13590,6 +13318,4 @@ START_TEST(ddraw2)
     test_caps();
     test_viewport();
     test_find_device();
-    test_killfocus();
-    test_gdi_surface();
 }

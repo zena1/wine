@@ -172,7 +172,6 @@ static void find_hid_devices(void)
 
 done:
     LeaveCriticalSection(&hid_devices_cs);
-    SetupDiDestroyDeviceInfoList(set);
     heap_free(detail);
 }
 
@@ -281,9 +280,6 @@ UINT WINAPI GetRawInputData(HRAWINPUT rawinput, UINT command, void *data, UINT *
 
     TRACE("rawinput %p, command %#x, data %p, data_size %p, header_size %u.\n",
             rawinput, command, data, data_size, header_size);
-
-    if (!ri)
-        return ~0U;
 
     if (header_size != sizeof(RAWINPUTHEADER))
     {
