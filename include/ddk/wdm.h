@@ -191,10 +191,10 @@ typedef struct _VPB {
   WCHAR  VolumeLabel[MAXIMUM_VOLUME_LABEL_LENGTH / sizeof(WCHAR)];
 } VPB, *PVPB;
 
-#define POOL_QUOTA_FAIL_INSTEAD_OF_RAISE 0x8
-#define POOL_RAISE_IF_ALLOCATION_FAILURE 0x10
-#define POOL_COLD_ALLOCATION             0x100
-#define POOL_NX_ALLOCATION               0x200
+#define POOL_QUOTA_FAIL_INSTEAD_OF_RAISE 0x0008
+#define POOL_RAISE_IF_ALLOCATION_FAILURE 0x0010
+#define POOL_COLD_ALLOCATION             0x0100
+#define POOL_NX_ALLOCATION               0x0200
 
 typedef enum _POOL_TYPE {
   NonPagedPool,
@@ -1248,49 +1248,62 @@ typedef void (NTAPI *PFREE_FUNCTION_EX)(void *, PLOOKASIDE_LIST_EX);
 
 #define LOOKASIDE_MINIMUM_BLOCK_SIZE (RTL_SIZEOF_THROUGH_FIELD(SLIST_ENTRY, Next))
 
+#define GENERAL_LOOKASIDE_LAYOUT           \
+    union                                  \
+    {                                      \
+        SLIST_HEADER ListHead;             \
+        SINGLE_LIST_ENTRY SingleListHead;  \
+    } DUMMYUNIONNAME;                      \
+    USHORT Depth;                          \
+    USHORT MaximumDepth;                   \
+    ULONG TotalAllocates;                  \
+    union                                  \
+    {                                      \
+        ULONG AllocateMisses;              \
+        ULONG AllocateHits;                \
+    } DUMMYUNIONNAME2;                     \
+    ULONG TotalFrees;                      \
+    union                                  \
+    {                                      \
+        ULONG FreeMisses;                  \
+        ULONG FreeHits;                    \
+    } DUMMYUNIONNAME3;                     \
+    POOL_TYPE Type;                        \
+    ULONG Tag;                             \
+    ULONG Size;                            \
+    union                                  \
+    {                                      \
+        PALLOCATE_FUNCTION_EX AllocateEx;  \
+        PALLOCATE_FUNCTION Allocate;       \
+    } DUMMYUNIONNAME4;                     \
+    union                                  \
+    {                                      \
+        PFREE_FUNCTION_EX FreeEx;          \
+        PFREE_FUNCTION Free;               \
+    } DUMMYUNIONNAME5;                     \
+    LIST_ENTRY ListEntry;                  \
+    ULONG LastTotalAllocates;              \
+    union                                  \
+    {                                      \
+        ULONG LastAllocateMisses;          \
+        ULONG LastAllocateHits;            \
+    } DUMMYUNIONNAME6;                     \
+    ULONG Future[2];
+
 typedef struct LOOKASIDE_ALIGN _GENERAL_LOOKASIDE
 {
-    union
-    {
-        SLIST_HEADER ListHead;
-        SINGLE_LIST_ENTRY SingleListHead;
-    } DUMMYUNIONNAME;
-    USHORT Depth;
-    USHORT MaximumDepth;
-    ULONG TotalAllocates;
-    union
-    {
-        ULONG AllocateMisses;
-        ULONG AllocateHits;
-    } DUMMYUNIONNAME2;
-    ULONG TotalFrees;
-    union
-    {
-        ULONG FreeMisses;
-        ULONG FreeHits;
-    } DUMMYUNIONNAME3;
-    POOL_TYPE Type;
-    ULONG Tag;
-    ULONG Size;
-    union
-    {
-        PALLOCATE_FUNCTION_EX AllocateEx;
-        PALLOCATE_FUNCTION Allocate;
-    } DUMMYUNIONNAME4;
-    union
-    {
-        PFREE_FUNCTION_EX FreeEx;
-        PFREE_FUNCTION Free;
-    } DUMMYUNIONNAME5;
-    LIST_ENTRY ListEntry;
-    ULONG LastTotalAllocates;
-    union
-    {
-        ULONG LastAllocateMisses;
-        ULONG LastAllocateHits;
-    } DUMMYUNIONNAME6;
-    ULONG Future[2];
+    GENERAL_LOOKASIDE_LAYOUT
 } GENERAL_LOOKASIDE;
+
+typedef struct _GENERAL_LOOKASIDE_POOL
+{
+    GENERAL_LOOKASIDE_LAYOUT
+} GENERAL_LOOKASIDE_POOL, *PGENERAL_LOOKASIDE_POOL;
+
+typedef struct _LOOKASIDE_LIST_EX
+{
+    GENERAL_LOOKASIDE_POOL L;
+} LOOKASIDE_LIST_EX;
 
 typedef struct LOOKASIDE_ALIGN _NPAGED_LOOKASIDE_LIST
 {
@@ -1518,6 +1531,7 @@ LONG      WINAPI KeReleaseSemaphore(PRKSEMAPHORE,KPRIORITY,LONG,BOOLEAN);
 void      WINAPI KeReleaseSpinLock(KSPIN_LOCK*,KIRQL);
 void      WINAPI KeReleaseSpinLockFromDpcLevel(KSPIN_LOCK*);
 LONG      WINAPI KeResetEvent(PRKEVENT);
+void      WINAPI KeRevertToUserAffinityThread(void);
 LONG      WINAPI KeSetEvent(PRKEVENT,KPRIORITY,BOOLEAN);
 KPRIORITY WINAPI KeSetPriorityThread(PKTHREAD,KPRIORITY);
 void      WINAPI KeSetSystemAffinityThread(KAFFINITY);

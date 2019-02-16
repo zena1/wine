@@ -1344,7 +1344,7 @@ BOOL WINAPI HttpAddRequestHeadersW(HINTERNET hHttpRequest,
     http_request_t *request;
     DWORD res = ERROR_INTERNET_INCORRECT_HANDLE_TYPE;
 
-    TRACE("%p, %s, %i, %i\n", hHttpRequest, debugstr_wn(lpszHeader, dwHeaderLength), dwHeaderLength, dwModifier);
+    TRACE("%p, %s, %u, %08x\n", hHttpRequest, debugstr_wn(lpszHeader, dwHeaderLength), dwHeaderLength, dwModifier);
 
     if (!lpszHeader) 
       return TRUE;
@@ -1376,7 +1376,7 @@ BOOL WINAPI HttpAddRequestHeadersA(HINTERNET hHttpRequest,
     WCHAR *headers = NULL;
     BOOL r;
 
-    TRACE("%p, %s, %i, %i\n", hHttpRequest, debugstr_an(lpszHeader, dwHeaderLength), dwHeaderLength, dwModifier);
+    TRACE("%p, %s, %u, %08x\n", hHttpRequest, debugstr_an(lpszHeader, dwHeaderLength), dwHeaderLength, dwModifier);
 
     if(lpszHeader)
         headers = heap_strndupAtoW(lpszHeader, dwHeaderLength, &dwHeaderLength);

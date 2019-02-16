@@ -2531,12 +2531,11 @@ void virtual_release_address_space(void)
  *
  * Enable use of a large address space when allowed by the application.
  */
-void virtual_set_large_address_space(BOOL force_large_address)
+void virtual_set_large_address_space(void)
 {
     IMAGE_NT_HEADERS *nt = RtlImageNtHeader( NtCurrentTeb()->Peb->ImageBaseAddress );
 
-    if (!(nt->FileHeader.Characteristics & IMAGE_FILE_LARGE_ADDRESS_AWARE) && !force_large_address) return;
-
+    if (!(nt->FileHeader.Characteristics & IMAGE_FILE_LARGE_ADDRESS_AWARE)) return;
     /* no large address space on win9x */
     if (NtCurrentTeb()->Peb->OSPlatformId != VER_PLATFORM_WIN32_NT) return;
 
@@ -3474,7 +3473,7 @@ void virtual_fill_image_information( const pe_image_info_t *pe_info, SECTION_IMA
     info->DllCharacteristics   = pe_info->dll_charact;
     info->Machine              = pe_info->machine;
     info->ImageContainsCode    = pe_info->contains_code;
-    info->u.ImageFlags         = pe_info->image_flags;
+    info->u.ImageFlags         = pe_info->image_flags & ~IMAGE_FLAGS_WineFakeDll;
     info->LoaderFlags          = pe_info->loader_flags;
     info->ImageFileSize        = pe_info->file_size;
     info->CheckSum             = pe_info->checksum;
