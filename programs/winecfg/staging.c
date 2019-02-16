@@ -118,8 +118,8 @@ static BOOL gtk3_get(void)
 {
 #ifdef HAVE_GTK3
     BOOL ret;
-    char *value = get_reg_key(config_key, keypath("DllRedirects"), "uxtheme", NULL);
-    ret = (value && !strcmp(value, "uxtheme-gtk.dll"));
+    char *value = get_reg_key(config_key, keypath(""), "ThemeEngine", NULL);
+    ret = (value && !strcasecmp(value, "GTK"));
     HeapFree(GetProcessHeap(), 0, value);
     return ret;
 #else
@@ -129,7 +129,7 @@ static BOOL gtk3_get(void)
 static void gtk3_set(BOOL status)
 {
 #ifdef HAVE_GTK3
-    set_reg_key(config_key, keypath("DllRedirects"), "uxtheme", status ? "uxtheme-gtk.dll" : NULL);
+    set_reg_key(config_key, keypath(""), "ThemeEngine", status ? "GTK" : NULL);
 #endif
 }
 
