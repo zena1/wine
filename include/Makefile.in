@@ -13,8 +13,8 @@ SOURCES = \
 	amaudio.h \
 	amstream.idl \
 	amvideo.idl \
-	appcompatapi.h \
 	apiset.h \
+	appcompatapi.h \
 	appmgmt.h \
 	appmodel.h \
 	asptlb.idl \
@@ -83,6 +83,7 @@ SOURCES = \
 	cvconst.h \
 	d2d1.idl \
 	d2d1_1.idl \
+	d2d1_2.idl \
 	d2dbasetypes.h \
 	d2derr.h \
 	d3d.h \
@@ -475,6 +476,7 @@ SOURCES = \
 	ntddndis.h \
 	ntddscsi.h \
 	ntddstor.h \
+	ntddvdeo.h \
 	ntdef.h \
 	ntdsapi.h \
 	ntlsa.h \
@@ -533,6 +535,7 @@ SOURCES = \
 	pshpack8.h \
 	pstore.idl \
 	qedit.idl \
+	qos2.h \
 	ras.h \
 	rasdlg.h \
 	raserror.h \
@@ -611,6 +614,7 @@ SOURCES = \
 	strsafe.h \
 	structuredquerycondition.idl \
 	svrapi.h \
+	synchapi.h \
 	t2embapi.h \
 	tapi.h \
 	taskschd.idl \
@@ -650,10 +654,11 @@ SOURCES = \
 	virtdisk.h \
 	vmr9.idl \
 	vmrender.idl \
+	vsbackup.idl \
 	vss.idl \
 	vsstyle.h \
 	vssym32.h \
-	vswriter.h \
+	vswriter.idl \
 	wbemcli.idl \
 	wbemdisp.idl \
 	wbemprov.idl \

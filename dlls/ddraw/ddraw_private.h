@@ -58,7 +58,6 @@ struct FvfToDecl
 #define DDRAW_SCL_DDRAW1        0x00000010
 #define DDRAW_SCL_RECURSIVE     0x00000020
 #define DDRAW_SWAPPED           0x00000040
-#define DDRAW_GDI_FLIP          0x00000080
 
 #define DDRAW_STRIDE_ALIGNMENT  8
 
@@ -98,6 +97,7 @@ struct ddraw
     struct ddraw_surface *primary;
     RECT primary_lock;
     struct wined3d_texture *wined3d_frontbuffer;
+    struct wined3d_texture *gdi_surface;
     struct wined3d_swapchain *wined3d_swapchain;
     HWND swapchain_window;
 
@@ -476,6 +476,13 @@ struct d3d_material
 void material_activate(struct d3d_material *material) DECLSPEC_HIDDEN;
 struct d3d_material *d3d_material_create(struct ddraw *ddraw) DECLSPEC_HIDDEN;
 
+enum ddraw_viewport_version
+{
+    DDRAW_VIEWPORT_VERSION_NONE,
+    DDRAW_VIEWPORT_VERSION_1,
+    DDRAW_VIEWPORT_VERSION_2,
+};
+
 /*****************************************************************************
  * IDirect3DViewport - Wraps to D3D7
  *****************************************************************************/
@@ -493,7 +500,7 @@ struct d3d_viewport
     DWORD                     num_lights;
     DWORD                     map_lights;
 
-    int                       use_vp2;
+    enum ddraw_viewport_version version;
 
     union
     {

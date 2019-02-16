@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 Detlef Riekenberg
+ * Copyright 2018 Louis Lenders
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -14,42 +14,36 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
- *
  */
 
 #include "config.h"
-#include "wine/port.h"
 #include <stdarg.h>
 
-#define COBJMACROS
 #include "windef.h"
 #include "winbase.h"
-#include "winuser.h"
-#include "objbase.h"
-#include "d3dx11.h"
+#include "qos2.h"
+#include "wine/debug.h"
 
-BOOL WINAPI DllMain(HINSTANCE hdll, DWORD reason, LPVOID reserved)
+WINE_DEFAULT_DEBUG_CHANNEL(qwave);
+
+BOOL WINAPI DllMain(HINSTANCE hInstDLL, DWORD reason, LPVOID lpv)
 {
+    TRACE("(%p, %d, %p)\n", hInstDLL, reason, lpv);
+
     switch (reason)
     {
-        case DLL_WINE_PREATTACH:
-            return FALSE;       /* prefer native version */
-        case DLL_PROCESS_ATTACH:
-            DisableThreadLibraryCalls(hdll);
+    case DLL_WINE_PREATTACH:
+        return FALSE;    /* prefer native version */
+    case DLL_PROCESS_ATTACH:
+        DisableThreadLibraryCalls(hInstDLL);
+        break;
     }
-
-   return TRUE;
+    return TRUE;
 }
 
-/***********************************************************************
- * D3DX11CheckVersion
- *
- * Checks whether we are compiling against the correct d3d and d3dx library.
- */
-BOOL WINAPI D3DX11CheckVersion(UINT d3dsdkversion, UINT d3dxsdkversion)
+BOOL WINAPI QOSCreateHandle(QOS_VERSION *version, HANDLE *handle)
 {
-    if ((d3dsdkversion == D3D11_SDK_VERSION) && (d3dxsdkversion == 42))
-        return TRUE;
-
+    FIXME("%p %p stub!\n", version, handle);
+    SetLastError(ERROR_SERVICE_DEPENDENCY_FAIL);
     return FALSE;
 }

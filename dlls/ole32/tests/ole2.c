@@ -33,12 +33,6 @@
 
 #include "wine/test.h"
 
-#include "initguid.h"
-
-DEFINE_GUID(CLSID_Picture_Metafile,0x315,0,0,0xc0,0,0,0,0,0,0,0x46);
-DEFINE_GUID(CLSID_Picture_Dib,0x316,0,0,0xc0,0,0,0,0,0,0,0x46);
-DEFINE_GUID(CLSID_Picture_EnhMetafile,0x319,0,0,0xc0,0,0,0,0,0,0,0x46);
-
 #define ok_ole_success(hr, func) ok(hr == S_OK, func " failed with error 0x%08x\n", hr)
 
 #define DEFINE_EXPECT(func) \
@@ -4097,6 +4091,8 @@ static void check_storage_contents(IStorage *stg, const struct storage_def *stg_
 
         *enumerated_streams += 1;
     }
+
+    IEnumSTATSTG_Release(enumstg);
 }
 
 static HRESULT stgmedium_cmp(const STGMEDIUM *med1, STGMEDIUM *med2)

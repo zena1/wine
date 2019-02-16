@@ -1341,6 +1341,25 @@ BOOL WINAPI CopyFileExA(LPCSTR sourceFilename, LPCSTR destFilename,
     return ret;
 }
 
+/**************************************************************************
+ *           MoveFileTransactedA   (KERNEL32.@)
+ */
+BOOL WINAPI MoveFileTransactedA(const char *source, const char *dest, LPPROGRESS_ROUTINE progress, void *data, DWORD flags, HANDLE handle)
+{
+    FIXME("(%s, %s, %p, %p, %d, %p)\n", debugstr_a(source), debugstr_a(dest), progress, data, flags, handle);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+/**************************************************************************
+ *           MoveFileTransactedW   (KERNEL32.@)
+ */
+BOOL WINAPI MoveFileTransactedW(const WCHAR *source, const WCHAR *dest, LPPROGRESS_ROUTINE progress, void *data, DWORD flags, HANDLE handle)
+{
+    FIXME("(%s, %s, %p, %p, %d, %p)\n", debugstr_w(source), debugstr_w(dest), progress, data, flags, handle);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
 
 /**************************************************************************
  *           MoveFileWithProgressW   (KERNEL32.@)
@@ -1411,7 +1430,8 @@ BOOL WINAPI MoveFileWithProgressW( LPCWSTR source, LPCWSTR dest,
     options = FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT;
     if (flag & MOVEFILE_WRITE_THROUGH)
         options |= FILE_WRITE_THROUGH;
-    status = NtOpenFile( &dest_handle, GENERIC_READ | GENERIC_WRITE | SYNCHRONIZE, &attr, &io, 0, options );
+    status = NtOpenFile( &dest_handle, GENERIC_READ | GENERIC_WRITE | SYNCHRONIZE, &attr, &io,
+                         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, options );
     if (status == STATUS_SUCCESS)  /* destination exists */
     {
         if (!(flag & MOVEFILE_REPLACE_EXISTING))
@@ -1430,6 +1450,7 @@ BOOL WINAPI MoveFileWithProgressW( LPCWSTR source, LPCWSTR dest,
         }
 
         NtClose( dest_handle );
+        dest_handle = NULL;
     }
     else if (status != STATUS_OBJECT_NAME_NOT_FOUND)
     {
@@ -1455,8 +1476,9 @@ BOOL WINAPI MoveFileWithProgressW( LPCWSTR source, LPCWSTR dest,
             NtClose( source_handle );
             RtlFreeAnsiString( &source_unix );
             RtlFreeAnsiString( &dest_unix );
-            if (!CopyFileExW( source, dest, fnProgress,
-                              param, NULL, COPY_FILE_FAIL_IF_EXISTS ))
+            if (!CopyFileExW( source, dest, fnProgress, param, NULL,
+                              flag & MOVEFILE_REPLACE_EXISTING ?
+                              0 : COPY_FILE_FAIL_IF_EXISTS ))
                 return FALSE;
             return DeleteFileW( source );
         }
@@ -2123,8 +2145,55 @@ WCHAR * CDECL wine_get_dos_file_name( LPCSTR str )
  */
 BOOLEAN WINAPI CreateSymbolicLinkW(LPCWSTR link, LPCWSTR target, DWORD flags)
 {
-    FIXME("(%s %s %d): stub\n", debugstr_w(link), debugstr_w(target), flags);
-    return TRUE;
+    NTSTATUS status, temp;
+    UNICODE_STRING nt_dest, nt_source;
+    ANSI_STRING unix_dest, unix_source;
+    BOOL ret = FALSE;
+
+    TRACE("(%s, %s, %d)\n", debugstr_w(link), debugstr_w(target), flags);
+
+    nt_dest.Buffer = nt_source.Buffer = NULL;
+    if (!RtlDosPathNameToNtPathName_U( link, &nt_dest, NULL, NULL ) ||
+        !RtlDosPathNameToNtPathName_U( target, &nt_source, NULL, NULL ))
+    {
+        SetLastError( ERROR_PATH_NOT_FOUND );
+        goto err;
+    }
+
+    unix_source.Buffer = unix_dest.Buffer = NULL;
+    temp = wine_nt_to_unix_file_name( &nt_source, &unix_source, FILE_OPEN_IF, FALSE );
+    status = wine_nt_to_unix_file_name( &nt_dest, &unix_dest, FILE_CREATE, FALSE );
+    if (!status) /* destination must not exist */
+        status = STATUS_OBJECT_NAME_EXISTS;
+    else if (status == STATUS_NO_SUCH_FILE)
+        status = STATUS_SUCCESS;
+
+    if (status)
+        SetLastError( RtlNtStatusToDosError(status) );
+    else
+    {
+        if(temp != STATUS_NO_SUCH_FILE && GetFileAttributesW(target) & FILE_ATTRIBUTE_DIRECTORY && strstr(unix_dest.Buffer, unix_source.Buffer))
+        {
+            FIXME("Symlinking a directory inside that directory is not supported.\n");
+            ret = TRUE;
+        }
+        else if (!symlink( unix_source.Buffer, unix_dest.Buffer ))
+        {
+            TRACE("Symlinked '%s' to '%s'\n", debugstr_a( unix_dest.Buffer ),
+                debugstr_a( unix_source.Buffer ));
+            ret = TRUE;
+        }
+        else
+            FILE_SetDosError();
+    }
+
+    RtlFreeAnsiString( &unix_source );
+    RtlFreeAnsiString( &unix_dest );
+
+err:
+    RtlFreeUnicodeString( &nt_source );
+    RtlFreeUnicodeString( &nt_dest );
+    return ret;
 }
 
 /*************************************************************************
@@ -2132,8 +2201,25 @@ BOOLEAN WINAPI CreateSymbolicLinkW(LPCWSTR link, LPCWSTR target, DWORD flags)
  */
 BOOLEAN WINAPI CreateSymbolicLinkA(LPCSTR link, LPCSTR target, DWORD flags)
 {
-    FIXME("(%s %s %d): stub\n", debugstr_a(link), debugstr_a(target), flags);
-    return TRUE;
+    WCHAR *sourceW, *destW;
+    BOOL res;
+
+    if (!(sourceW = FILE_name_AtoW( target, TRUE )))
+    {
+        return FALSE;
+    }
+    if (!(destW = FILE_name_AtoW( link, TRUE )))
+    {
+        HeapFree( GetProcessHeap(), 0, sourceW );
+        return FALSE;
+    }
+
+    res = CreateSymbolicLinkW( destW, sourceW, flags );
+
+    HeapFree( GetProcessHeap(), 0, sourceW );
+    HeapFree( GetProcessHeap(), 0, destW );
+
+    return res;
 }
 
 /*************************************************************************

@@ -369,6 +369,7 @@ void write_type_left(FILE *h, type_t *t, enum name_type name_type, int declonly)
       case TYPE_BASIC:
         if (type_basic_get_type(t) != TYPE_BASIC_INT32 &&
             type_basic_get_type(t) != TYPE_BASIC_INT64 &&
+            type_basic_get_type(t) != TYPE_BASIC_LONG &&
             type_basic_get_type(t) != TYPE_BASIC_HYPER)
         {
           if (type_basic_get_sign(t) < 0) fprintf(h, "signed ");
@@ -388,6 +389,12 @@ void write_type_left(FILE *h, type_t *t, enum name_type name_type, int declonly)
         case TYPE_BASIC_ERROR_STATUS_T: fprintf(h, "error_status_t"); break;
         case TYPE_BASIC_HANDLE: fprintf(h, "handle_t"); break;
         case TYPE_BASIC_INT32:
+          if (type_basic_get_sign(t) > 0)
+            fprintf(h, "UINT32");
+          else
+            fprintf(h, "INT32");
+          break;
+        case TYPE_BASIC_LONG:
           if (type_basic_get_sign(t) > 0)
             fprintf(h, "ULONG");
           else
@@ -630,83 +637,119 @@ unsigned int get_generic_handle_offset( const type_t *type )
 
 /* check for types which require additional prototypes to be generated in the
  * header */
-void check_for_additional_prototype_types(const var_list_t *list)
+void check_for_additional_prototype_types(type_t *type)
 {
-  const var_t *v;
-
-  if (!list) return;
-  LIST_FOR_EACH_ENTRY( v, list, const var_t, entry )
-  {
-    type_t *type = v->type;
-    if (!type) continue;
-    for (;;) {
-      const char *name = type->name;
-      if (type->user_types_registered) break;
-      type->user_types_registered = 1;
-      if (is_attr(type->attrs, ATTR_CONTEXTHANDLE)) {
-        if (!context_handle_registered(name))
-        {
-          context_handle_t *ch = xmalloc(sizeof(*ch));
-          ch->name = xstrdup(name);
-          list_add_tail(&context_handle_list, &ch->entry);
-        }
-        /* don't carry on parsing fields within this type */
-        break;
-      }
-      if ((type_get_type(type) != TYPE_BASIC ||
-           type_basic_get_type(type) != TYPE_BASIC_HANDLE) &&
-          is_attr(type->attrs, ATTR_HANDLE)) {
-        if (!generic_handle_registered(name))
-        {
-          generic_handle_t *gh = xmalloc(sizeof(*gh));
-          gh->name = xstrdup(name);
-          list_add_tail(&generic_handle_list, &gh->entry);
-        }
-        /* don't carry on parsing fields within this type */
-        break;
-      }
-      if (is_attr(type->attrs, ATTR_WIREMARSHAL)) {
-        if (!user_type_registered(name))
-        {
-          user_type_t *ut = xmalloc(sizeof *ut);
-          ut->name = xstrdup(name);
-          list_add_tail(&user_type_list, &ut->entry);
-        }
-        /* don't carry on parsing fields within this type as we are already
-         * using a wire marshaled type */
-        break;
-      }
-      else if (type_is_complete(type))
+  if (!type) return;
+  for (;;) {
+    const char *name = type->name;
+    if (type->user_types_registered) break;
+    type->user_types_registered = 1;
+    if (is_attr(type->attrs, ATTR_CONTEXTHANDLE)) {
+      if (!context_handle_registered(name))
       {
-        var_list_t *vars;
-        switch (type_get_type_detect_alias(type))
-        {
-        case TYPE_ENUM:
-          vars = type_enum_get_values(type);
-          break;
-        case TYPE_STRUCT:
-          vars = type_struct_get_fields(type);
-          break;
-        case TYPE_UNION:
-          vars = type_union_get_cases(type);
-          break;
-        default:
-          vars = NULL;
-          break;
-        }
-        check_for_additional_prototype_types(vars);
+        context_handle_t *ch = xmalloc(sizeof(*ch));
+        ch->name = xstrdup(name);
+        list_add_tail(&context_handle_list, &ch->entry);
       }
-
-      if (type_is_alias(type))
-        type = type_alias_get_aliasee(type);
-      else if (is_ptr(type))
-        type = type_pointer_get_ref(type);
-      else if (is_array(type))
-        type = type_array_get_element(type);
-      else
-        break;
+      /* don't carry on parsing fields within this type */
+      break;
     }
+    if ((type_get_type(type) != TYPE_BASIC ||
+         type_basic_get_type(type) != TYPE_BASIC_HANDLE) &&
+        is_attr(type->attrs, ATTR_HANDLE)) {
+      if (!generic_handle_registered(name))
+      {
+        generic_handle_t *gh = xmalloc(sizeof(*gh));
+        gh->name = xstrdup(name);
+        list_add_tail(&generic_handle_list, &gh->entry);
+      }
+      /* don't carry on parsing fields within this type */
+      break;
+    }
+    if (is_attr(type->attrs, ATTR_WIREMARSHAL)) {
+      if (!user_type_registered(name))
+      {
+        user_type_t *ut = xmalloc(sizeof *ut);
+        ut->name = xstrdup(name);
+        list_add_tail(&user_type_list, &ut->entry);
+      }
+      /* don't carry on parsing fields within this type as we are already
+       * using a wire marshaled type */
+      break;
+    }
+    else if (type_is_complete(type))
+    {
+      var_list_t *vars;
+      const var_t *v;
+      switch (type_get_type_detect_alias(type))
+      {
+      case TYPE_ENUM:
+        vars = type_enum_get_values(type);
+        break;
+      case TYPE_STRUCT:
+        vars = type_struct_get_fields(type);
+        break;
+      case TYPE_UNION:
+        vars = type_union_get_cases(type);
+        break;
+      default:
+        vars = NULL;
+        break;
+      }
+      if (vars) LIST_FOR_EACH_ENTRY( v, vars, const var_t, entry )
+        check_for_additional_prototype_types(v->type);
+    }
+
+    if (type_is_alias(type))
+      type = type_alias_get_aliasee(type);
+    else if (is_ptr(type))
+      type = type_pointer_get_ref(type);
+    else if (is_array(type))
+      type = type_array_get_element(type);
+    else
+      break;
   }
+}
+
+static int write_serialize_function_decl(FILE *header, const type_t *type)
+{
+    write_serialize_functions(header, type, NULL);
+    return 1;
+}
+
+static int serializable_exists(FILE *header, const type_t *type)
+{
+    return 0;
+}
+
+static int for_each_serializable(const statement_list_t *stmts, FILE *header,
+                                 int (*proc)(FILE*, const type_t*))
+{
+    statement_t *stmt, *iface_stmt;
+    statement_list_t *iface_stmts;
+    const type_list_t *type_entry;
+
+    if (stmts) LIST_FOR_EACH_ENTRY( stmt, stmts, statement_t, entry )
+    {
+        if (stmt->type != STMT_TYPE || type_get_type(stmt->u.type) != TYPE_INTERFACE)
+            continue;
+
+        iface_stmts = type_iface_get_stmts(stmt->u.type);
+        if (iface_stmts) LIST_FOR_EACH_ENTRY( iface_stmt, iface_stmts, statement_t, entry )
+        {
+            if (iface_stmt->type != STMT_TYPEDEF) continue;
+            for (type_entry = iface_stmt->u.type_list; type_entry; type_entry = type_entry->next)
+            {
+                if (!is_attr(type_entry->type->attrs, ATTR_ENCODE)
+                    && !is_attr(type_entry->type->attrs, ATTR_DECODE))
+                    continue;
+                if (!proc(header, type_entry->type))
+                    return 0;
+            }
+        }
+    }
+
+    return 1;
 }
 
 static void write_user_types(FILE *header)
@@ -1284,7 +1327,7 @@ static void write_locals(FILE *fp, const type_t *iface, int body)
     if (cas) {
       const statement_t *stmt2 = NULL;
       STATEMENTS_FOR_EACH_FUNC(stmt2, type_iface_get_stmts(iface))
-        if (!strcmp(stmt2->u.var->name, cas->name))
+        if (!strcmp(get_name(stmt2->u.var), cas->name))
           break;
       if (&stmt2->entry != type_iface_get_stmts(iface)) {
         const var_t *m = stmt2->u.var;
@@ -1604,8 +1647,13 @@ static void write_forward_decls(FILE *header, const statement_list_t *stmts)
       case STMT_TYPE:
         if (type_get_type(stmt->u.type) == TYPE_INTERFACE)
         {
-          if (is_object(stmt->u.type) || is_attr(stmt->u.type->attrs, ATTR_DISPINTERFACE))
-            write_forward(header, stmt->u.type);
+          type_t *iface = stmt->u.type;
+          if (is_object(iface) || is_attr(iface->attrs, ATTR_DISPINTERFACE))
+          {
+            write_forward(header, iface);
+            if (iface->details.iface->async_iface)
+              write_forward(header, iface->details.iface->async_iface);
+          }
         }
         else if (type_get_type(stmt->u.type) == TYPE_COCLASS)
           write_coclass_forward(header, stmt->u.type);
@@ -1640,12 +1688,18 @@ static void write_header_stmts(FILE *header, const statement_list_t *stmts, cons
         if (type_get_type(stmt->u.type) == TYPE_INTERFACE)
         {
           type_t *iface = stmt->u.type;
+          type_t *async_iface = iface->details.iface->async_iface;
           if (is_object(iface)) is_object_interface++;
           if (is_attr(stmt->u.type->attrs, ATTR_DISPINTERFACE) || is_object(stmt->u.type))
           {
             write_com_interface_start(header, iface);
             write_header_stmts(header, type_iface_get_stmts(iface), stmt->u.type, TRUE);
             write_com_interface_end(header, iface);
+            if (async_iface)
+            {
+              write_com_interface_start(header, async_iface);
+              write_com_interface_end(header, async_iface);
+            }
           }
           else
           {
@@ -1725,12 +1779,15 @@ void write_header(const statement_list_t *stmts)
   }
   fprintf(header, "/*** Autogenerated by WIDL %s from %s - Do not edit ***/\n\n", PACKAGE_VERSION, input_name);
 
+  fprintf(header, "#ifdef _WIN32\n");
   fprintf(header, "#ifndef __REQUIRED_RPCNDR_H_VERSION__\n");
   fprintf(header, "#define __REQUIRED_RPCNDR_H_VERSION__ 475\n");
-  fprintf(header, "#endif\n\n");
-
+  fprintf(header, "#endif\n");
   fprintf(header, "#include <rpc.h>\n" );
-  fprintf(header, "#include <rpcndr.h>\n\n" );
+  fprintf(header, "#include <rpcndr.h>\n" );
+  if (!for_each_serializable(stmts, NULL, serializable_exists))
+    fprintf(header, "#include <midles.h>\n" );
+  fprintf(header, "#endif\n\n");
 
   fprintf(header, "#ifndef COM_NO_WINDOWS_H\n");
   fprintf(header, "#include <windows.h>\n");
@@ -1752,6 +1809,7 @@ void write_header(const statement_list_t *stmts)
 
   fprintf(header, "/* Begin additional prototypes for all interfaces */\n");
   fprintf(header, "\n");
+  for_each_serializable(stmts, header, write_serialize_function_decl);
   write_user_types(header);
   write_generic_handle_routines(header);
   write_context_handle_rundowns(header);

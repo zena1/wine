@@ -89,9 +89,10 @@ static inline ProgressDialog *impl_from_IOleWindow(IOleWindow *iface)
     return CONTAINING_RECORD(iface, ProgressDialog, IOleWindow_iface);
 }
 
+static const WCHAR empty_string[] = {0};
+
 static void set_buffer(LPWSTR *buffer, LPCWSTR string)
 {
-    static const WCHAR empty_string[] = {0};
     IMalloc *malloc;
     ULONG cb;
 
@@ -132,15 +133,13 @@ static void set_progress_marquee(ProgressDialog *This)
 
 static void update_dialog(ProgressDialog *This, DWORD dwUpdate)
 {
-    WCHAR empty[] = {0};
-
     if (dwUpdate & UPDATE_TITLE)
         SetWindowTextW(This->hwnd, This->title);
 
     if (dwUpdate & UPDATE_LINE1)
-        SetDlgItemTextW(This->hwnd, IDC_TEXT_LINE, (This->isCancelled ? empty : This->lines[0]));
+        SetDlgItemTextW(This->hwnd, IDC_TEXT_LINE, (This->isCancelled ? empty_string : This->lines[0]));
     if (dwUpdate & UPDATE_LINE2)
-        SetDlgItemTextW(This->hwnd, IDC_TEXT_LINE+1, (This->isCancelled ? empty : This->lines[1]));
+        SetDlgItemTextW(This->hwnd, IDC_TEXT_LINE+1, (This->isCancelled ? empty_string : This->lines[1]));
     if (dwUpdate & UPDATE_LINE3)
         SetDlgItemTextW(This->hwnd, IDC_TEXT_LINE+2, (This->isCancelled ? This->cancelMsg : This->lines[2]));
 
@@ -158,6 +157,22 @@ static void update_dialog(ProgressDialog *This, DWORD dwUpdate)
 
         SendDlgItemMessageW(This->hwnd, IDC_PROGRESS_BAR, PBM_SETRANGE32, 0, (DWORD)ullTotal);
         SendDlgItemMessageW(This->hwnd, IDC_PROGRESS_BAR, PBM_SETPOS, (DWORD)ullCompleted, 0);
+    }
+}
+
+static void load_time_strings(ProgressDialog *This)
+{
+    int i;
+
+    for (i = 0; i < 2; i++)
+    {
+        if (!This->remainingMsg[i])
+            This->remainingMsg[i] = load_string(BROWSEUI_hinstance, IDS_REMAINING1 + i);
+    }
+    for (i = 0; i < 3; i++)
+    {
+        if (!This->timeMsg[i])
+            This->timeMsg[i] = load_string(BROWSEUI_hinstance, IDS_SECONDS + i);
     }
 }
 
@@ -370,6 +385,9 @@ static HRESULT WINAPI ProgressDialog_StartProgressDialog(IProgressDialog *iface,
             This->hwndDisabledParent = hwndDisable;
     }
 
+    if (dwFlags & PROGDLG_AUTOTIME)
+        load_time_strings(This);
+
     This->startTime = GetTickCount64();
     LeaveCriticalSection(&This->cs);
 
@@ -428,33 +446,16 @@ static BOOL WINAPI ProgressDialog_HasUserCancelled(IProgressDialog *iface)
     return This->isCancelled;
 }
 
-static void load_time_strings(ProgressDialog *This)
-{
-    int i;
-
-    for (i = 0; i < 2; i++)
-    {
-        if (!This->remainingMsg[i])
-            This->remainingMsg[i] = load_string(BROWSEUI_hinstance, IDS_REMAINING1 + i);
-    }
-    for (i = 0; i < 3; i++)
-    {
-        if (!This->timeMsg[i])
-            This->timeMsg[i] = load_string(BROWSEUI_hinstance, IDS_SECONDS + i);
-    }
-}
-
 static void update_time_remaining(ProgressDialog *This, ULONGLONG ullCompleted, ULONGLONG ullTotal)
 {
     unsigned int remaining, remainder = 0;
     ULONGLONG elapsed;
     WCHAR line[128];
     int i;
+    DWORD_PTR args[4];
 
     if (!This->startTime || !ullCompleted || !ullTotal)
         return;
-
-    load_time_strings(This);
 
     elapsed = GetTickCount64() - This->startTime;
     remaining = (elapsed * ullTotal / ullCompleted - elapsed) / 1000;
@@ -465,10 +466,17 @@ static void update_time_remaining(ProgressDialog *This, ULONGLONG ullCompleted, 
         remaining /= 60;
     }
 
+    args[0] = remaining;
+    args[1] = (DWORD_PTR)This->timeMsg[i];
+    args[2] = remainder;
+    args[3] = (DWORD_PTR)This->timeMsg[i-1];
+
     if (i > 0 && remaining < 2 && remainder != 0)
-        wsprintfW(line, This->remainingMsg[1], remaining, This->timeMsg[i], remainder, This->timeMsg[i-1]);
+        FormatMessageW(FORMAT_MESSAGE_FROM_STRING|FORMAT_MESSAGE_ARGUMENT_ARRAY,
+               This->remainingMsg[1], 0, 0, line, ARRAY_SIZE(line), (__ms_va_list*)args);
     else
-        wsprintfW(line, This->remainingMsg[0], remaining, This->timeMsg[i]);
+        FormatMessageW(FORMAT_MESSAGE_FROM_STRING|FORMAT_MESSAGE_ARGUMENT_ARRAY,
+               This->remainingMsg[0], 0, 0, line, ARRAY_SIZE(line), (__ms_va_list*)args);
 
     set_buffer(&This->lines[2], line);
     This->dwUpdate |= UPDATE_LINE3;

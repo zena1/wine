@@ -43,12 +43,12 @@
 @ stub MFCreateAudioMediaType
 @ stub MFCreateCollection
 @ stdcall MFCreateEventQueue(ptr)
-@ stub MFCreateFile
+@ stdcall MFCreateFile(long long long wstr ptr)
 @ stub MFCreateLegacyMediaBufferOnMFMediaBuffer
 @ stdcall MFCreateMFByteStreamOnStream(ptr ptr)
 @ stub MFCreateMFVideoFormatFromMFMediaType
 @ stub MFCreateMediaBufferWrapper
-@ stub MFCreateMediaEvent
+@ stdcall MFCreateMediaEvent(long ptr long ptr ptr)
 @ stdcall MFCreateMediaType(ptr)
 @ stub MFCreateMediaTypeFromRepresentation
 @ stdcall MFCreateMemoryBuffer(long ptr)
@@ -98,7 +98,7 @@
 @ stub MFGetPrivateWorkqueues
 @ stub MFGetSockaddrFromNumericName
 @ stub MFGetStrideForBitmapInfoHeader
-@ stub MFGetSystemTime
+@ stdcall MFGetSystemTime()
 @ stub MFGetTimerPeriodicity
 @ stub MFGetUncompressedVideoFormat
 @ stub MFGetWorkQueueMMCSSClass

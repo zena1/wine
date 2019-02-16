@@ -89,6 +89,12 @@ static errno_t (__cdecl *p_mbslwr_s)(unsigned char *str, size_t numberOfElements
 static int (__cdecl *p_wctob)(wint_t);
 static size_t (__cdecl *p_wcrtomb)(char*, wchar_t, mbstate_t*);
 static int (__cdecl *p_tolower)(int);
+static int (__cdecl *p_towlower)(wint_t);
+static int (__cdecl *p__towlower_l)(wint_t, _locale_t);
+static int (__cdecl *p_towupper)(wint_t);
+static int (__cdecl *p__towupper_l)(wint_t, _locale_t);
+static _locale_t(__cdecl *p__create_locale)(int, const char*);
+static void(__cdecl *p__free_locale)(_locale_t);
 static size_t (__cdecl *p_mbrlen)(const char*, size_t, mbstate_t*);
 static size_t (__cdecl *p_mbrtowc)(wchar_t*, const char*, size_t, mbstate_t*);
 static int (__cdecl *p__atodbl_l)(_CRT_DOUBLE*,char*,_locale_t);
@@ -100,6 +106,7 @@ static size_t (__cdecl *p__mbsnlen)(const unsigned char*, size_t);
 static int (__cdecl *p__mbccpy_s)(unsigned char*, size_t, int*, const unsigned char*);
 static int (__cdecl *p__memicmp)(const char*, const char*, size_t);
 static int (__cdecl *p__memicmp_l)(const char*, const char*, size_t, _locale_t);
+static size_t (__cdecl *p___strncnt)(const char*, size_t);
 
 #define SETNOFAIL(x,y) x = (void*)GetProcAddress(hMsvcrt,y)
 #define SET(x,y) SETNOFAIL(x,y); ok(x != NULL, "Export '%s' not found\n", y)
@@ -2781,13 +2788,19 @@ static void test_tolower(void)
 
     errno = 0xdeadbeef;
     ret = p_tolower((char)0xF4);
-    todo_wine ok(ret == (char)0xF4, "ret = %x\n", ret);
-    todo_wine ok(errno == 0xdeadbeef, "errno = %d\n", errno);
+    ok(ret == (char)0xF4, "ret = %x\n", ret);
+    ok(errno == 0xdeadbeef, "errno = %d\n", errno);
 
     errno = 0xdeadbeef;
     ret = p_tolower((char)0xD0);
-    todo_wine ok(ret == (char)0xD0, "ret = %x\n", ret);
-    todo_wine ok(errno == 0xdeadbeef, "errno = %d\n", errno);
+    ok(ret == (char)0xD0, "ret = %x\n", ret);
+    ok(errno == 0xdeadbeef, "errno = %d\n", errno);
+
+    setlocale(LC_ALL, "C");
+    errno = 0xdeadbeef;
+    ret = p_tolower((char)0xF4);
+    ok(ret == (char)0xF4, "ret = %x\n", ret);
+    ok(errno == 0xdeadbeef, "errno = %d\n", errno);
 
     /* test C locale after setting locale */
     if(!setlocale(LC_ALL, "us")) {
@@ -3492,7 +3505,6 @@ static void test__tcsnicoll(void)
         const char *str2;
         size_t count;
         int exp;
-        BOOL todo;
     };
     static const struct test tests[] = {
         { "English", "abcd", "ABCD",  4,  0 },
@@ -3568,6 +3580,104 @@ static void test__tcsnicoll(void)
     }
 }
 
+static void test___strncnt(void)
+{
+    static const struct
+    {
+        const char *str;
+        size_t size;
+        size_t ret;
+    }
+    strncnt_tests[] =
+    {
+        { NULL, 0, 0 },
+        { "a", 0, 0 },
+        { "a", 1, 1 },
+        { "a", 10, 1 },
+        { "abc", 1, 1 },
+    };
+    unsigned int i;
+    size_t ret;
+
+    if (!p___strncnt)
+    {
+        win_skip("__strncnt() is not available.\n");
+        return;
+    }
+
+    if (0) /* crashes */
+        ret = p___strncnt(NULL, 1);
+
+    for (i = 0; i < ARRAY_SIZE(strncnt_tests); ++i)
+    {
+        ret = p___strncnt(strncnt_tests[i].str, strncnt_tests[i].size);
+        ok(ret == strncnt_tests[i].ret, "%u: unexpected return value %u.\n", i, (int)ret);
+    }
+}
+
+static void test_C_locale(void)
+{
+    int i, j;
+    wint_t ret, exp;
+    _locale_t locale;
+    static const char *locales[] = { NULL, "C" };
+
+    /* C locale only converts case for [a-zA-Z] */
+    setlocale(LC_ALL, "C");
+    for (i = 0; i <= 0xffff; i++)
+    {
+        ret = p_towlower(i);
+        if (i >= 'A' && i <= 'Z')
+        {
+            exp = i + 'a' - 'A';
+            ok(ret == exp, "expected %x, got %x for C locale\n", exp, ret);
+        }
+        else
+            ok(ret == i, "expected self %x, got %x for C locale\n", i, ret);
+
+        ret = p_towupper(i);
+        if (i >= 'a' && i <= 'z')
+        {
+            exp = i + 'A' - 'a';
+            ok(ret == exp, "expected %x, got %x for C locale\n", exp, ret);
+        }
+        else
+            ok(ret == i, "expected self %x, got %x for C locale\n", i, ret);
+    }
+
+    if (!p__towlower_l || !p__towupper_l || !p__create_locale)
+    {
+        win_skip("_towlower_l/_towupper_l/_create_locale not available\n");
+        return;
+    }
+
+    for (i = 0; i < ARRAY_SIZE(locales); i++) {
+        locale = locales[i] ? p__create_locale(LC_ALL, locales[i]) : NULL;
+
+        for (j = 0; j <= 0xffff; j++) {
+            ret = p__towlower_l(j, locale);
+            if (j >= 'A' && j <= 'Z')
+            {
+                exp = j + 'a' - 'A';
+                ok(ret == exp, "expected %x, got %x for C locale\n", exp, ret);
+            }
+            else
+                ok(ret == j, "expected self %x, got %x for C locale\n", j, ret);
+
+            ret = p__towupper_l(j, locale);
+            if (j >= 'a' && j <= 'z')
+            {
+                exp = j + 'A' - 'a';
+                ok(ret == exp, "expected %x, got %x for C locale\n", exp, ret);
+            }
+            else
+                ok(ret == j, "expected self %x, got %x for C locale\n", j, ret);
+        }
+
+        p__free_locale(locale);
+    }
+}
+
 START_TEST(string)
 {
     char mem[100];
@@ -3613,6 +3723,12 @@ START_TEST(string)
     p_wctob = (void*)GetProcAddress(hMsvcrt, "wctob");
     p_wcrtomb = (void*)GetProcAddress(hMsvcrt, "wcrtomb");
     p_tolower = (void*)GetProcAddress(hMsvcrt, "tolower");
+    p_towlower = (void*)GetProcAddress(hMsvcrt, "towlower");
+    p__towlower_l = (void*)GetProcAddress(hMsvcrt, "_towlower_l");
+    p_towupper = (void*)GetProcAddress(hMsvcrt, "towupper");
+    p__towupper_l = (void*)GetProcAddress(hMsvcrt, "_towupper_l");
+    p__create_locale = (void*)GetProcAddress(hMsvcrt, "_create_locale");
+    p__free_locale = (void*)GetProcAddress(hMsvcrt, "_free_locale");
     p_mbrlen = (void*)GetProcAddress(hMsvcrt, "mbrlen");
     p_mbrtowc = (void*)GetProcAddress(hMsvcrt, "mbrtowc");
     p_mbsrtowcs = (void*)GetProcAddress(hMsvcrt, "mbsrtowcs");
@@ -3626,6 +3742,7 @@ START_TEST(string)
     p__mbccpy_s = (void*)GetProcAddress(hMsvcrt, "_mbccpy_s");
     p__memicmp = (void*)GetProcAddress(hMsvcrt, "_memicmp");
     p__memicmp_l = (void*)GetProcAddress(hMsvcrt, "_memicmp_l");
+    p___strncnt = (void*)GetProcAddress(hMsvcrt, "__strncnt");
 
     /* MSVCRT memcpy behaves like memmove for overlapping moves,
        MFC42 CString::Insert seems to rely on that behaviour */
@@ -3693,4 +3810,6 @@ START_TEST(string)
     test__strupr();
     test__tcsncoll();
     test__tcsnicoll();
+    test___strncnt();
+    test_C_locale();
 }

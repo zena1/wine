@@ -965,7 +965,7 @@
 @ stub __report_gsfailure
 @ extern __setlc_active msvcr120.__setlc_active
 @ cdecl __setusermatherr(ptr) msvcr120.__setusermatherr
-@ stub __strncnt
+@ cdecl __strncnt(str long) msvcr120.__strncnt
 @ varargs __swprintf_l(ptr wstr ptr) msvcr120.__swprintf_l
 @ cdecl __sys_errlist() msvcr120.__sys_errlist
 @ cdecl __sys_nerr() msvcr120.__sys_nerr
@@ -1006,7 +1006,7 @@
 @ cdecl _atoflt(ptr str) msvcr120._atoflt
 @ cdecl _atoflt_l(ptr str ptr) msvcr120._atoflt_l
 @ cdecl -ret64 _atoi64(str) msvcr120._atoi64
-@ cdecl _atoi64_l(str ptr) msvcr120._atoi64_l
+@ cdecl -ret64 _atoi64_l(str ptr) msvcr120._atoi64_l
 @ cdecl _atoi_l(str ptr) msvcr120._atoi_l
 @ cdecl _atol_l(str ptr) msvcr120._atol_l
 @ cdecl _atoldbl(ptr str) msvcr120._atoldbl
@@ -1232,21 +1232,21 @@
 @ stub _ispunct_l
 @ cdecl _isspace_l(long ptr) msvcr120._isspace_l
 @ cdecl _isupper_l(long ptr) msvcr120._isupper_l
-@ stub _iswalnum_l
+@ cdecl _iswalnum_l(long ptr) msvcr120._iswalnum_l
 @ cdecl _iswalpha_l(long ptr) msvcr120._iswalpha_l
 @ cdecl _iswblank_l(long ptr) msvcr120._iswblank_l
-@ stub _iswcntrl_l
+@ cdecl _iswcntrl_l(long ptr) msvcr120._iswcntrl_l
 @ stub _iswcsym_l
 @ stub _iswcsymf_l
 @ cdecl _iswctype_l(long long ptr) msvcr120._iswctype_l
 @ cdecl _iswdigit_l(long ptr) msvcr120._iswdigit_l
-@ stub _iswgraph_l
-@ stub _iswlower_l
-@ stub _iswprint_l
+@ cdecl _iswgraph_l(long ptr) msvcr120._iswgraph_l
+@ cdecl _iswlower_l(long ptr) msvcr120._iswlower_l
+@ cdecl _iswprint_l(long ptr) msvcr120._iswprint_l
 @ cdecl _iswpunct_l(long ptr) msvcr120._iswpunct_l
 @ cdecl _iswspace_l(long ptr) msvcr120._iswspace_l
-@ stub _iswupper_l
-@ stub _iswxdigit_l
+@ cdecl _iswupper_l(long ptr) msvcr120._iswupper_l
+@ cdecl _iswxdigit_l(long ptr) msvcr120._iswxdigit_l
 @ cdecl _isxdigit_l(long ptr) msvcr120._isxdigit_l
 @ cdecl _itoa(long ptr long) msvcr120._itoa
 @ cdecl _itoa_s(long ptr long long) msvcr120._itoa_s
@@ -1515,7 +1515,7 @@
 @ stub _vprintf_p_l
 @ stub _vprintf_s_l
 @ cdecl _vscprintf(str ptr) msvcr120._vscprintf
-@ stub _vscprintf_l
+@ cdecl _vscprintf_l(str ptr ptr) msvcr120._vscprintf_l
 @ cdecl _vscprintf_p(str ptr) msvcr120._vscprintf_p
 @ cdecl _vscprintf_p_l(str ptr ptr) msvcr120._vscprintf_p_l
 @ cdecl _vscwprintf(wstr ptr) msvcr120._vscwprintf

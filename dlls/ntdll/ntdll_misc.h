@@ -110,6 +110,8 @@ extern int server_pipe( int fd[2] ) DECLSPEC_HIDDEN;
 extern NTSTATUS alloc_object_attributes( const OBJECT_ATTRIBUTES *attr, struct object_attributes **ret,
                                          data_size_t *ret_len ) DECLSPEC_HIDDEN;
 extern NTSTATUS validate_open_object_attributes( const OBJECT_ATTRIBUTES *attr ) DECLSPEC_HIDDEN;
+extern int wait_select_reply( void *cookie ) DECLSPEC_HIDDEN;
+extern BOOL invoke_apc( const apc_call_t *call, apc_result_t *result, sigset_t *user_sigset ) DECLSPEC_HIDDEN;
 extern void *server_get_shared_memory( HANDLE thread ) DECLSPEC_HIDDEN;
 
 /* module handling */
@@ -192,7 +194,9 @@ extern SIZE_T virtual_uninterrupted_read_memory( const void *addr, void *buffer,
 extern NTSTATUS virtual_uninterrupted_write_memory( void *addr, const void *buffer, SIZE_T size ) DECLSPEC_HIDDEN;
 extern void VIRTUAL_SetForceExec( BOOL enable ) DECLSPEC_HIDDEN;
 extern void virtual_release_address_space(void) DECLSPEC_HIDDEN;
-extern void virtual_set_large_address_space(void) DECLSPEC_HIDDEN;
+extern void virtual_set_large_address_space( BOOL force ) DECLSPEC_HIDDEN;
+extern void virtual_fill_image_information( const pe_image_info_t *pe_info,
+                                            SECTION_IMAGE_INFORMATION *info ) DECLSPEC_HIDDEN;
 extern struct _KUSER_SHARED_DATA *user_shared_data DECLSPEC_HIDDEN;
 extern struct _KUSER_SHARED_DATA *user_shared_data_external DECLSPEC_HIDDEN;
 extern void create_user_shared_data_thread(void) DECLSPEC_HIDDEN;

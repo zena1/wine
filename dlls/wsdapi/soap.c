@@ -364,7 +364,7 @@ HRESULT register_namespaces(IWSDXMLContext *xml_context)
 
 static BOOL create_guid(LPWSTR buffer)
 {
-    const WCHAR formatString[] = { 'u','r','n',':','u','u','i','d',':','%','s', 0 };
+    static const WCHAR formatString[] = { 'u','r','n',':','u','u','i','d',':','%','s', 0 };
 
     WCHAR* uuidString = NULL;
     UUID uuid;
@@ -401,7 +401,7 @@ static void populate_soap_header(WSD_SOAP_HEADER *header, LPCWSTR to, LPCWSTR ac
 
 static LPWSTR ulonglong_to_string(void *parent, ULONGLONG value)
 {
-    WCHAR formatString[] = { '%','I','6','4','u', 0 };
+    static const WCHAR formatString[] = { '%','I','6','4','u', 0 };
     LPWSTR ret;
 
     ret = WSDAllocateLinkedMemory(parent, MAX_ULONGLONG_STRING_SIZE * sizeof(WCHAR));
@@ -560,7 +560,7 @@ static BOOL add_discovered_namespace(struct list *namespaces, WSDXML_NAMESPACE *
 
 static HRESULT build_types_list(LPWSTR buffer, size_t buffer_size, const WSD_NAME_LIST *list, struct list *namespaces)
 {
-    WCHAR format_string[] = { '%', 's', ':', '%', 's', 0 };
+    static const WCHAR format_string[] = { '%', 's', ':', '%', 's', 0 };
     LPWSTR current_buf_pos = buffer;
     size_t memory_needed = 0;
     const WSD_NAME_LIST *cur = list;
@@ -1426,6 +1426,9 @@ static HRESULT ws_element_to_wsdxml_element(WS_XML_READER *reader, IWSDXMLContex
                 if (FAILED(ret)) goto cleanup;
                 WSDXMLAddChild(cur_element, element);
 
+                WSDFreeLinkedMemory(name);
+                name = NULL;
+
                 cur_wsd_attrib = NULL;
 
                 /* Add attributes */
@@ -1461,6 +1464,9 @@ static HRESULT ws_element_to_wsdxml_element(WS_XML_READER *reader, IWSDXMLContex
                     new_wsd_attrib->Name = name;
                     new_wsd_attrib->Element = cur_element;
                     new_wsd_attrib->Next = NULL;
+
+                    WSDAttachLinkedMemory(new_wsd_attrib, name);
+                    name = NULL;
 
                     if (cur_wsd_attrib == NULL)
                         element->FirstAttribute = new_wsd_attrib;
@@ -1524,6 +1530,7 @@ outofmemory:
 cleanup:
     /* Free uri and element_name if applicable */
     WSDFreeLinkedMemory(uri);
+    WSDFreeLinkedMemory(name);
     return ret;
 }
 
@@ -1712,10 +1719,10 @@ HRESULT read_message(IWSDiscoveryPublisherImpl *impl, const char *xml, int xml_l
     IWSDXMLContext *context = NULL;
     WS_XML_STRING *soap_uri = NULL;
     const WS_XML_NODE *node;
-    WS_XML_READER *reader;
+    WS_XML_READER *reader = NULL;
     LPCWSTR value = NULL;
     LPWSTR uri, prefix;
-    WS_HEAP *heap;
+    WS_HEAP *heap = NULL;
     HRESULT ret;
     int i;
 
@@ -1945,6 +1952,8 @@ cleanup:
     free_xml_string(soap_uri);
     WSDFreeLinkedMemory(soap_msg);
     if (context != NULL) IWSDXMLContext_Release(context);
+    if (reader != NULL) WsFreeReader(reader);
+    if (heap != NULL) WsFreeHeap(heap);
 
     return ret;
 }

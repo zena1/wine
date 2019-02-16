@@ -70,8 +70,6 @@ static DWORD (WINAPI *pGetLongPathNameW)(LPWSTR,LPWSTR,DWORD);
 static BOOL  (WINAPI *pNeedCurrentDirectoryForExePathA)(LPCSTR);
 static BOOL  (WINAPI *pNeedCurrentDirectoryForExePathW)(LPCWSTR);
 
-static DWORD (WINAPI *pSearchPathA)(LPCSTR,LPCSTR,LPCSTR,DWORD,LPSTR,LPSTR*);
-static DWORD (WINAPI *pSearchPathW)(LPCWSTR,LPCWSTR,LPCWSTR,DWORD,LPWSTR,LPWSTR*);
 static BOOL  (WINAPI *pSetSearchPathMode)(DWORD);
 
 static BOOL   (WINAPI *pActivateActCtx)(HANDLE,ULONG_PTR*);
@@ -1474,7 +1472,7 @@ static void test_GetShortPathNameW(void)
 
     lstrcpyW(ptr, wildW);
     SetLastError(0xdeadbeef);
-    length = GetShortPathNameW( path, short_path, sizeof(short_path)/sizeof(*short_path) );
+    length = GetShortPathNameW( path, short_path, ARRAY_SIZE( short_path ) );
     ok(!length, "GetShortPathNameW should fail\n");
     ok(GetLastError() == ERROR_INVALID_NAME, "wrong error %d\n", GetLastError());
 
@@ -1829,30 +1827,48 @@ static void test_SearchPathA(void)
     BOOL bret;
     DWORD ret;
 
-    if (!pSearchPathA)
-    {
-        win_skip("SearchPathA isn't available\n");
-        return;
-    }
-
     GetWindowsDirectoryA(pathA, ARRAY_SIZE(pathA));
 
     /* NULL filename */
     SetLastError(0xdeadbeef);
-    ret = pSearchPathA(pathA, NULL, NULL, ARRAY_SIZE(buffA), buffA, &ptrA);
+    ret = SearchPathA(pathA, NULL, NULL, ARRAY_SIZE(buffA), buffA, &ptrA);
     ok(ret == 0, "Expected failure, got %d\n", ret);
     ok(GetLastError() == ERROR_INVALID_PARAMETER,
       "Expected ERROR_INVALID_PARAMETER, got %x\n", GetLastError());
 
     /* empty filename */
     SetLastError(0xdeadbeef);
-    ret = pSearchPathA(pathA, fileA, NULL, ARRAY_SIZE(buffA), buffA, &ptrA);
+    ret = SearchPathA(pathA, fileA, NULL, ARRAY_SIZE(buffA), buffA, &ptrA);
     ok(ret == 0, "Expected failure, got %d\n", ret);
     ok(GetLastError() == ERROR_INVALID_PARAMETER,
       "Expected ERROR_INVALID_PARAMETER, got %x\n", GetLastError());
 
+    GetTempPathA(ARRAY_SIZE(pathA), pathA);
+    strcpy(path2A, pathA);
+    strcat(path2A, "testfile.ext.ext2");
+
+    handle = CreateFileA(path2A, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0);
+    ok(handle != INVALID_HANDLE_VALUE, "Failed to create test file.\n");
+    CloseHandle(handle);
+
+    buffA[0] = 0;
+    ret = SearchPathA(pathA, "testfile.ext", NULL, ARRAY_SIZE(buffA), buffA, NULL);
+    ok(!ret, "Unexpected return value %u.\n", ret);
+
+    buffA[0] = 0;
+    ret = SearchPathA(pathA, "testfile.ext", ".ext2", ARRAY_SIZE(buffA), buffA, NULL);
+    ok(!ret, "Unexpected return value %u.\n", ret);
+
+    buffA[0] = 0;
+    ret = SearchPathA(pathA, "testfile.ext.ext2", NULL, ARRAY_SIZE(buffA), buffA, NULL);
+    ok(ret && ret == strlen(path2A), "got %d\n", ret);
+
+    DeleteFileA(path2A);
+
     if (!pActivateActCtx)
         return;
+
+    GetWindowsDirectoryA(pathA, ARRAY_SIZE(pathA));
 
     create_manifest_file("testdep1.manifest", manifest_dep);
     create_manifest_file("main.manifest", manifest_main);
@@ -1862,38 +1878,38 @@ static void test_SearchPathA(void)
     delete_manifest_file("main.manifest");
 
     /* search fails without active context */
-    ret = pSearchPathA(NULL, testdepA, NULL, ARRAY_SIZE(buffA), buffA, NULL);
+    ret = SearchPathA(NULL, testdepA, NULL, ARRAY_SIZE(buffA), buffA, NULL);
     ok(ret == 0, "got %d\n", ret);
 
-    ret = pSearchPathA(NULL, kernel32A, NULL, ARRAY_SIZE(path2A), path2A, NULL);
+    ret = SearchPathA(NULL, kernel32A, NULL, ARRAY_SIZE(path2A), path2A, NULL);
     ok(ret && ret == strlen(path2A), "got %d\n", ret);
 
     ret = pActivateActCtx(handle, &cookie);
     ok(ret, "failed to activate context, %u\n", GetLastError());
 
     /* works when activated */
-    ret = pSearchPathA(NULL, testdepA, NULL, ARRAY_SIZE(buffA), buffA, NULL);
+    ret = SearchPathA(NULL, testdepA, NULL, ARRAY_SIZE(buffA), buffA, NULL);
     ok(ret && ret == strlen(buffA), "got %d\n", ret);
 
-    ret = pSearchPathA(NULL, "testdep.dll", ".ext", ARRAY_SIZE(buffA), buffA, NULL);
+    ret = SearchPathA(NULL, "testdep.dll", ".ext", ARRAY_SIZE(buffA), buffA, NULL);
     ok(ret && ret == strlen(buffA), "got %d\n", ret);
 
-    ret = pSearchPathA(NULL, "testdep", ".dll", ARRAY_SIZE(buffA), buffA, NULL);
+    ret = SearchPathA(NULL, "testdep", ".dll", ARRAY_SIZE(buffA), buffA, NULL);
     ok(ret && ret == strlen(buffA), "got %d\n", ret);
 
-    ret = pSearchPathA(NULL, "testdep", ".ext", ARRAY_SIZE(buffA), buffA, NULL);
+    ret = SearchPathA(NULL, "testdep", ".ext", ARRAY_SIZE(buffA), buffA, NULL);
     ok(!ret, "got %d\n", ret);
 
     /* name contains path */
-    ret = pSearchPathA(NULL, testdeprelA, NULL, ARRAY_SIZE(buffA), buffA, NULL);
+    ret = SearchPathA(NULL, testdeprelA, NULL, ARRAY_SIZE(buffA), buffA, NULL);
     ok(!ret, "got %d\n", ret);
 
     /* fails with specified path that doesn't contain this file */
-    ret = pSearchPathA(pathA, testdepA, NULL, ARRAY_SIZE(buffA), buffA, NULL);
+    ret = SearchPathA(pathA, testdepA, NULL, ARRAY_SIZE(buffA), buffA, NULL);
     ok(!ret, "got %d\n", ret);
 
     /* path is redirected for wellknown names too */
-    ret = pSearchPathA(NULL, kernel32A, NULL, ARRAY_SIZE(buffA), buffA, NULL);
+    ret = SearchPathA(NULL, kernel32A, NULL, ARRAY_SIZE(buffA), buffA, NULL);
     ok(ret && ret == strlen(buffA), "got %d\n", ret);
     ok(strcmp(buffA, path2A), "got wrong path %s, %s\n", buffA, path2A);
 
@@ -1906,7 +1922,7 @@ static void test_SearchPathA(void)
     ret = GetCurrentDirectoryA(MAX_PATH, curdirA);
     ok(ret, "failed to obtain working directory.\n");
     sprintf(pathA, "%s\\%s", tmpdirA, kernel32A);
-    ret = pSearchPathA(NULL, kernel32A, NULL, sizeof(path2A)/sizeof(CHAR), path2A, NULL);
+    ret = SearchPathA(NULL, kernel32A, NULL, sizeof(path2A)/sizeof(CHAR), path2A, NULL);
     ok(ret && ret == strlen(path2A), "got %d\n", ret);
     bret = CopyFileA(path2A, pathA, FALSE);
     ok(bret != 0, "failed to copy test executable to temp directory, %u\n", GetLastError());
@@ -1915,7 +1931,7 @@ static void test_SearchPathA(void)
     ok(bret != 0, "failed to copy test executable to launch directory, %u\n", GetLastError());
     bret = SetCurrentDirectoryA(tmpdirA);
     ok(bret, "failed to change working directory\n");
-    ret = pSearchPathA(NULL, kernel32A, ".exe", sizeof(buffA), buffA, NULL);
+    ret = SearchPathA(NULL, kernel32A, ".exe", sizeof(buffA), buffA, NULL);
     ok(ret && ret == strlen(buffA), "got %d\n", ret);
     ok(strcmp(buffA, path3A) == 0, "expected %s, got %s\n", path3A, buffA);
     bret = SetCurrentDirectoryA(curdirA);
@@ -1926,12 +1942,15 @@ static void test_SearchPathA(void)
 
 static void test_SearchPathW(void)
 {
+    static const WCHAR fileext2W[] = {'t','e','s','t','f','i','l','e','.','e','x','t','.','e','x','t','2',0};
+    static const WCHAR fileextW[] = {'t','e','s','t','f','i','l','e','.','e','x','t',0};
     static const WCHAR testdeprelW[] = {'.','/','t','e','s','t','d','e','p','.','d','l','l',0};
     static const WCHAR testdepW[] = {'t','e','s','t','d','e','p','.','d','l','l',0};
     static const WCHAR testdep1W[] = {'t','e','s','t','d','e','p',0};
     static const WCHAR kernel32dllW[] = {'k','e','r','n','e','l','3','2','.','d','l','l',0};
     static const WCHAR kernel32W[] = {'k','e','r','n','e','l','3','2',0};
     static const WCHAR ole32W[] = {'o','l','e','3','2',0};
+    static const WCHAR ext2W[] = {'.','e','x','t','2',0};
     static const WCHAR extW[] = {'.','e','x','t',0};
     static const WCHAR dllW[] = {'.','d','l','l',0};
     static const WCHAR fileW[] = { 0 };
@@ -1941,29 +1960,47 @@ static void test_SearchPathW(void)
     HANDLE handle;
     DWORD ret;
 
-    if (!pSearchPathW)
-    {
-        win_skip("SearchPathW isn't available\n");
-        return;
-    }
-
 if (0)
 {
     /* NULL filename, crashes on nt4 */
-    pSearchPathW(pathW, NULL, NULL, ARRAY_SIZE(buffW), buffW, &ptrW);
+    SearchPathW(pathW, NULL, NULL, ARRAY_SIZE(buffW), buffW, &ptrW);
 }
 
     GetWindowsDirectoryW(pathW, ARRAY_SIZE(pathW));
 
     /* empty filename */
     SetLastError(0xdeadbeef);
-    ret = pSearchPathW(pathW, fileW, NULL, ARRAY_SIZE(buffW), buffW, &ptrW);
+    ret = SearchPathW(pathW, fileW, NULL, ARRAY_SIZE(buffW), buffW, &ptrW);
     ok(ret == 0, "Expected failure, got %d\n", ret);
     ok(GetLastError() == ERROR_INVALID_PARAMETER,
       "Expected ERROR_INVALID_PARAMETER, got %x\n", GetLastError());
 
+    GetTempPathW(ARRAY_SIZE(pathW), pathW);
+    lstrcpyW(path2W, pathW);
+    lstrcatW(path2W, fileext2W);
+
+    handle = CreateFileW(path2W, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0);
+    ok(handle != INVALID_HANDLE_VALUE, "Failed to create test file.\n");
+    CloseHandle(handle);
+
+    buffW[0] = 0;
+    ret = SearchPathW(pathW, fileextW, NULL, ARRAY_SIZE(buffW), buffW, NULL);
+    ok(!ret, "Unexpected return value %u.\n", ret);
+
+    buffW[0] = 0;
+    ret = SearchPathW(pathW, fileextW, ext2W, ARRAY_SIZE(buffW), buffW, NULL);
+    ok(!ret, "Unexpected return value %u.\n", ret);
+
+    buffW[0] = 0;
+    ret = SearchPathW(pathW, fileext2W, NULL, ARRAY_SIZE(buffW), buffW, NULL);
+    ok(ret && ret == lstrlenW(path2W), "got %d\n", ret);
+
+    DeleteFileW(path2W);
+
     if (!pActivateActCtx)
         return;
+
+    GetWindowsDirectoryW(pathW, ARRAY_SIZE(pathW));
 
     create_manifest_file("testdep1.manifest", manifest_dep);
     create_manifest_file("main.manifest", manifest_main);
@@ -1973,15 +2010,15 @@ if (0)
     delete_manifest_file("main.manifest");
 
     /* search fails without active context */
-    ret = pSearchPathW(NULL, testdepW, NULL, ARRAY_SIZE(buffW), buffW, NULL);
+    ret = SearchPathW(NULL, testdepW, NULL, ARRAY_SIZE(buffW), buffW, NULL);
     ok(ret == 0, "got %d\n", ret);
 
-    ret = pSearchPathW(NULL, kernel32dllW, NULL, ARRAY_SIZE(path2W), path2W, NULL);
+    ret = SearchPathW(NULL, kernel32dllW, NULL, ARRAY_SIZE(path2W), path2W, NULL);
     ok(ret && ret == lstrlenW(path2W), "got %d\n", ret);
 
     /* full path, name without 'dll' extension */
     GetSystemDirectoryW(pathW, ARRAY_SIZE(pathW));
-    ret = pSearchPathW(pathW, kernel32W, NULL, ARRAY_SIZE(path2W), path2W, NULL);
+    ret = SearchPathW(pathW, kernel32W, NULL, ARRAY_SIZE(path2W), path2W, NULL);
     ok(ret == 0, "got %d\n", ret);
 
     GetWindowsDirectoryW(pathW, ARRAY_SIZE(pathW));
@@ -1990,33 +2027,33 @@ if (0)
     ok(ret, "failed to activate context, %u\n", GetLastError());
 
     /* works when activated */
-    ret = pSearchPathW(NULL, testdepW, NULL, ARRAY_SIZE(buffW), buffW, NULL);
+    ret = SearchPathW(NULL, testdepW, NULL, ARRAY_SIZE(buffW), buffW, NULL);
     ok(ret && ret == lstrlenW(buffW), "got %d\n", ret);
 
-    ret = pSearchPathW(NULL, testdepW, extW, ARRAY_SIZE(buffW), buffW, NULL);
+    ret = SearchPathW(NULL, testdepW, extW, ARRAY_SIZE(buffW), buffW, NULL);
     ok(ret && ret == lstrlenW(buffW), "got %d\n", ret);
 
-    ret = pSearchPathW(NULL, testdep1W, dllW, ARRAY_SIZE(buffW), buffW, NULL);
+    ret = SearchPathW(NULL, testdep1W, dllW, ARRAY_SIZE(buffW), buffW, NULL);
     ok(ret && ret == lstrlenW(buffW), "got %d\n", ret);
 
-    ret = pSearchPathW(NULL, testdep1W, extW, ARRAY_SIZE(buffW), buffW, NULL);
+    ret = SearchPathW(NULL, testdep1W, extW, ARRAY_SIZE(buffW), buffW, NULL);
     ok(!ret, "got %d\n", ret);
 
     /* name contains path */
-    ret = pSearchPathW(NULL, testdeprelW, NULL, ARRAY_SIZE(buffW), buffW, NULL);
+    ret = SearchPathW(NULL, testdeprelW, NULL, ARRAY_SIZE(buffW), buffW, NULL);
     ok(!ret, "got %d\n", ret);
 
     /* fails with specified path that doesn't contain this file */
-    ret = pSearchPathW(pathW, testdepW, NULL, ARRAY_SIZE(buffW), buffW, NULL);
+    ret = SearchPathW(pathW, testdepW, NULL, ARRAY_SIZE(buffW), buffW, NULL);
     ok(!ret, "got %d\n", ret);
 
     /* path is redirected for wellknown names too, meaning it takes precedence over normal search order */
-    ret = pSearchPathW(NULL, kernel32dllW, NULL, ARRAY_SIZE(buffW), buffW, NULL);
+    ret = SearchPathW(NULL, kernel32dllW, NULL, ARRAY_SIZE(buffW), buffW, NULL);
     ok(ret && ret == lstrlenW(buffW), "got %d\n", ret);
     ok(lstrcmpW(buffW, path2W), "got wrong path %s, %s\n", wine_dbgstr_w(buffW), wine_dbgstr_w(path2W));
 
     /* path is built using on manifest file name */
-    ret = pSearchPathW(NULL, ole32W, NULL, ARRAY_SIZE(buffW), buffW, NULL);
+    ret = SearchPathW(NULL, ole32W, NULL, ARRAY_SIZE(buffW), buffW, NULL);
     ok(ret && ret == lstrlenW(buffW), "got %d\n", ret);
 
     ret = pDeactivateActCtx(0, cookie);
@@ -2157,8 +2194,6 @@ static void init_pointers(void)
     MAKEFUNC(GetLongPathNameW);
     MAKEFUNC(NeedCurrentDirectoryForExePathA);
     MAKEFUNC(NeedCurrentDirectoryForExePathW);
-    MAKEFUNC(SearchPathA);
-    MAKEFUNC(SearchPathW);
     MAKEFUNC(SetSearchPathMode);
     MAKEFUNC(ActivateActCtx);
     MAKEFUNC(CreateActCtxW);

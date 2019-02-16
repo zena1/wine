@@ -67,6 +67,7 @@ enum type_context
     TYPE_CONTEXT_PARAM,
     TYPE_CONTEXT_CONTAINER,
     TYPE_CONTEXT_CONTAINER_NO_POINTERS,
+    TYPE_CONTEXT_RETVAL,
 };
 
 /* parameter flags in Oif mode */
@@ -208,7 +209,8 @@ unsigned char get_basic_fc(const type_t *type)
     {
     case TYPE_BASIC_INT8: return (sign <= 0 ? FC_SMALL : FC_USMALL);
     case TYPE_BASIC_INT16: return (sign <= 0 ? FC_SHORT : FC_USHORT);
-    case TYPE_BASIC_INT32: return (sign <= 0 ? FC_LONG : FC_ULONG);
+    case TYPE_BASIC_INT32:
+    case TYPE_BASIC_LONG: return (sign <= 0 ? FC_LONG : FC_ULONG);
     case TYPE_BASIC_INT64: return FC_HYPER;
     case TYPE_BASIC_INT: return (sign <= 0 ? FC_LONG : FC_ULONG);
     case TYPE_BASIC_INT3264: return (sign <= 0 ? FC_INT3264 : FC_UINT3264);
@@ -234,6 +236,7 @@ static unsigned char get_basic_fc_signed(const type_t *type)
     case TYPE_BASIC_INT64: return FC_HYPER;
     case TYPE_BASIC_INT: return FC_LONG;
     case TYPE_BASIC_INT3264: return FC_INT3264;
+    case TYPE_BASIC_LONG: return FC_LONG;
     case TYPE_BASIC_BYTE: return FC_BYTE;
     case TYPE_BASIC_CHAR: return FC_CHAR;
     case TYPE_BASIC_WCHAR: return FC_WCHAR;
@@ -285,7 +288,7 @@ static unsigned char get_pointer_fc_context( const type_t *type, const attr_list
     int pointer_fc = get_pointer_fc(type, attrs, context == TYPE_CONTEXT_TOPLEVELPARAM);
 
     if (pointer_fc == FC_UP && is_attr( attrs, ATTR_OUT ) &&
-        context == TYPE_CONTEXT_PARAM && is_object( current_iface ))
+        (context == TYPE_CONTEXT_PARAM || context == TYPE_CONTEXT_RETVAL) && is_object( current_iface ))
         pointer_fc = FC_OP;
 
     return pointer_fc;
@@ -440,23 +443,27 @@ static unsigned int get_stack_size( const var_t *var, int *by_value )
 }
 
 static unsigned char get_contexthandle_flags( const type_t *iface, const attr_list_t *attrs,
-                                              const type_t *type )
+                                              const type_t *type, int is_return )
 {
     unsigned char flags = 0;
+    int is_out;
 
     if (is_attr(iface->attrs, ATTR_STRICTCONTEXTHANDLE)) flags |= NDR_STRICT_CONTEXT_HANDLE;
 
     if (is_ptr(type) &&
         !is_attr( type->attrs, ATTR_CONTEXTHANDLE ) &&
         !is_attr( attrs, ATTR_CONTEXTHANDLE ))
-        flags |= 0x80;
+        flags |= HANDLE_PARAM_IS_VIA_PTR;
 
-    if (is_attr(attrs, ATTR_IN))
+    if (is_return) return flags | HANDLE_PARAM_IS_OUT | HANDLE_PARAM_IS_RETURN;
+
+    is_out = is_attr(attrs, ATTR_OUT);
+    if (is_attr(attrs, ATTR_IN) || !is_out)
     {
-        flags |= 0x40;
-        if (!is_attr(attrs, ATTR_OUT)) flags |= NDR_CONTEXT_HANDLE_CANNOT_BE_NULL;
+        flags |= HANDLE_PARAM_IS_IN;
+        if (!is_out) flags |= NDR_CONTEXT_HANDLE_CANNOT_BE_NULL;
     }
-    if (is_attr(attrs, ATTR_OUT)) flags |= 0x20;
+    if (is_out) flags |= HANDLE_PARAM_IS_OUT;
 
     return flags;
 }
@@ -1359,7 +1366,7 @@ static void write_proc_func_header( FILE *file, int indent, const type_t *iface,
             *offset += 6;
             break;
         case FC_BIND_CONTEXT:
-            handle_flags = get_contexthandle_flags( iface, handle_var->attrs, handle_var->type );
+            handle_flags = get_contexthandle_flags( iface, handle_var->attrs, handle_var->type, 0 );
             print_file( file, indent, "0x%02x,\t/* %s */\n", explicit_fc, string_of_type(explicit_fc) );
             print_file( file, indent, "0x%02x,\n", handle_flags );
             print_file( file, indent, "NdrFcShort(0x%hx),\t/* stack offset = %hu */\n",
@@ -1379,6 +1386,7 @@ static void write_proc_func_header( FILE *file, int indent, const type_t *iface,
 
         if (is_attr( func->attrs, ATTR_NOTIFY )) ext_flags |= 0x08;  /* HasNotify */
         if (is_attr( func->attrs, ATTR_NOTIFYFLAG )) ext_flags |= 0x10;  /* HasNotify2 */
+        if (iface == iface->details.iface->async_iface) oi2_flags |= 0x20;
 
         size = get_function_buffer_size( func, PASS_IN );
         print_file( file, indent, "NdrFcShort(0x%x),\t/* client buffer = %u */\n", size, size );
@@ -1463,27 +1471,36 @@ static void write_procformatstring_func( FILE *file, int indent, const type_t *i
     }
 }
 
-static void write_procformatstring_stmts(FILE *file, int indent, const statement_list_t *stmts,
-                                         type_pred_t pred, unsigned int *offset)
+static void for_each_iface(const statement_list_t *stmts,
+                           void (*proc)(type_t *iface, FILE *file, int indent, unsigned int *offset),
+                           type_pred_t pred, FILE *file, int indent, unsigned int *offset)
 {
     const statement_t *stmt;
+    type_t *iface;
+
     if (stmts) LIST_FOR_EACH_ENTRY( stmt, stmts, const statement_t, entry )
     {
-        if (stmt->type == STMT_TYPE && type_get_type(stmt->u.type) == TYPE_INTERFACE)
-        {
-            const statement_t *stmt_func;
-            const type_t *iface = stmt->u.type;
-            const type_t *parent = type_iface_get_inherit( iface );
-            int count = parent ? count_methods( parent ) : 0;
+        if (stmt->type != STMT_TYPE || type_get_type(stmt->u.type) != TYPE_INTERFACE)
+            continue;
+        iface = stmt->u.type;
+        if (!pred(iface)) continue;
+        proc(iface, file, indent, offset);
+        if (iface->details.iface->async_iface)
+            proc(iface->details.iface->async_iface, file, indent, offset);
+    }
+}
 
-            if (!pred(iface)) continue;
-            STATEMENTS_FOR_EACH_FUNC(stmt_func, type_iface_get_stmts(iface))
-            {
-                var_t *func = stmt_func->u.var;
-                if (is_local(func->attrs)) continue;
-                write_procformatstring_func( file, indent, iface, func, offset, count++ );
-            }
-        }
+static void write_iface_procformatstring(type_t *iface, FILE *file, int indent, unsigned int *offset)
+{
+    const statement_t *stmt;
+    const type_t *parent = type_iface_get_inherit( iface );
+    int count = parent ? count_methods( parent ) : 0;
+
+    STATEMENTS_FOR_EACH_FUNC(stmt, type_iface_get_stmts(iface))
+    {
+        var_t *func = stmt->u.var;
+        if (is_local(func->attrs)) continue;
+        write_procformatstring_func( file, indent, iface, func, offset, count++ );
     }
 }
 
@@ -1499,7 +1516,7 @@ void write_procformatstring(FILE *file, const statement_list_t *stmts, type_pred
     print_file(file, indent, "{\n");
     indent++;
 
-    write_procformatstring_stmts(file, indent, stmts, pred, &offset);
+    for_each_iface(stmts, write_iface_procformatstring, pred, file, indent, &offset);
 
     print_file(file, indent, "0x0\n");
     indent--;
@@ -2093,8 +2110,32 @@ static unsigned int write_nonsimple_pointer(FILE *file, const attr_list_t *attrs
     out_attr = is_attr(attrs, ATTR_OUT);
     if (!in_attr && !out_attr) in_attr = 1;
 
-    if (out_attr && !in_attr && pointer_type == FC_RP)
-        flags |= FC_ALLOCED_ON_STACK;
+    if (!is_interpreted_func(current_iface, current_func))
+    {
+        if (out_attr && !in_attr && pointer_type == FC_RP)
+            flags |= FC_ALLOCED_ON_STACK;
+    }
+    else if (get_stub_mode() == MODE_Oif)
+    {
+        if (context == TYPE_CONTEXT_TOPLEVELPARAM && is_ptr(type) && pointer_type == FC_RP)
+        {
+            switch (typegen_detect_type(type_pointer_get_ref(type), NULL, TDT_ALL_TYPES))
+            {
+            case TGT_STRING:
+            case TGT_POINTER:
+            case TGT_CTXT_HANDLE:
+            case TGT_CTXT_HANDLE_POINTER:
+                flags |= FC_ALLOCED_ON_STACK;
+                break;
+            case TGT_IFACE_POINTER:
+                if (in_attr && out_attr)
+                    flags |= FC_ALLOCED_ON_STACK;
+                break;
+            default:
+                break;
+            }
+        }
+    }
 
     if (is_ptr(type))
     {
@@ -2145,8 +2186,16 @@ static unsigned int write_simple_pointer(FILE *file, const attr_list_t *attrs,
     else
         fc = get_basic_fc(ref);
 
-    if (out_attr && !in_attr)
-        flags |= FC_ALLOCED_ON_STACK;
+    if (!is_interpreted_func(current_iface, current_func))
+    {
+        if (out_attr && !in_attr && pointer_fc == FC_RP)
+            flags |= FC_ALLOCED_ON_STACK;
+    }
+    else if (get_stub_mode() == MODE_Oif)
+    {
+        if (context == TYPE_CONTEXT_TOPLEVELPARAM && fc == FC_ENUM16 && pointer_fc == FC_RP)
+            flags |= FC_ALLOCED_ON_STACK;
+    }
 
     print_file(file, 2, "0x%02x, 0x%x,\t/* %s %s[simple_pointer] */\n",
                pointer_fc, flags, string_of_type(pointer_fc),
@@ -3450,17 +3499,17 @@ static unsigned int write_ip_tfs(FILE *file, const attr_list_t *attrs, type_t *t
 static unsigned int write_contexthandle_tfs(FILE *file,
                                             const attr_list_t *attrs,
                                             type_t *type,
-                                            int toplevel_param,
+                                            enum type_context context,
                                             unsigned int *typeformat_offset)
 {
     unsigned int start_offset = *typeformat_offset;
-    unsigned char flags = get_contexthandle_flags( current_iface, attrs, type );
+    unsigned char flags = get_contexthandle_flags( current_iface, attrs, type, context == TYPE_CONTEXT_RETVAL );
 
     print_start_tfs_comment(file, type, start_offset);
 
     if (flags & 0x80)  /* via ptr */
     {
-        int pointer_type = get_pointer_fc( type, attrs, toplevel_param );
+        int pointer_type = get_pointer_fc( type, attrs, context == TYPE_CONTEXT_TOPLEVELPARAM );
         if (!pointer_type) pointer_type = FC_RP;
         *typeformat_offset += 4;
         print_file(file, 2,"0x%x, 0x0,\t/* %s */\n", pointer_type, string_of_type(pointer_type) );
@@ -3470,8 +3519,7 @@ static unsigned int write_contexthandle_tfs(FILE *file,
 
     print_file(file, 2, "0x%02x,\t/* FC_BIND_CONTEXT */\n", FC_BIND_CONTEXT);
     print_file(file, 2, "0x%x,\t/* Context flags: ", flags);
-    /* return and can't be null values overlap */
-    if (((flags & 0x21) != 0x21) && (flags & NDR_CONTEXT_HANDLE_CANNOT_BE_NULL))
+    if (flags & NDR_CONTEXT_HANDLE_CANNOT_BE_NULL)
         print_file(file, 0, "can't be null, ");
     if (flags & NDR_CONTEXT_HANDLE_SERIALIZE)
         print_file(file, 0, "serialize, ");
@@ -3479,13 +3527,13 @@ static unsigned int write_contexthandle_tfs(FILE *file,
         print_file(file, 0, "no serialize, ");
     if (flags & NDR_STRICT_CONTEXT_HANDLE)
         print_file(file, 0, "strict, ");
-    if ((flags & 0x21) == 0x20)
-        print_file(file, 0, "out, ");
-    if ((flags & 0x21) == 0x21)
+    if (flags & HANDLE_PARAM_IS_RETURN)
         print_file(file, 0, "return, ");
-    if (flags & 0x40)
+    if (flags & HANDLE_PARAM_IS_OUT)
+        print_file(file, 0, "out, ");
+    if (flags & HANDLE_PARAM_IS_IN)
         print_file(file, 0, "in, ");
-    if (flags & 0x80)
+    if (flags & HANDLE_PARAM_IS_VIA_PTR)
         print_file(file, 0, "via ptr, ");
     print_file(file, 0, "*/\n");
     print_file(file, 2, "0x%x,\t/* rundown routine */\n", get_context_handle_offset( type ));
@@ -3536,8 +3584,7 @@ static unsigned int write_type_tfs(FILE *file, int indent,
     {
     case TGT_CTXT_HANDLE:
     case TGT_CTXT_HANDLE_POINTER:
-        return write_contexthandle_tfs(file, attrs, type,
-                                       context == TYPE_CONTEXT_TOPLEVELPARAM, typeformat_offset);
+        return write_contexthandle_tfs(file, attrs, type, context, typeformat_offset);
     case TGT_USER_TYPE:
         return write_user_tfs(file, type, typeformat_offset);
     case TGT_STRING:
@@ -3634,52 +3681,64 @@ static int write_embedded_types(FILE *file, const attr_list_t *attrs, type_t *ty
     return write_type_tfs(file, 2, attrs, type, name, write_ptr ? TYPE_CONTEXT_CONTAINER : TYPE_CONTEXT_CONTAINER_NO_POINTERS, tfsoff);
 }
 
-static unsigned int process_tfs_stmts(FILE *file, const statement_list_t *stmts,
-                                      type_pred_t pred, unsigned int *typeformat_offset)
+static void process_tfs_iface(type_t *iface, FILE *file, int indent, unsigned int *offset)
 {
-    var_t *var;
+    const statement_list_t *stmts = type_iface_get_stmts(iface);
     const statement_t *stmt;
+    var_t *var;
 
-    if (stmts) LIST_FOR_EACH_ENTRY( stmt, stmts, const statement_t, entry )
+    current_iface = iface;
+    if (stmts) LIST_FOR_EACH_ENTRY( stmt, stmts, statement_t, entry )
     {
-        const type_t *iface;
-        const statement_t *stmt_func;
-
-        if (stmt->type != STMT_TYPE || type_get_type(stmt->u.type) != TYPE_INTERFACE)
-            continue;
-
-        iface = stmt->u.type;
-        if (!pred(iface))
-            continue;
-
-        current_iface = iface;
-        STATEMENTS_FOR_EACH_FUNC( stmt_func, type_iface_get_stmts(iface) )
+        switch(stmt->type)
         {
-            const var_t *func = stmt_func->u.var;
+        case STMT_DECLARATION:
+        {
+            const var_t *func = stmt->u.var;
+
+            if(stmt->u.var->stgclass != STG_NONE
+               || type_get_type_detect_alias(stmt->u.var->type) != TYPE_FUNCTION)
+                continue;
+
             current_func = func;
             if (is_local(func->attrs)) continue;
 
             var = type_function_get_retval(func->type);
             if (!is_void(var->type))
-                var->typestring_offset = write_type_tfs( file, 2, func->attrs, var->type, func->name,
-                                                         TYPE_CONTEXT_PARAM, typeformat_offset);
+                var->typestring_offset = write_type_tfs( file, 2, var->attrs, var->type, func->name,
+                                                         TYPE_CONTEXT_RETVAL, offset);
 
             if (type_get_function_args(func->type))
                 LIST_FOR_EACH_ENTRY( var, type_get_function_args(func->type), var_t, entry )
                     var->typestring_offset = write_type_tfs( file, 2, var->attrs, var->type, var->name,
-                                                             TYPE_CONTEXT_TOPLEVELPARAM,
-                                                             typeformat_offset );
+                                                             TYPE_CONTEXT_TOPLEVELPARAM, offset );
+            break;
+
+        }
+        case STMT_TYPEDEF:
+        {
+            const type_list_t *type_entry;
+            for (type_entry = stmt->u.type_list; type_entry; type_entry = type_entry->next)
+            {
+                if (is_attr(type_entry->type->attrs, ATTR_ENCODE)
+                    || is_attr(type_entry->type->attrs, ATTR_DECODE))
+                    type_entry->type->typestring_offset = write_type_tfs( file, 2,
+                            type_entry->type->attrs, type_entry->type, type_entry->type->name,
+                            TYPE_CONTEXT_CONTAINER, offset);
+            }
+            break;
+        }
+        default:
+            break;
         }
     }
-
-    return *typeformat_offset + 1;
 }
 
 static unsigned int process_tfs(FILE *file, const statement_list_t *stmts, type_pred_t pred)
 {
     unsigned int typeformat_offset = 2;
-
-    return process_tfs_stmts(file, stmts, pred, &typeformat_offset);
+    for_each_iface(stmts, process_tfs_iface, pred, file, 0, &typeformat_offset);
+    return typeformat_offset + 1;
 }
 
 
@@ -4187,13 +4246,14 @@ static void write_remoting_arg(FILE *file, int indent, const var_t *func, const 
         }
         else if (phase == PHASE_UNMARSHAL)
         {
-            if (pass == PASS_OUT)
+            if (pass == PASS_OUT || pass == PASS_RETURN)
             {
                 if (!in_attr)
                     print_file(file, indent, "*%s%s = 0;\n", local_var_prefix, var->name);
                 print_file(file, indent, "NdrClientContextUnmarshall(\n");
                 print_file(file, indent + 1, "&__frame->_StubMsg,\n");
-                print_file(file, indent + 1, "(NDR_CCONTEXT *)%s%s,\n", local_var_prefix, var->name);
+                print_file(file, indent + 1, "(NDR_CCONTEXT *)%s%s%s,\n",
+                           pass == PASS_RETURN ? "&" : "", local_var_prefix, var->name);
                 print_file(file, indent + 1, "__frame->_Handle);\n");
             }
             else
@@ -4513,30 +4573,21 @@ unsigned int get_size_procformatstring_func(const type_t *iface, const var_t *fu
     return offset;
 }
 
-unsigned int get_size_procformatstring(const statement_list_t *stmts, type_pred_t pred)
+static void get_size_procformatstring_iface(type_t *iface, FILE *file, int indent, unsigned int *size)
 {
     const statement_t *stmt;
-    unsigned int size = 1;
-
-    if (stmts) LIST_FOR_EACH_ENTRY( stmt, stmts, const statement_t, entry )
+    STATEMENTS_FOR_EACH_FUNC( stmt, type_iface_get_stmts(iface) )
     {
-        const type_t *iface;
-        const statement_t *stmt_func;
-
-        if (stmt->type != STMT_TYPE || type_get_type(stmt->u.type) != TYPE_INTERFACE)
-            continue;
-
-        iface = stmt->u.type;
-        if (!pred(iface))
-            continue;
-
-        STATEMENTS_FOR_EACH_FUNC( stmt_func, type_iface_get_stmts(iface) )
-        {
-            const var_t *func = stmt_func->u.var;
-            if (!is_local(func->attrs))
-                size += get_size_procformatstring_func( iface, func );
-        }
+        const var_t *func = stmt->u.var;
+        if (!is_local(func->attrs))
+            *size += get_size_procformatstring_func( iface, func );
     }
+}
+
+unsigned int get_size_procformatstring(const statement_list_t *stmts, type_pred_t pred)
+{
+    unsigned int size = 1;
+    for_each_iface(stmts, get_size_procformatstring_iface, pred, NULL, 0, &size);
     return size;
 }
 
@@ -4555,9 +4606,14 @@ void declare_stub_args( FILE *file, int indent, const var_t *func )
     /* declare return value */
     if (!is_void(var->type))
     {
-        print_file(file, indent, "%s", "");
-        write_type_decl(file, var->type, var->name);
-        fprintf(file, ";\n");
+        if (is_context_handle(var->type))
+            print_file(file, indent, "NDR_SCONTEXT %s;\n", var->name);
+        else
+        {
+            print_file(file, indent, "%s", "");
+            write_type_decl(file, var->type, var->name);
+            fprintf(file, ";\n");
+        }
     }
 
     if (!type_get_function_args(func->type))

@@ -28,6 +28,7 @@
 #include "winternl.h"
 #define CRYPT_OID_INFO_HAS_EXTRA_FIELDS
 #include "wincrypt.h"
+#include "snmp.h"
 #include "bcrypt.h"
 #include "winnls.h"
 #include "rpc.h"
@@ -532,14 +533,19 @@ void CRYPT_FixKeyProvInfoPointers(PCRYPT_KEY_PROV_INFO info)
     provNameLen = (lstrlenW(info->pwszProvName) + 1) * sizeof(WCHAR);
     data += provNameLen;
 
-    info->rgProvParam = (PCRYPT_KEY_PROV_PARAM)data;
-    data += info->cProvParam * sizeof(CRYPT_KEY_PROV_PARAM);
-
-    for (i = 0; i < info->cProvParam; i++)
+    if (info->cProvParam)
     {
-        info->rgProvParam[i].pbData = data;
-        data += info->rgProvParam[i].cbData;
+        info->rgProvParam = (PCRYPT_KEY_PROV_PARAM)data;
+        data += info->cProvParam * sizeof(CRYPT_KEY_PROV_PARAM);
+
+        for (i = 0; i < info->cProvParam; i++)
+        {
+            info->rgProvParam[i].pbData = data;
+            data += info->rgProvParam[i].cbData;
+        }
     }
+    else
+        info->rgProvParam = NULL;
 }
 
 BOOL WINAPI CertGetCertificateContextProperty(PCCERT_CONTEXT pCertContext,
@@ -820,7 +826,7 @@ BOOL WINAPI CertSetCertificateContextProperty(PCCERT_CONTEXT pCertContext,
  * the certificate if info is NULL.  The acquired provider is returned in
  * *phCryptProv, and the key spec for the provider is returned in *pdwKeySpec.
  */
-static BOOL CRYPT_AcquirePrivateKeyFromProvInfo(PCCERT_CONTEXT pCert,
+static BOOL CRYPT_AcquirePrivateKeyFromProvInfo(PCCERT_CONTEXT pCert, DWORD dwFlags,
  PCRYPT_KEY_PROV_INFO info, HCRYPTPROV *phCryptProv, DWORD *pdwKeySpec)
 {
     DWORD size = 0;
@@ -851,7 +857,7 @@ static BOOL CRYPT_AcquirePrivateKeyFromProvInfo(PCCERT_CONTEXT pCert,
     if (ret)
     {
         ret = CryptAcquireContextW(phCryptProv, info->pwszContainerName,
-         info->pwszProvName, info->dwProvType, 0);
+         info->pwszProvName, info->dwProvType, (dwFlags & CRYPT_ACQUIRE_SILENT_FLAG) ? CRYPT_SILENT : 0);
         if (ret)
         {
             DWORD i;
@@ -913,12 +919,12 @@ BOOL WINAPI CryptAcquireCertificatePrivateKey(PCCERT_CONTEXT pCert,
             if (pdwKeySpec)
                 *pdwKeySpec = keyContext.dwKeySpec;
             if (pfCallerFreeProv)
-                *pfCallerFreeProv = !cache;
+                *pfCallerFreeProv = FALSE;
         }
     }
     if (!*phCryptProv)
     {
-        ret = CRYPT_AcquirePrivateKeyFromProvInfo(pCert, info,
+        ret = CRYPT_AcquirePrivateKeyFromProvInfo(pCert, dwFlags, info,
          &keyContext.hCryptProv, &keyContext.dwKeySpec);
         if (ret)
         {
@@ -1242,6 +1248,12 @@ BOOL WINAPI CertComparePublicKeyInfo(DWORD dwCertEncodingType,
 
     TRACE("(%08x, %p, %p)\n", dwCertEncodingType, pPublicKey1, pPublicKey2);
 
+    /* RSA public key data should start with ASN_SEQUENCE,
+     * otherwise it's not a RSA_CSP_PUBLICKEYBLOB.
+     */
+    if (!pPublicKey1->PublicKey.cbData || pPublicKey1->PublicKey.pbData[0] != ASN_SEQUENCE)
+        dwCertEncodingType = 0;
+
     switch (GET_CERT_ENCODING_TYPE(dwCertEncodingType))
     {
     case 0:	/* Seems to mean "raw binary bits" */
@@ -1267,32 +1279,21 @@ BOOL WINAPI CertComparePublicKeyInfo(DWORD dwCertEncodingType,
         ret = FALSE;
         if (CryptDecodeObject(dwCertEncodingType, RSA_CSP_PUBLICKEYBLOB,
                     pPublicKey1->PublicKey.pbData, pPublicKey1->PublicKey.cbData,
-                    0, NULL, &length))
+                    CRYPT_DECODE_ALLOC_FLAG, &pblob1, &length))
         {
-            pblob1 = CryptMemAlloc(length);
             if (CryptDecodeObject(dwCertEncodingType, RSA_CSP_PUBLICKEYBLOB,
-                    pPublicKey1->PublicKey.pbData, pPublicKey1->PublicKey.cbData,
-                    0, pblob1, &length))
+                        pPublicKey2->PublicKey.pbData, pPublicKey2->PublicKey.cbData,
+                        CRYPT_DECODE_ALLOC_FLAG, &pblob2, &length))
             {
-                if (CryptDecodeObject(dwCertEncodingType, RSA_CSP_PUBLICKEYBLOB,
-                            pPublicKey2->PublicKey.pbData, pPublicKey2->PublicKey.cbData,
-                            0, NULL, &length))
-                {
-                    pblob2 = CryptMemAlloc(length);
-                    if (CryptDecodeObject(dwCertEncodingType, RSA_CSP_PUBLICKEYBLOB,
-                            pPublicKey2->PublicKey.pbData, pPublicKey2->PublicKey.cbData,
-                            0, pblob2, &length))
-                    {
-                        /* The RSAPUBKEY structure directly follows the BLOBHEADER */
-                        RSAPUBKEY *pk1 = (LPVOID)(pblob1 + 1),
-                                  *pk2 = (LPVOID)(pblob2 + 1);
-                        ret = (pk1->bitlen == pk2->bitlen) && (pk1->pubexp == pk2->pubexp)
-                                 && !memcmp(pk1 + 1, pk2 + 1, pk1->bitlen/8);
-                    }
-                    CryptMemFree(pblob2);
-                }
+                /* The RSAPUBKEY structure directly follows the BLOBHEADER */
+                RSAPUBKEY *pk1 = (LPVOID)(pblob1 + 1),
+                          *pk2 = (LPVOID)(pblob2 + 1);
+                ret = (pk1->bitlen == pk2->bitlen) && (pk1->pubexp == pk2->pubexp)
+                         && !memcmp(pk1 + 1, pk2 + 1, pk1->bitlen/8);
+
+                LocalFree(pblob2);
             }
-            CryptMemFree(pblob1);
+            LocalFree(pblob1);
         }
 
         break;
@@ -1321,9 +1322,30 @@ DWORD WINAPI CertGetPublicKeyLength(DWORD dwCertEncodingType,
     }
     else
     {
+        PCCRYPT_OID_INFO info;
         DWORD size;
         PBYTE buf;
-        BOOL ret = CryptDecodeObjectEx(dwCertEncodingType,
+        BOOL ret;
+
+        info = CryptFindOIDInfo(CRYPT_OID_INFO_OID_KEY, pPublicKey->Algorithm.pszObjId, 0);
+        if (info)
+        {
+            HCRYPTKEY key;
+
+            TRACE("public key algid %#x (%s)\n", info->u.Algid, debugstr_a(pPublicKey->Algorithm.pszObjId));
+
+            ret = CryptImportPublicKeyInfo(I_CryptGetDefaultCryptProv(info->u.Algid), dwCertEncodingType, pPublicKey, &key);
+            if (ret)
+            {
+                size = sizeof(len);
+                ret = CryptGetKeyParam(key, KP_KEYLEN, (BYTE *)&len, &size, 0);
+                CryptDestroyKey(key);
+                return len;
+            }
+            /* fallback to RSA */
+        }
+
+        ret = CryptDecodeObjectEx(dwCertEncodingType,
          RSA_CSP_PUBLICKEYBLOB, pPublicKey->PublicKey.pbData,
          pPublicKey->PublicKey.cbData, CRYPT_DECODE_ALLOC_FLAG, NULL, &buf,
          &size);
@@ -1747,6 +1769,7 @@ PCCERT_CONTEXT WINAPI CertFindCertificateInStore(HCERTSTORE hCertStore,
     PCCERT_CONTEXT ret;
     CertFindFunc find = NULL;
     CertCompareFunc compare = NULL;
+    CERT_ID cert_id;
 
     TRACE("(%p, %08x, %08x, %08x, %p, %p)\n", hCertStore, dwCertEncodingType,
 	 dwFlags, dwType, pvPara, pPrevCertContext);
@@ -1777,6 +1800,11 @@ PCCERT_CONTEXT WINAPI CertFindCertificateInStore(HCERTSTORE hCertStore,
     case CERT_COMPARE_SUBJECT_CERT:
         compare = compare_cert_by_subject_cert;
         break;
+    case CERT_COMPARE_KEY_IDENTIFIER:
+        cert_id.dwIdChoice = CERT_ID_KEY_IDENTIFIER;
+        cert_id.u.KeyId = *(const CRYPT_HASH_BLOB *)pvPara;
+        pvPara = &cert_id;
+        /* fall through */
     case CERT_COMPARE_CERT_ID:
         compare = compare_cert_by_cert_id;
         break;
@@ -1794,7 +1822,7 @@ PCCERT_CONTEXT WINAPI CertFindCertificateInStore(HCERTSTORE hCertStore,
     }
 
     if (find)
-        ret = find(hCertStore, dwFlags, dwType, pvPara, pPrevCertContext);
+        ret = find(hCertStore, dwType, dwFlags, pvPara, pPrevCertContext);
     else if (compare)
         ret = cert_compare_certs_in_store(hCertStore, pPrevCertContext,
          compare, dwType, dwFlags, pvPara);
@@ -2173,7 +2201,7 @@ BOOL WINAPI CryptHashCertificate(HCRYPTPROV_LEGACY hCryptProv, ALG_ID Algid,
      pbEncoded, cbEncoded, pbComputedHash, pcbComputedHash);
 
     if (!hCryptProv)
-        hCryptProv = CRYPT_GetDefaultProvider();
+        hCryptProv = I_CryptGetDefaultCryptProv(Algid);
     if (!Algid)
         Algid = CALG_SHA1;
     if (ret)
@@ -2191,6 +2219,59 @@ BOOL WINAPI CryptHashCertificate(HCRYPTPROV_LEGACY hCryptProv, ALG_ID Algid,
     return ret;
 }
 
+BOOL WINAPI CryptHashCertificate2(LPCWSTR pwszCNGHashAlgid, DWORD dwFlags,
+ void *pvReserved, const BYTE *pbEncoded, DWORD cbEncoded, BYTE *pbComputedHash,
+ DWORD *pcbComputedHash)
+{
+    BCRYPT_HASH_HANDLE hash = NULL;
+    BCRYPT_ALG_HANDLE alg = NULL;
+    NTSTATUS status;
+    DWORD hash_len;
+    DWORD hash_len_size;
+
+    TRACE("(%s, %08x, %p, %p, %d, %p, %p)\n", debugstr_w(pwszCNGHashAlgid),
+     dwFlags, pvReserved, pbEncoded, cbEncoded, pbComputedHash, pcbComputedHash);
+
+    if ((status = BCryptOpenAlgorithmProvider(&alg, pwszCNGHashAlgid, NULL, 0)))
+    {
+        if (status == STATUS_NOT_IMPLEMENTED)
+            status = STATUS_NOT_FOUND;
+        goto done;
+    }
+
+    if ((status = BCryptCreateHash(alg, &hash, NULL, 0, NULL, 0, 0)))
+        goto done;
+
+    if ((status = BCryptGetProperty(hash, BCRYPT_HASH_LENGTH, (BYTE *)&hash_len, sizeof(hash_len), &hash_len_size, 0)))
+        goto done;
+
+    if (!pbComputedHash)
+    {
+        *pcbComputedHash = hash_len;
+        goto done;
+    }
+
+    if (*pcbComputedHash < hash_len)
+    {
+        status = ERROR_MORE_DATA;
+        goto done;
+    }
+
+    *pcbComputedHash = hash_len;
+
+    if ((status = BCryptHashData(hash, (BYTE *)pbEncoded, cbEncoded, 0)))
+        goto done;
+
+    if ((status = BCryptFinishHash(hash, pbComputedHash, hash_len, 0)))
+        goto done;
+
+done:
+    if (hash) BCryptDestroyHash(hash);
+    if (alg)  BCryptCloseAlgorithmProvider(alg, 0);
+    if (status) SetLastError(status);
+    return !status;
+}
+
 BOOL WINAPI CryptHashPublicKeyInfo(HCRYPTPROV_LEGACY hCryptProv, ALG_ID Algid,
  DWORD dwFlags, DWORD dwCertEncodingType, PCERT_PUBLIC_KEY_INFO pInfo,
  BYTE *pbComputedHash, DWORD *pcbComputedHash)
@@ -2202,7 +2283,7 @@ BOOL WINAPI CryptHashPublicKeyInfo(HCRYPTPROV_LEGACY hCryptProv, ALG_ID Algid,
      dwCertEncodingType, pInfo, pbComputedHash, pcbComputedHash);
 
     if (!hCryptProv)
-        hCryptProv = CRYPT_GetDefaultProvider();
+        hCryptProv = I_CryptGetDefaultCryptProv(0);
     if (!Algid)
         Algid = CALG_MD5;
     if ((dwCertEncodingType & CERT_ENCODING_TYPE_MASK) != X509_ASN_ENCODING)
@@ -2254,7 +2335,7 @@ BOOL WINAPI CryptHashToBeSigned(HCRYPTPROV_LEGACY hCryptProv,
         HCRYPTHASH hHash;
 
         if (!hCryptProv)
-            hCryptProv = CRYPT_GetDefaultProvider();
+            hCryptProv = I_CryptGetDefaultCryptProv(0);
         oidInfo = CryptFindOIDInfo(CRYPT_OID_INFO_OID_KEY,
          info->SignatureAlgorithm.pszObjId, 0);
         if (!oidInfo)
@@ -2303,7 +2384,7 @@ BOOL WINAPI CryptSignCertificate(HCRYPTPROV_OR_NCRYPT_KEY_HANDLE hCryptProv,
     if (info->dwGroupId == CRYPT_HASH_ALG_OID_GROUP_ID)
     {
         if (!hCryptProv)
-            hCryptProv = CRYPT_GetDefaultProvider();
+            hCryptProv = I_CryptGetDefaultCryptProv(0);
         ret = CryptCreateHash(hCryptProv, info->u.Algid, 0, 0, &hHash);
         if (ret)
         {
@@ -2427,7 +2508,7 @@ static BOOL CRYPT_VerifySignature(HCRYPTPROV_LEGACY hCryptProv, DWORD dwCertEnco
         pubKeyID = hashID;
     /* Load the default provider if necessary */
     if (!hCryptProv)
-        hCryptProv = CRYPT_GetDefaultProvider();
+        hCryptProv = I_CryptGetDefaultCryptProv(hashID);
     ret = CryptImportPublicKeyInfoEx(hCryptProv, dwCertEncodingType,
      pubKeyInfo, pubKeyID, 0, NULL, &key);
     if (ret)
@@ -3684,4 +3765,12 @@ const void * WINAPI CertCreateContext(DWORD dwContextType, DWORD dwEncodingType,
         WARN("unknown context type: 0x%x\n", dwContextType);
         return NULL;
     }
+}
+
+BOOL WINAPI CryptSetKeyIdentifierProperty(const CRYPT_HASH_BLOB *pKeyIdentifier, DWORD dwPropId,
+    DWORD dwFlags, LPCWSTR pwszComputerName, void *pvReserved, const void *pvData)
+{
+    FIXME("(%p, 0x%x, 0x%x, %s, %p, %p): stub\n", pKeyIdentifier, dwPropId, dwFlags,
+        debugstr_w(pwszComputerName), pvReserved, pvData);
+    return FALSE;
 }
