@@ -44,7 +44,6 @@
 #include "typelib_struct.h"
 #include "typetree.h"
 
-static typelib_t *typelib;
 
 /* List of oleauto types that should be recognized by name.
  * (most of) these seem to be intrinsic types in mktyplib.
@@ -157,6 +156,7 @@ unsigned short get_type_vt(type_t *t)
       else
         return VT_INT;
     case TYPE_BASIC_INT32:
+    case TYPE_BASIC_LONG:
     case TYPE_BASIC_ERROR_STATUS_T:
       if (type_basic_get_sign(t) > 0)
         return VT_UI4;
@@ -169,7 +169,7 @@ unsigned short get_type_vt(type_t *t)
       else
         return VT_I8;
     case TYPE_BASIC_INT3264:
-      if (typelib_kind == SYS_WIN64)
+      if (pointer_size == 8)
       {
         if (type_basic_get_sign(t) > 0)
           return VT_UI8;
@@ -237,22 +237,6 @@ unsigned short get_type_vt(type_t *t)
     break;
   }
   return 0;
-}
-
-void start_typelib(typelib_t *typelib_type)
-{
-    if (!do_typelib) return;
-    typelib = typelib_type;
-}
-
-void end_typelib(void)
-{
-    if (!typelib) return;
-
-    if (do_old_typelib)
-        create_sltg_typelib(typelib);
-    else
-        create_msft_typelib(typelib);
 }
 
 static void tlb_read(int fd, void *buf, int count)
@@ -379,7 +363,7 @@ static void read_importlib(importlib_t *importlib)
     close(fd);
 }
 
-void add_importlib(const char *name)
+void add_importlib(const char *name, typelib_t *typelib)
 {
     importlib_t *importlib;
 

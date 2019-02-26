@@ -35,7 +35,6 @@ static const DWORD pixel_states_render[] =
     WINED3D_RS_ALPHAREF,
     WINED3D_RS_ALPHATESTENABLE,
     WINED3D_RS_ANTIALIASEDLINEENABLE,
-    WINED3D_RS_BLENDFACTOR,
     WINED3D_RS_BLENDOP,
     WINED3D_RS_BLENDOPALPHA,
     WINED3D_RS_BACK_STENCILFAIL,
@@ -213,6 +212,7 @@ static void stateblock_savedstates_set_all(struct wined3d_saved_states *states, 
     states->pixelShader = 1;
     states->vertexShader = 1;
     states->scissorRect = 1;
+    states->blend_state = 1;
 
     /* Fixed size arrays */
     states->streamSource = 0xffff;
@@ -240,6 +240,7 @@ static void stateblock_savedstates_set_pixel(struct wined3d_saved_states *states
     unsigned int i;
 
     states->pixelShader = 1;
+    states->blend_state = 1;
 
     for (i = 0; i < ARRAY_SIZE(pixel_states_render); ++i)
     {
@@ -625,6 +626,8 @@ void wined3d_state_enable_light(struct wined3d_state *state, const struct wined3
 
 static void wined3d_state_record_lights(struct wined3d_state *dst_state, const struct wined3d_state *src_state)
 {
+    const struct wined3d_light_info *src;
+    struct wined3d_light_info *dst;
     UINT i;
 
     /* Lights... For a recorded state block, we just had a chain of actions
@@ -632,48 +635,36 @@ static void wined3d_state_record_lights(struct wined3d_state *dst_state, const s
      * differ. */
     for (i = 0; i < LIGHTMAP_SIZE; ++i)
     {
-        struct list *e, *f;
-        LIST_FOR_EACH(e, &dst_state->light_map[i])
+        LIST_FOR_EACH_ENTRY(dst, &dst_state->light_map[i], struct wined3d_light_info, entry)
         {
-            BOOL updated = FALSE;
-            struct wined3d_light_info *src = LIST_ENTRY(e, struct wined3d_light_info, entry), *realLight;
-
-            /* Look up the light in the destination */
-            LIST_FOR_EACH(f, &src_state->light_map[i])
+            if ((src = wined3d_state_get_light(src_state, dst->OriginalIndex)))
             {
-                realLight = LIST_ENTRY(f, struct wined3d_light_info, entry);
-                if (realLight->OriginalIndex == src->OriginalIndex)
+                dst->OriginalParms = src->OriginalParms;
+
+                if (src->glIndex == -1 && dst->glIndex != -1)
                 {
-                    src->OriginalParms = realLight->OriginalParms;
-
-                    if (realLight->glIndex == -1 && src->glIndex != -1)
-                    {
-                        /* Light disabled */
-                        dst_state->lights[src->glIndex] = NULL;
-                    }
-                    else if (realLight->glIndex != -1 && src->glIndex == -1)
-                    {
-                        /* Light enabled */
-                        dst_state->lights[realLight->glIndex] = src;
-                    }
-                    src->glIndex = realLight->glIndex;
-                    updated = TRUE;
-                    break;
+                    /* Light disabled. */
+                    dst_state->lights[dst->glIndex] = NULL;
                 }
+                else if (src->glIndex != -1 && dst->glIndex == -1)
+                {
+                    /* Light enabled. */
+                    dst_state->lights[src->glIndex] = dst;
+                }
+                dst->glIndex = src->glIndex;
             }
-
-            if (!updated)
+            else
             {
                 /* This can happen if the light was originally created as a
                  * default light for SetLightEnable() while recording. */
                 WARN("Light %u in dst_state %p does not exist in src_state %p.\n",
-                        src->OriginalIndex, dst_state, src_state);
+                        dst->OriginalIndex, dst_state, src_state);
 
-                src->OriginalParms = WINED3D_default_light;
-                if (src->glIndex != -1)
+                dst->OriginalParms = WINED3D_default_light;
+                if (dst->glIndex != -1)
                 {
-                    dst_state->lights[src->glIndex] = NULL;
-                    src->glIndex = -1;
+                    dst_state->lights[dst->glIndex] = NULL;
+                    dst->glIndex = -1;
                 }
             }
         }
@@ -841,6 +832,21 @@ void CDECL wined3d_stateblock_capture(struct wined3d_stateblock *stateblock)
                     src_state->scissor_rect_count * sizeof(*src_state->scissor_rects));
         else
             SetRectEmpty(stateblock->state.scissor_rects);
+    }
+
+    if (stateblock->changed.blend_state
+            && (src_state->blend_state != stateblock->state.blend_state
+            || memcmp(&src_state->blend_factor, &stateblock->state.blend_factor,
+                    sizeof(stateblock->state.blend_factor))))
+    {
+        TRACE("Updating blend state.\n");
+
+        if (src_state->blend_state)
+                wined3d_blend_state_incref(src_state->blend_state);
+        if (stateblock->state.blend_state)
+                wined3d_blend_state_decref(stateblock->state.blend_state);
+        stateblock->state.blend_state = src_state->blend_state;
+        stateblock->state.blend_factor = src_state->blend_factor;
     }
 
     map = stateblock->changed.streamSource;
@@ -1078,6 +1084,9 @@ void CDECL wined3d_stateblock_apply(const struct wined3d_stateblock *stateblock)
         wined3d_device_set_scissor_rects(device, stateblock->state.scissor_rect_count,
                 stateblock->state.scissor_rects);
 
+    if (stateblock->changed.blend_state)
+        wined3d_device_set_blend_state(device, stateblock->state.blend_state, &stateblock->state.blend_factor);
+
     map = stateblock->changed.streamSource;
     for (i = 0; map; map >>= 1, ++i)
     {
@@ -1255,7 +1264,6 @@ static void state_init_default(struct wined3d_state *state, const struct wined3d
     state->render_states[WINED3D_RS_BACK_STENCILZFAIL] = WINED3D_STENCIL_OP_KEEP;
     state->render_states[WINED3D_RS_BACK_STENCILPASS] = WINED3D_STENCIL_OP_KEEP;
     state->render_states[WINED3D_RS_BACK_STENCILFUNC] = WINED3D_CMP_ALWAYS;
-    state->render_states[WINED3D_RS_BLENDFACTOR] = 0xffffffff;
     state->render_states[WINED3D_RS_SRGBWRITEENABLE] = 0;
     state->render_states[WINED3D_RS_DEPTHBIAS] = 0;
     state->render_states[WINED3D_RS_WRAP8] = 0;
@@ -1316,6 +1324,11 @@ static void state_init_default(struct wined3d_state *state, const struct wined3d
         /* TODO: Vertex offset in the presampled displacement map. */
         state->sampler_states[i][WINED3D_SAMP_DMAP_OFFSET] = 0;
     }
+
+    state->blend_factor.r = 1.0f;
+    state->blend_factor.g = 1.0f;
+    state->blend_factor.b = 1.0f;
+    state->blend_factor.a = 1.0f;
 }
 
 void state_init(struct wined3d_state *state, struct wined3d_fb_state *fb,

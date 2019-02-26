@@ -228,6 +228,9 @@ static void test_load_driver(void)
     ret = ZwLoadDriver(&name);
     ok(!ret, "got %#x\n", ret);
 
+    ret = ZwLoadDriver(&name);
+    ok(ret == STATUS_IMAGE_ALREADY_LOADED, "got %#x\n", ret);
+
     ret = ZwUnloadDriver(&name);
     ok(!ret, "got %#x\n", ret);
 }
@@ -625,7 +628,7 @@ static NTSTATUS main_test(IRP *irp, IO_STACK_LOCATION *stack, ULONG_PTR *info)
     winetest_debug = test_input->winetest_debug;
     winetest_report_success = test_input->winetest_report_success;
     attr.ObjectName = &pathU;
-    attr.Attributes = OBJ_KERNEL_HANDLE;
+    attr.Attributes = OBJ_KERNEL_HANDLE; /* needed to be accessible from system threads */
     ZwOpenFile(&okfile, FILE_APPEND_DATA, &attr, &io, 0, 0);
 
     test_currentprocess();

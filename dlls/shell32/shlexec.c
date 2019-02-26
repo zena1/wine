@@ -754,7 +754,7 @@ static UINT SHELL_FindExecutable(LPCWSTR lpPath, LPCWSTR lpFile, LPCWSTR lpVerb,
 	extension++;
 	if (GetProfileStringW(wExtensions, extension, wszEmpty, command, ARRAY_SIZE(command)) > 0)
         {
-            if (strlenW(command) != 0)
+            if (*command)
             {
                 strcpyW(lpResult, command);
                 tok = strchrW(lpResult, '^'); /* should be ^.extension? */
@@ -841,7 +841,7 @@ static unsigned dde_connect(const WCHAR* key, const WCHAR* start, WCHAR* ddeexec
     {
         WCHAR command[1024], fullpath[MAX_PATH];
         static const WCHAR wSo[] = { '.','s','o',0 };
-        int sizeSo = sizeof(wSo)/sizeof(WCHAR);
+        int sizeSo = ARRAY_SIZE(wSo);
         LPWSTR ptr = NULL;
         DWORD ret = 0;
 
@@ -1183,13 +1183,12 @@ static HKEY ShellExecute_GetClassKey( const SHELLEXECUTEINFOW *sei )
     return hkey;
 }
 
-static IDataObject *shellex_get_dataobj( LPSHELLEXECUTEINFOW sei )
+static HRESULT shellex_get_dataobj( LPSHELLEXECUTEINFOW sei, IDataObject **dataobj )
 {
     LPCITEMIDLIST pidllast = NULL;
-    IDataObject *dataobj = NULL;
     IShellFolder *shf = NULL;
     LPITEMIDLIST pidl = NULL;
-    HRESULT r;
+    HRESULT r = SE_ERR_DLLNOTFOUND;
 
     if (sei->fMask & SEE_MASK_CLASSALL)
         pidl = sei->lpIDList;
@@ -1210,15 +1209,15 @@ static IDataObject *shellex_get_dataobj( LPSHELLEXECUTEINFOW sei )
     if ( FAILED( r ) )
         goto end;
 
-    IShellFolder_GetUIObjectOf( shf, NULL, 1, &pidllast,
-                                &IID_IDataObject, NULL, (LPVOID*) &dataobj );
+    r = IShellFolder_GetUIObjectOf( shf, NULL, 1, &pidllast,
+                                &IID_IDataObject, NULL, (void**)dataobj );
 
 end:
     if ( pidl != sei->lpIDList )
         ILFree( pidl );
     if ( shf )
         IShellFolder_Release( shf );
-    return dataobj;
+    return r;
 }
 
 static HRESULT shellex_run_context_menu_default( IShellExtInit *obj,
@@ -1313,11 +1312,10 @@ static HRESULT shellex_load_object_and_run( HKEY hkey, LPCGUID guid, LPSHELLEXEC
         goto end;
     }
 
-    dataobj = shellex_get_dataobj( sei );
-    if ( !dataobj )
+    r = shellex_get_dataobj( sei, &dataobj );
+    if ( FAILED( r ) )
     {
         ERR("failed to get data object\n");
-        r = E_FAIL;
         goto end;
     }
 
@@ -1584,13 +1582,13 @@ static WCHAR *expand_environment( const WCHAR *str )
     len = ExpandEnvironmentStringsW(str, NULL, 0);
     if (!len) return NULL;
 
-    buf = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR));
+    buf = heap_alloc(len * sizeof(WCHAR));
     if (!buf) return NULL;
 
     len = ExpandEnvironmentStringsW(str, buf, len);
     if (!len)
     {
-        HeapFree(GetProcessHeap(), 0, buf);
+        heap_free(buf);
         return NULL;
     }
     return buf;
@@ -1725,7 +1723,7 @@ static BOOL SHELL_execute( LPSHELLEXECUTEINFOW sei, SHELL_ExecuteW32 execfunc )
             retval = SE_ERR_OOM;
             goto end;
         }
-        HeapFree(GetProcessHeap(), 0, wszApplicationName);
+        heap_free(wszApplicationName);
         sei_tmp.lpFile = wszApplicationName = tmp;
 
         tmp = expand_environment(sei_tmp.lpDirectory);
@@ -1734,7 +1732,8 @@ static BOOL SHELL_execute( LPSHELLEXECUTEINFOW sei, SHELL_ExecuteW32 execfunc )
             retval = SE_ERR_OOM;
             goto end;
         }
-        if (wszDir != dirBuffer) HeapFree(GetProcessHeap(), 0, wszDir);
+        if (wszDir != dirBuffer)
+            heap_free(wszDir);
         sei_tmp.lpDirectory = wszDir = tmp;
     }
 

@@ -199,9 +199,19 @@ struct key
     } u;
 };
 #else
+struct key_symmetric
+{
+    enum mode_id mode;
+};
+
 struct key
 {
     struct object hdr;
+    enum alg_id   alg_id;
+    union
+    {
+        struct key_symmetric s;
+    } u;
 };
 #endif
 

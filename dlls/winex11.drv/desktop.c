@@ -173,12 +173,21 @@ void X11DRV_init_desktop( Window win, unsigned int width, unsigned int height )
  */
 BOOL CDECL X11DRV_create_desktop( UINT width, UINT height )
 {
+    static const WCHAR rootW[] = {'r','o','o','t',0};
     XSetWindowAttributes win_attr;
     Window win;
     Display *display = thread_init_display();
     RECT rect;
+    WCHAR name[MAX_PATH];
 
-    TRACE( "%u x %u\n", width, height );
+    if (!GetUserObjectInformationW( GetThreadDesktop( GetCurrentThreadId() ),
+                                    UOI_NAME, name, sizeof(name), NULL ))
+        name[0] = 0;
+
+    TRACE( "%s %ux%u\n", debugstr_w(name), width, height );
+
+    /* magic: desktop "root" means use the root window */
+    if (!lstrcmpiW( name, rootW )) return FALSE;
 
     /* Create window */
     win_attr.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | EnterWindowMask |
@@ -225,51 +234,18 @@ static BOOL CALLBACK update_windows_on_desktop_resize( HWND hwnd, LPARAM lparam 
 
     if (!(data = get_win_data( hwnd ))) return TRUE;
 
-    if (fs_hack_enabled() &&
-            fs_hack_matches_current_mode(
-                data->whole_rect.right - data->whole_rect.left,
-                data->whole_rect.bottom - data->whole_rect.top)){
-        if(!data->fs_hack){
-            POINT p = fs_hack_real_mode();
-            POINT tl = virtual_screen_to_root(0, 0);
-            TRACE("Enabling fs hack, resizing the window to (%u,%u)-(%u,%u)\n", tl.x, tl.y, p.x, p.y);
-            data->fs_hack = TRUE;
-            XMoveResizeWindow(data->display, data->whole_window, tl.x, tl.y, p.x, p.y);
-            if(data->client_window)
-                XMoveResizeWindow(data->display, data->client_window, 0, 0, p.x, p.y);
-            sync_gl_drawable(hwnd);
-            update_net_wm_states( data );
-        }
-    }else {
+    /* update the full screen state */
+    update_net_wm_states( data );
 
-        /* update the full screen state */
-        update_net_wm_states( data );
-
-        if (resize_data->old_virtual_rect.left != resize_data->new_virtual_rect.left || data->fs_hack) mask |= CWX;
-        if (resize_data->old_virtual_rect.top != resize_data->new_virtual_rect.top || data->fs_hack) mask |= CWY;
-        if (mask && data->whole_window)
-        {
-            POINT pos = virtual_screen_to_root( data->whole_rect.left, data->whole_rect.top );
-            XWindowChanges changes;
-            changes.x = pos.x;
-            changes.y = pos.y;
-            XReconfigureWMWindow( data->display, data->whole_window, data->vis.screen, mask, &changes );
-        }
-
-        if(data->fs_hack &&
-            !fs_hack_matches_current_mode(
-                data->whole_rect.right - data->whole_rect.left,
-                data->whole_rect.bottom - data->whole_rect.top)){
-            TRACE("Disabling fs hack\n");
-            data->fs_hack = FALSE;
-            if(data->client_window){
-                XMoveResizeWindow(data->display, data->client_window,
-                        data->client_rect.left, data->client_rect.top,
-                        data->client_rect.right - data->client_rect.left,
-                        data->client_rect.bottom - data->client_rect.top);
-            }
-            sync_gl_drawable(hwnd);
-        }
+    if (resize_data->old_virtual_rect.left != resize_data->new_virtual_rect.left) mask |= CWX;
+    if (resize_data->old_virtual_rect.top != resize_data->new_virtual_rect.top) mask |= CWY;
+    if (mask && data->whole_window)
+    {
+        POINT pos = virtual_screen_to_root( data->whole_rect.left, data->whole_rect.top );
+        XWindowChanges changes;
+        changes.x = pos.x;
+        changes.y = pos.y;
+        XReconfigureWMWindow( data->display, data->whole_window, data->vis.screen, mask, &changes );
     }
     release_win_data( data );
     if (hwnd == GetForegroundWindow()) clip_fullscreen_window( hwnd, TRUE );

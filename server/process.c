@@ -493,7 +493,7 @@ static void start_sigkill_timer( struct process *process )
 
 /* create a new process */
 /* if the function fails the fd is closed */
-struct process *create_process( int fd, struct thread *parent_thread, int inherit_all,
+struct process *create_process( int fd, struct process *parent, int inherit_all,
                                 const struct security_descriptor *sd, struct token *token )
 {
     struct process *process;
@@ -557,7 +557,7 @@ struct process *create_process( int fd, struct thread *parent_thread, int inheri
     if (!(process->msg_fd = create_anonymous_fd( &process_fd_ops, fd, &process->obj, 0 ))) goto error;
 
     /* create the handle table */
-    if (!parent_thread)
+    if (!parent)
     {
         process->handles = alloc_handle_table( process, 0 );
         process->token = token_create_admin();
@@ -565,7 +565,6 @@ struct process *create_process( int fd, struct thread *parent_thread, int inheri
     }
     else
     {
-        struct process *parent = parent_thread->process;
         process->parent_id = parent->id;
         process->handles = inherit_all ? copy_handle_table( process, parent )
                                        : alloc_handle_table( process, 0 );
@@ -595,7 +594,6 @@ data_size_t init_process( struct thread *thread )
     struct process *process = thread->process;
     struct startup_info *info = process->startup_info;
 
-    init_process_tracing( process );
     if (!info) return 0;
     return info->data_size;
 }
@@ -1269,7 +1267,7 @@ DECL_HANDLER(new_process)
 #undef FIXUP_LEN
     }
 
-    if (!(process = create_process( socket_fd, current, req->inherit_all, sd, token ))) goto done;
+    if (!(process = create_process( socket_fd, parent, req->inherit_all, sd, token ))) goto done;
 
     process->startup_info = (struct startup_info *)grab_object( info );
 
@@ -1336,6 +1334,39 @@ DECL_HANDLER(new_process)
     release_object( info );
 }
 
+/* execute a new process, replacing the existing one */
+DECL_HANDLER(exec_process)
+{
+    struct process *process;
+    int socket_fd = thread_get_inflight_fd( current, req->socket_fd );
+
+    if (socket_fd == -1)
+    {
+        set_error( STATUS_INVALID_PARAMETER );
+        return;
+    }
+    if (fcntl( socket_fd, F_SETFL, O_NONBLOCK ) == -1)
+    {
+        set_error( STATUS_INVALID_HANDLE );
+        close( socket_fd );
+        return;
+    }
+    if (shutdown_stage)
+    {
+        set_error( STATUS_SHUTDOWN_IN_PROGRESS );
+        close( socket_fd );
+        return;
+    }
+    if (!is_cpu_supported( req->cpu ))
+    {
+        close( socket_fd );
+        return;
+    }
+    if (!(process = create_process( socket_fd, NULL, 0, NULL, NULL ))) return;
+    create_thread( -1, process, NULL );
+    release_object( process );
+}
+
 /* Retrieve information about a newly started process */
 DECL_HANDLER(get_new_process_info)
 {
@@ -1395,6 +1426,7 @@ DECL_HANDLER(init_process_done)
     if (process->exe_file) release_object( process->exe_file );
     process->exe_file = NULL;
 
+    init_process_tracing( process );
     generate_startup_debug_events( process, req->entry );
     set_process_startup_state( process, STARTUP_DONE );
 

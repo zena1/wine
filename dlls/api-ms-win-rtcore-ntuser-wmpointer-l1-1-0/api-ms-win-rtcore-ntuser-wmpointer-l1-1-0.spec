@@ -1,5 +1,5 @@
 @ stdcall EnableMouseInPointer(long) user32.EnableMouseInPointer
-@ stub GetCurrentInputMessageSource
+@ stdcall GetCurrentInputMessageSource(ptr) user32.GetCurrentInputMessageSource
 @ stub GetPointerCursorId
 @ stub GetPointerDevice
 @ stub GetPointerDeviceProperties
@@ -17,7 +17,7 @@
 @ stub GetPointerPenInfoHistory
 @ stub GetPointerTouchInfo
 @ stub GetPointerTouchInfoHistory
-@ stub GetPointerType
+@ stdcall GetPointerType(long ptr) user32.GetPointerType
 @ stub GetRawPointerDeviceData
 @ stub InitializeTouchInjection
 @ stub InjectTouchInput

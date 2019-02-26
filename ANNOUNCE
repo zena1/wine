@@ -1,16 +1,19 @@
-The Wine development release 3.18 is now available.
+The Wine team is proud to announce that the stable release Wine 4.0
+is now available.
 
-What's new in this release (see below for details):
-  - Subpixel font rendering with FreeType >= 2.8.1.
-  - Support for OAEP algorithm in RSA encryption.
-  - Array marshalling fixes in DCOM.
-  - Improved DPI scaling in the Wine console.
-  - Various bug fixes.
+This release represents a year of development effort and over 6,000
+individual changes. It contains a large number of improvements that
+are listed in the release notes below. The main highlights are:
+
+  - Vulkan support.
+  - Direct3D 12 support.
+  - Game controllers support.
+  - High-DPI support on Android.
 
 The source is available from the following locations:
 
-  https://dl.winehq.org/wine/source/3.x/wine-3.18.tar.xz
-  http://mirrors.ibiblio.org/wine/source/3.x/wine-3.18.tar.xz
+  https://dl.winehq.org/wine/source/4.0/wine-4.0.tar.xz
+  http://mirrors.ibiblio.org/wine/source/4.0/wine-4.0.tar.xz
 
 Binary packages for various distributions will be available from:
 
@@ -26,291 +29,461 @@ AUTHORS in the distribution for the complete list.
 
 ----------------------------------------------------------------
 
-Bugs fixed in 3.18 (total 46):
+What's new in Wine 4.0
+======================
 
-  13651  Opening privacy settings in Internet Explorer 6 (inetcpl.cpl) cause crash on unimplemented function wininet.dll.PrivacyGetZonePreferenceW
-  20613  PVSYST 5 crashed when launched
-  25687  "Create directory" button does nothing in ARM Versatile Express installer.
-  28267  winhttp tests fail if ISP has a catch-all dns failure page
-  32441  winhttp winhttp test changes proxy setting in Windows 8
-  35504  LibreOffice 4.2 installer copies MSVC++ runtime files into erroneous 'C:\Win\System\' path (directory targets/properties not re-resolved after updates from custom actions)
-  38402  glDebugMessageCallback has mismatched calling convention
-  38641  Trying to start a Steam game whilst Steam isn't running doesn't open the game
-  39051  TabbedTextOut() incorrect output on tab character
-  39508  Microsoft Office 365/OneDrive for Business installer fails in Win8+ mode with 'advapi:ParseStringSidToSid String constant not supported: "OW"' (failure to decode 'Owner Rights' SID 'S-1-3-4')
-  40208  Cegid Business Line installer fails in custom script action with "Object doesn't support this property or method: 'ObjRegistry.CreateKey'" (needs 'StdRegProv.CreateKey')
-  40303  Control Data passed in DIALOGEX Resource passes pointer with offset sizeof(WORD)
-  40703  MSI InstallService does not respect msidbServiceInstallErrorControlVital (0x8000) flag
-  41679  netconn_secure_connect: Add calling TRACE, add sock_send retcode to 'send failed' message
-  41934  Spreaker Studio 1.4.2 fails to install
-  41953  Guitar Hero World Tour (msi_view_get_row Error fetching data for 1)
-  42285  Age of empire 3 crashes
-  42677  Black Desert Online launcher fails to download/update files, reports "An error occurred while downloading file. (errorcode : 12006 or 13403)"
-  43187  EA Origin 'OriginWebHelperService' (QGuiApplication) non-interactive service process crashes due to null monitor info when determining the primary (default) screen
-  43242  Hi-Rez Smite (free-to-play online MOBA) SteamLauncherUI.exe (.NET 4.0 app) crashes during installation
-  43615  32-bit Process Hacker 2.39.124 crashes in 64-bit WINEPREFIX (advapi32.EnumServicesStatusEx returns garbage on Wow64)
-  43621  Life On Mars remake demo has missing sprites
-  43878  Multiple apps/games crash on unimplemented function kernel32.dll.GetQueuedCompletionStatusEx (Tokio Rust samples, Star Control: Origins, 1Password-7.2.*)
-  43898  Steam: Crashes after regaining focus when in Steam Guard email code window
-  44405  Rise Of Nations Extended edition (Steam) crashes when trying to list mods due to missing NULL output buffer handling in CryptBinaryToString()
-  44474  Script fails to Run function GetStringValue
-  44655  Carmageddon Max Damage: Crash on launch
-  44787  1Password-6.8.496 crashes: System.EntryPointNotFoundException (.Net app): Unable to find an entry point named 'SetWindowCompositionAttribute' in DLL 'user32.dll'.
-  44902  Baidu Wifi Hotspot crashes in IShellLink::SetIconLocation method due to missing NULL path handling
-  45509  64-bit PSIM 11.0.3 fails to install, reports 'err:msiexec:custom_action_server Failed to create custom action server pipe'
-  45566  League of Legends 8.12+ needs ntdll.RtlSetUnhandledExceptionFilter
-  45588  .Net Framework 4.5.2 (WPF) System.Windows.Media.PixelFormat requires windowscodecs.dll.IWICPixelFormatInfo_{GetChannelCount,GetChannelMask,GetBitsPerPixel}_Proxy
-  45680  Microsoft .NET Framework 3.5 (SP1) fails to install in 64-bit WINEPREFIX
-  45708  djkaty.com Simple2D demos v1.13: BitmapBrushDemo needs D2D1MakeSkewMatrix
-  45709  djkaty.com Simple2D demos v1.13 need support for IWICImagingFactory2, CLSID '{317d06e8-5f24-433d-bdf7-79ce68d8abc2}'
-  45723  Occlusion queries always flush (Overwatch)
-  45782  mono needs unimplemented function api-ms-win-crt-math-l1-1-0.dll._Cbuild
-  45816  Orbit Profile crashes in Unhandled exception: unimplemented function msvcp140.dll.?_Winerror_message@std@@YAKKPADK@Z called
-  45830  Fifa 19 Demo refuses to launch past the launcher
-  45880  Multiple PC/SC applications crash on unimplemented function winscard.dll.SCardCancel (Aruba key, SmartCard test apps)
-  45891  Steam crashes at launch with "GetQueuedCompletionStatusEx() failed: 120" error
-  45910  nProtect GameGuard used by multiple MMORPG games crashes on unimplemented function wevtapi.dll.EvtExportLog (4Story, Phantasy Star Online 2)
-  45915  x64dbg/x32dbg crash during shutdown on unimplemented function msvcr120.dll.??0_Scoped_lock@_NonReentrantPPLLock@details@Concurrency@@QAE@AAV123@@Z
-  45923  Regression in register_avicap_devices
-  45928  Microsoft Windows SDK for Windows 10 (.NET 4.6) installer fails, claims KB3118401 is needed ('ucrtbase.dll' missing version resource, >= 10.0.0)
-  45942  AnyRail6: crashing when open Options
 
-----------------------------------------------------------------
+*** Direct3D
 
-Changes since 3.17:
+- Initial support for Direct3D 12 is implemented. Direct3D 12 support
+  requires the vkd3d library, and a Vulkan-capable graphics card.
 
-Akihiro Sagawa (3):
-      po: Update Japanese translation.
-      winex11: Fix a compiler warning when building without vulkan support.
-      gdi32: Use the helper function to order the points of a rectangle.
+- The Multi-Threaded Command Stream feature is enabled by default.
 
-Alex Henrie (3):
-      oleaut32: Add DECLSPEC_HOTPATCH to SysAllocStringByteLen.
-      d3dcompiler_43/tests: Avoid using GCC's typeof extension.
-      user32: Add stub for SetWindowCompositionAttribute.
+- OpenGL core contexts are always used by default when available. In
+  the previous release, these were already used by default for
+  Direct3D 10 and 11 applications on AMD and Intel graphics
+  cards. That has been extended to all graphics cards, and all
+  versions of Direct3D before 12.
 
-Alexandre Julliard (14):
-      user32: Use height from font metrics for empty text runs in TabbedTextOut().
-      msvcr120: Avoid duplicate spec file entry for creal().
-      kernel32: Make a copy of the process environment in CreateProcessW().
-      kernel32: Pass the full filename to winevdm.exe in CreateProcessW().
-      ntdll: Implement RtlCreateProcessParametersEx().
-      opengl32: Update to the current OpenGL spec.
-      ntdll: Add a wrapper to call the unhandled exception filter.
-      ntdll: Implement RtlSetUnhandledExceptionFilter().
-      wineconsole: Try harder to get a scalable font.
-      wineconsole: Set a proper default for the font weight.
-      wineconsole: Scale font with system DPI.
-      server: Also return CPU type in the mapping image information.
-      kernel32: Use the CPU type from the image information in CreateProcess().
-      kernel32: Build a standard process parameters structure in CreateProcess().
+- Among others, the following notable Direct3D 10 and 11 features are
+  implemented:
+  - Multi-sample textures and views, as well as multi-sample resolves.
+  - Per-sample fragment shading.
+  - Support for 1D textures.
+  - Draws without render target views or depth/stencil views.
+  - Multiple viewports and scissor rectangles per draw.
+  - Depth clipping control.
+  - Depth bias clamping.
+  - Stream output without geometry shaders.
+  - Several more capability queries.
+  - Several more resource formats.
 
-Andrew Wesie (3):
-      wined3d: Use PBO for read-only staging textures.
-      wined3d: Unify the texture download functions.
-      wined3d: Add fast-path for texture download blit.
+- The "depth bias clamping" feature mentioned above requires the
+  ARB_polygon_offset_clamp/EXT_polygon_offset_clamp OpenGL
+  extension. All Direct3D 10+ capable hardware should be able to
+  support that extension, but it has come to our attention that some
+  NVIDIA "Legacy Drivers" do not. We encourage affected users to
+  explore whether the Free Software Nouveau drivers meet their needs.
 
-Aurimas Fišeras (1):
-      po: Update Lithuanian translation.
+- Several Direct3D 11 interfaces have been updated to version 11.2,
+  and several DXGI interfaces have been update to version 1.6. This
+  allows applications requiring those newer interfaces to start
+  working.
 
-Bernhard Übelacker (3):
-      user32: Let nulldrv return some dummy monitor information.
-      services/tests: Retrieve monitor information when executed as service.
-      services/tests: Change pipe type from byte to message.
+- The first steps towards more fine-grained locking in the Direct3D
+  implementation have been taken. This will be an ongoing effort to
+  take better advantage of modern high core count CPUs.
 
-Brendan McGrath (1):
-      quartz/filtergraph: Iterate over all source pins in ExploreGraph().
+- Support for using the correct swap interval is implemented, for both
+  DXGI and DirectDraw applications.
 
-Byeong-Sik Jeon (3):
-      gdi32: Improves the subpixel rendering availability for FreeType 2.8.1+.
-      gdi32: Remove unnecessary operations.
-      gdi32: Move the 'if' branch out of the loop.
+- Application-configurable frame latency is implemented for Direct3D
+  9Ex and DXGI applications.
 
-Dmitry Timoshkov (8):
-      user32/tests: Add a test for custom dialog control data.
-      wrc: Fix generation of custom dialog control data.
-      user32: Fix the pointer to custom dialog control data.
-      ntdll/tests: Add more tests for setting delete disposition on a non-empty directory.
-      crypt32: Implement CryptUnregisterOIDInfo.
-      crypt32: Implement CryptRegisterOIDInfo.
-      crypt32/tests: Add some tests for registering OID info.
-      crypt32: Read OID information from the registry.
+- S3TC-compressed 3D textures are supported. S3TC-compressed 2D
+  textures were already supported, provided the OpenGL drivers
+  supported them.
 
-Hans Leidekker (17):
-      msi: Fix a couple of memory leaks (Valgrind).
-      msi: Add support for control event DirectoryListNew.
-      winhttp: Implement the WINHTTP_FLAG_ESCAPE_* flags.
-      wmic: Write errors to stderr.
-      wmic: Use DOS line endings.
-      wmic: Output Unicode text with BOM when redirected.
-      wmic: Don't write an extra newline at the end.
-      wmic: Pad output with spaces.
-      wbemprox: Don't return an error from IWbemClassObject::BeginMethodEnumeration if the object has an iterator.
-      wbemprox: Make name and value optional in IWbemClassObject::Next.
-      wbemdisp: Generate DISPIDs for object methods too.
-      msi: Rename msi_reset_folders to msi_reset_source_folders.
-      msi: Remove unused fields from MSIFOLDER.
-      msi/tests: Add tests for directory properties.
-      msi: Fix memory leaks.
-      msi: Fix the remote case for MsiViewModify(MSIMODIFY_UPDATE).
-      wbemdisp: Implement ISWbemPropertySet::get_Count.
+- When the ARB_query_buffer_object OpenGL extension is available,
+  query results can be polled with lower latency, resulting in a
+  modest performance improvement in specific cases.
 
-Henri Verbeet (4):
-      d2d1: Do not release the "dxgi_target" interface on d2d_bitmap_render_target_init() error paths.
-      wined3d: Also default to OpenGL core contexts on NVIDIA GPUs.
-      wined3d: Add GPU information for NVIDIA GeForce GT 720.
-      d3d11/tests: Add depth bias clamp tests.
+- Validation of Direct3D 8 and 9 resource pool and usage restrictions,
+  as well as blit restrictions, has been improved.
 
-Huw D. M. Davies (4):
-      wineps: Use a tri-state to describe the passthrough state.
-      wineps: Add helpers to enter and leave passthrough.
-      wineps: Leave passthrough mode at the end of the page.
-      winedbg: Ignore ^C events in the parent 32-bit process.
+- The Direct3D graphics card database recognizes more graphics cards.
 
-Jacek Caban (12):
-      mshtml: Use set_document_mode in process_document_response_headers.
-      winhttp: Move cookie_t declaration to cookie.c.
-      winhttp: Make cookie access thread safe.
-      winhttp: Make accessing session credential handle thread safe.
-      msvcrt: Use memmove to copy memory in wmemcpy_s.
-      msvcrt: Use memmove to copy memory in memcpy_s.
-      hostname: Use GetComputerNameW to get hostname.
-      configure: Get rid of no longer used SOCKET_LIBS.
-      mshtml: Support registry configuration for maximal allowed compatibility mode.
-      mlang: Register codepages info in registry.
-      credui: Correctly check for duplicated username entries in CredDialogFillUsernameCombo.
-      ntdll/tests: Use FILE_INFORMATION_CLASS values instead of hardcoded numbers.
+- New HKEY_CURRENT_USER\Software\Wine\Direct3D registry keys:
+  - "MultisampleTextures" (REG_DWORD)
+    Enable (0x1, default) or disable (0x0) support for multi-sample
+    textures.
+  - "Renderer" (REG_SZ)
+    The backend API to target. Possible values are "gl" (default) for
+    OpenGL and "gdi" for GDI.
 
-Józef Kucia (21):
-      wined3d: Expose viewport array index capability in wined3d_caps.
-      d3d11: Implement D3D11_FEATURE_D3D11_OPTIONS3.
-      d3d11/tests: Add test for layered rendering without geometry shader.
-      wined3d: Add core context support for A8_UNORM render targets.
-      d3d11/tests: Add test for rendering to A8_UNORM texture.
-      wined3d: Factor out shader_copy_signatures_from_shader_desc().
-      wined3d: Set load_local_constsF in shader_set_function().
-      wined3d: Pass device to shader_set_function().
-      wined3d: Call shader_set_function() separately from shader_init().
-      wined3d: Get rid of shader_get_shader_type().
-      wined3d: Allow stream output with domain shaders.
-      wined3d: Use version from byte code for pass-through geometry shaders.
-      wined3d: Validate byte code pointer in shader_init().
-      winevulkan: Remove parsing of validextensionstructs.
-      winevulkan: Check if conversion is required for pNext chains.
-      winevulkan: Parse enum value aliases.
-      winevulkan: Update vk.xml to 1.1.86.
-      wined3d: Accept full DXBC.
-      d3d11: Pass full DXBC to wined3d.
-      wined3d: Drop support for pre-parsed shader DXBC chunks.
-      wined3d: Set texture swizzle for texture views.
+- Deprecated HKEY_CURRENT_USER\Software\Wine\Direct3D registry key:
+  - "DirectDrawRenderer"
+    This has been superseded by the "Renderer" setting above.
 
-Kim Malmo (1):
-      po: Update Norwegian translation.
+- Removed HKEY_CURRENT_USER\Software\Wine\Direct3D registry key:
+  - "StrictDrawOrdering"
+    This feature was previously deprecated in favor of the
+    multi-threaded command stream feature, and has been completely
+    removed.
 
-Louis Lenders (3):
-      wevtapi: Fix typo in spec file.
-      ucrtbase: Add version resource.
-      prntvtp: Add stub for PTOpenProviderEx.
 
-Marcus Meissner (2):
-      devenum: Fixed size to capGetDriverDescriptionW (Coverity).
-      dxgi: Fixed typo in width/height (Coverity).
+*** Graphics
 
-Matteo Bruni (5):
-      wined3d: Dump buffer descriptor in wined3d_buffer_create().
-      wined3d: Dump view descriptor contents.
-      wined3d: Invalidate shader resource bindings after binding texture view.
-      wined3d: Add fallback to EXT_polygon_offset_clamp.
-      wined3d: Avoid using GL_MAX_VARYING_FLOATS_ARB in core profile contexts.
+- A complete Vulkan driver is implemented, using the host Vulkan
+  libraries under X11, or MoltenVK on macOS.
 
-Michael Stefaniuc (2):
-      gdi32: Avoid a variable holding an ARRAY_SIZE.
-      gdi32: Use the ARRAY_SIZE() macro.
+- A builtin vulkan-1 loader is provided as an alternative to the SDK
+  loader.
 
-Michał Janiszewski (1):
-      winevulkan: Remove unused variable in make_vulkan.
+- Icons in PNG format are supported, enabling loading high-resolution
+  256x256 icons.
 
-Nikolay Sivov (30):
-      d2d1/tests: Add some tests for compatible target size handling.
-      d2d1: Implement d2d_device_context_ID2D1DeviceContext_CreateBitmap().
-      d2d1: Allow creating zero-sized bitmaps.
-      d2d1: Default to pre-multiplied alpha mode in CreateBitmapFromDxgiSurface().
-      d2d1: Implement d2d_device_context_SetTarget() for bitmap targets.
-      opcservices: Improve error handling (Coverity).
-      opcservices: Add missing error check (Coverity).
-      opcservices: Fix potential uninitialized memory access (Coverity).
-      opcservices/tests: Add missing return value test (Coverity).
-      shell32/shelllink: Fix NULL path handling in SetIconLocation().
-      d2d1: Implement CreateDeviceContext().
-      d2d1: Fix bind flags used for bitmap resources.
-      d2d1: Set GDI compatible resource flag from bitmap options.
-      d2d1: Simplify target bitmap creation for DC target.
-      include: Add ID2D1CommandList and ID2D1CommandSink definition.
-      d2d1/tests: Add a test for BeginDraw() with locked WIC bitmap.
-      d2d1: Implement d2d_device_context_ID2D1DeviceContext_CreateBitmapFromWicBitmap().
-      d2d1: Implement D2D1MakeSkewMatrix().
-      d2d1: Use correct interpolation mode enum type member.
-      d2d1: Handle invalid interpolation mode in DrawBitmap().
-      d2d1: Partially implement d2d_device_context_ID2D1DeviceContext_DrawBitmap().
-      gdiplus: Fix input string tracing in GdipMeasureCharacterRanges().
-      wincodecs: Add IWICImagingFactory2 stub.
-      wincodecs: Add IWICPixelFormatInfo exports.
-      d2d1: Add a helper to set error state.
-      advapi32/tests: Test return SIDs for wellknown two-character names.
-      advapi32: Add WinCreatorOwnerRightsSid to wellknown list.
-      advapi32: Add a name for WinBuiltinAnyPackageSid.
-      d2d1: Check the context error state on entering d2d_device_context_DrawGlyphRun().
-      wincodecs/icoformat: Improve input data validation on decoder initialization.
+- The standard icons include a 256x256 version to take advantage of
+  the PNG support.
 
-Piotr Caban (5):
-      msvcr120: Added _Cbuild implementation.
-      msvcr120: Added creal implementation.
-      msvcr100: Added _Scoped_lock::_NonReentrantPPLLock class.
-      msvcp140: Added _Winerror_message implementation.
-      mshtml: Support retrieving command output in Exec(OLECMDID_OPTICAL_ZOOM).
+- Many Direct2D interfaces have been updated to version 1.2.
 
-Sebastian Lackner (1):
-      opengl32: Add wrappers for glDebugMessageCallback to handle calling convention differences.
+- New HKEY_CURRENT_USER\Software\Wine\Direct2D registry key:
+  - "max_version_factory" (REG_DWORD)
+    Limit the interface version of the ID2D1Factory interface to the
+    specified version. 0x0 for ID2D1Factory, 0x1 for ID2D1Factory1,
+    etc. By default there is no limit.
 
-Serge Gautherie (2):
-      credui: Use SecureZeroMemory().
-      ddraw: Get rid of a redundant assignment in ddraw7_GetDisplayMode().
+- Using an ARGB visual as default X11 visual is supported.
 
-Stefan Dösinger (1):
-      include: Add check macros needed for VS2017.
+- The old 16-bit DIB.DRV driver is implemented using the DIB engine.
 
-Zebediah Figura (27):
-      ntdll/tests: Use a temporary path in open_file_test().
-      ntdll/tests: Remove a superfluous helper.
-      ntdll/tests: Remove some unnecessary workarounds.
-      ntdll/tests: Get rid of test_iocompletion().
-      ntdll/tests: Add some tests for NtRemoveIoCompletionEx().
-      ntdll: Implement NtRemoveIoCompletionEx().
-      kernel32/tests: Add some tests for completion ports.
-      kernel32: Implement GetQueuedCompletionStatusEx().
-      devenum: Zero-initialize REGFILTERPINS struct.
-      makefiles: Only generate proxy code for the target architecture.
-      quartz/filtergraph: Don't prevent the same filter from being used multiple times in IGraphBuilder_Connect().
-      rpcrt4: Handle absense of RPC flags in call_stubless_func() thunk.
-      wined3d: Implement depth bias clamp.
-      d3d10core/tests: Add depth bias clamp tests.
-      widl: Allow all dimensions of an array to be sizeless.
-      widl: Check for positive array dimension when parsing array.
-      widl: Remove dead code.
-      widl: The default pointer attribute for an array is always ref.
-      widl: Properly handle nesting of pointers and arrays when parsing.
-      widl: Correctly generate headers for nested arrays and pointers.
-      rpcrt4/tests: Add some tests for nesting arrays and pointers.
-      widl: Fix detection of SAFEARRAY pointers when writing array pointers.
-      widl: Handle typedef'd arrays.
-      widl: Fix -Oicf marshalling of pointers to arrays.
-      rpcrt4: Handle non-ref pointers in calc_arg_size().
-      rpcrt4: Correctly handle simple ref pointers in calc_arg_size().
-      rpcrt4: Avoid clearing a NULL output parameter in client_do_args().
+- Polygon drawing in the DIB engine is much faster for large polygons.
 
-Zhiyi Zhang (2):
-      rsaenh: Move PKCS1 padding and unpadding functions.
-      rsaenh: Implement RSA OAEP.
+- A0, A1 and A2 paper sizes are supported for generic printers.
+
+- Arrows are supported in GdiPlus.
+
+
+*** Kernel
+
+- Support for running DOS binaries under Wine is removed. When
+  execution of a DOS binary is requested, an external DOSBox instance
+  is launched. This doesn't apply to Win16 binaries, which are still
+  supported internally.
+
+- All the CPU control and debug registers can be accessed by kernel
+  drivers, including on 64-bit.
+
+- Events, semaphores, mutexes and timers are implemented in kernel
+  mode for device drivers.
+
+- The WaitOnAddress synchronization primitives are supported.
+
+- Reported processor information correctly distinguishes logical and
+  physical CPU cores to support hyper-threading.
+
+- Detailed BIOS information can be queried on Linux platforms.
+
+- The various debugger APIs support manipulating a 32-bit Wow64
+  process from a 64-bit process context.
+
+- Application settings, compatibility information and execution levels
+  are recognized in application manifests.
+
+- The various file I/O completion modes are implemented.
+
+- Debug registers are supported on NetBSD.
+
+
+*** User interface
+
+- The infrastructure for setting DPI awareness and scaling of non
+  DPI-aware applications is implemented. However, actual scaling of
+  window contents is only supported on Android at this point.
+  Scaling is disabled by default and can be enabled by setting the
+  "DpiScalingVer" value under HKEY_CURRENT_USER\Control Panel\Desktop.
+
+- Window class redirection is supported, enabling support of Common
+  Controls version 6 features for standard USER controls like buttons.
+
+- The standard USER controls Button, Listbox, Combobox, Edit and
+  Static support version 6 features, including theming.
+
+- The standard Task Dialog is implemented, including support for
+  icons, hyperlinks, progress bars, and various other UI elements.
+
+- Cue banners are supported in version 6 of the Edit control.
+
+
+*** Desktop integration
+
+- Exporting MIME-type file associations to the native desktop can be
+  disabled with a checkbox under the Desktop Integration tab in
+  winecfg.  It can be configured programmatically by setting the
+  "Enable" value under
+  HKEY_CURRENT_USER\Software\Wine\FileOpenAssociations.
+
+- The File Dialog can display file properties like size, times and
+  attributes.
+
+- The File Dialog optionally shows the Places toolbar on the left-hand
+  side.
+
+- The shell folder Public is used instead of AllUsersProfile to follow
+  the behavior of recent Windows versions.
+
+- The shell File Browser supports keyboard shortcuts to rename (F2
+  key) and delete (Delete key) shell folders.
+
+- Many standard icons are added to the Shell library.
+
+- Shell Autocompletion is supported.
+
+- In desktop mode the taskbar won't be displayed on top of fullscreen
+  windows.
+
+- Additional names are provided for standard cursors to better match
+  existing X11 cursor themes.
+
+
+*** Input devices
+
+- HID game controllers are supported in the XInput and Raw Input APIs.
+
+- An SDL driver is implemented to make SDL game controllers
+  available through the HID interface.
+
+
+*** Internet and networking
+
+- JScript has an EcmaScript compliant mode, which supports a number of
+  features not available in legacy mode.
+
+- JavaScript property accessors are supported.
+
+- HTML style object is rewritten to support standard-compliant mode.
+
+- HTML documents respect X-UA-Compatible HTTP header, allowing web
+  pages to request specific compatibility mode. The
+  HKEY_CURRENT_USER\Software\Wine\MSHTML\CompatMode key may be used to
+  override the requested mode.
+
+- MSHTML supports non-HTML elements, allowing limited SVG support.
+
+- A number of new HTML APIs are supported.
+
+- The proxy server can be configured through the Internet Control
+  Panel applet.
+
+- Stream I/O is implemented in WebServices.
+
+- The Web Services on Devices API (WSDAPI) is implemented, including
+  sending and receiving the various message types.
+
+- More system information is reported through WBEM, including CPU,
+  BIOS, video controller, and network adapter properties.
+
+
+*** Cryptography
+
+- Asymmetric encryption keys, as well as RSA and ECDSA signature
+  verification are supported.
+
+- The GCM and ECB encryption chaining modes are supported.
+
+- Optimal Asymmetric Encryption Padding (OAEP) is supported in RSA
+  encryption.
+
+- A Kerberos security provider is implemented, supporting Kerberos
+  authentication.
+
+- A selection dialog for public key certificates is implemented.
+
+- If available, GnuTLS is used on macOS in preference to the
+  CommonCrypto framework.
+
+
+*** Text and fonts
+
+- Character tables are based on version 11.0.0 of the Unicode Standard.
+
+- The new subpixel font rendering of FreeType >= 2.8.1 is supported.
+
+- When a font face is missing, FontConfig is queried to provide
+  possible substitutions.
+
+- The font selected in the console emulator properly scales with the
+  display DPI.
+
+- Memory font resources are supported in DirectWrite.
+
+- The builtin Wingdings font contains clock images.
+
+
+*** Audio
+
+- The Windows Media Player interfaces are implemented and support
+  media playback.
+
+- An MP3 decoder is provided as DirectX Media Object.
+
+
+*** macOS
+
+- The preloader is implemented on macOS, for better address space
+  layout compatibility.
+
+- The Command key can be mapped to Ctrl, by setting the
+  "LeftCommandIsCtrl" or "RightCommandIsCtrl" values under
+  HKEY_CURRENT_USER\Software\Wine\Mac Driver.
+
+- The App Nap energy-saving feature is disabled by default in GUI
+  processes. It can be re-enabled by setting the "EnableAppNap" value
+  under HKEY_CURRENT_USER\Software\Wine\Mac Driver.
+
+
+*** Android
+
+- Setting the mouse cursor is supported using the APIs available in
+  Android >= 7.
+
+- The new version of the Android graphics buffer allocator API is
+  supported, to enable graphics support on Android >= 8.
+
+- Android x86-64 platforms are supported also in 64-bit mode, however
+  WoW64 mode is not supported yet in the WineHQ packages.
+
+
+*** ARM platforms
+
+- Stubless COM proxies are implemented on ARM.
+
+- The Windows calling convention for variadic functions is supported
+  on ARM64.
+
+- Exception handling and debugging is better supported on ARM64
+  platforms.
+
+- The MinGW toolchain is supported for cross-compilation to ARM64.
+
+
+*** Built-in applications
+
+- The Ping program provides actual pinging functionality using
+  IcmpSendEcho.
+
+- The SchTasks task scheduler program can create and delete tasks.
+
+- The RegEdit registry editor has an improved hex editor for binary
+  values.
+
+- FOR loops are properly handled in the Command Interpreter.
+
+- The XCopy program supports the /k (keep attributes) option.
+
+
+*** Internationalization
+
+- The Japanese 106 keyboard is properly supported.
+
+- Translation of timezone names is supported.
+
+- There is a partial translation to the Sinhala language.
+
+- More locales are supported in the Resource Compiler (wrc) and
+  Message Compiler (wmc).
+
+
+*** Development tools
+
+- winedbg supports debugging WoW64 processes.
+
+- In gdb proxy mode, winedbg supports a --port option to specify the
+  port used to connect to gdb.
+
+- winegcc uses better heuristics for finding the appropriate lib
+  directory for 32/64-bit cross-compiles.
+
+- winegcc supports building native subsystem libraries.
+
+- winegcc also looks for includes in the top-level include directory
+  of the installation prefix.
+
+- winebuild supports a -mfpu option for specifying the FPU
+  architecture on ARM platforms.
+
+- winedump supports dumping SLTG-format typelibs.
+
+
+*** IDL compiler
+
+- Application Configuration Files (ACF) are supported.
+
+- Asynchronous interfaces are supported.
+
+- Type and method serialization using encode/decode attributes is
+  supported.
+
+- The defaultvalue() attribute is supported for pointer types.
+
+- Generated files are always specific to the target platform. The
+  target can be specified the same way as with the other tools,
+  using the cpu-manufacturer-os platform specification.
+
+- Nesting of pointers and arrays works correctly.
+
+- Correct size and alignment are generated for encapsulated unions.
+
+- The __int32 type is supported.
+
+- The -robust command line option is recognized (but ignored) for
+  compatibility with the Microsoft IDL compiler.
+
+- Multiple typelibs can be generated into a single resource file.
+
+
+*** .NET
+
+- 32-bit CIL-only .NET binaries are supported on 64-bit.
+
+- The Mono engine is updated to version 4.7.5 with some upstream Mono
+  fixes.
+
+
+*** RPC/COM
+
+- The typelib marshaller is reimplemented. It generates format strings
+  and then uses the standard NDR marshalling routines; this way it
+  also works on 64-bit and ARM platforms.
+
+
+*** Installers
+
+- MSI custom actions run in a separate process, enabling proper
+  support for mixed 32/64-bit installers.
+
+- Deferred installation actions are supported in MSI.
+
+
+*** Build infrastructure
+
+- The test framework supports building helper dlls inside a test, to
+  allow testing features that require loading an external library.
+
+- The test framework supports testing Windows kernel drivers.
+
+- It is possible to build and run a WoW64 tree from inside the Wine
+  source directory. Previously an out-of-tree build was required.
+
+- A .editorconfig file is provided with the recommended indentation
+  parameters.
+
+
+*** Miscellaneous
+
+- The Task Scheduler service and APIs are implemented.
+
+- The Windows Management Instrumentation service is implemented.
+
+- The OPC Services (Open Packaging Conventions, used for Microsoft
+  Office XML files) library is implemented.
+
+- The HKEY_PERFORMANCE_DATA magic registry key is partially
+  implemented.
+
+
+*** New external dependencies
+
+- The Vulkan library is used to implement the Vulkan graphics driver.
+
+- The Vkd3d library is used to implement Direct3D 12 on top of Vulkan.
+
+- The SDL library is used to support game controllers.
+
+- The GSSAPI library is used to implement Kerberos authentication.
+
 
 --
 Alexandre Julliard

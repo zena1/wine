@@ -786,11 +786,11 @@ static void *cupshandle;
     DO_FUNC(cupsFreeOptions); \
     DO_FUNC(cupsGetDests); \
     DO_FUNC(cupsGetOption); \
-    DO_FUNC(cupsGetPPD); \
     DO_FUNC(cupsParseOptions); \
     DO_FUNC(cupsPrintFile)
 #define CUPS_OPT_FUNCS \
     DO_FUNC(cupsGetNamedDest); \
+    DO_FUNC(cupsGetPPD); \
     DO_FUNC(cupsGetPPD3); \
     DO_FUNC(cupsLastErrorString)
 
@@ -798,6 +798,7 @@ static void *cupshandle;
 CUPS_FUNCS;
 #undef DO_FUNC
 static cups_dest_t * (*pcupsGetNamedDest)(http_t *, const char *, const char *);
+static const char *  (*pcupsGetPPD)(const char *);
 static http_status_t (*pcupsGetPPD3)(http_t *, const char *, time_t *, char *, size_t);
 static const char *  (*pcupsLastErrorString)(void);
 
@@ -1572,6 +1573,8 @@ static void old_printer_check( BOOL delete_phase )
     EnumPrintersW( PRINTER_ENUM_LOCAL, NULL, 5, (LPBYTE)pi, needed, &needed, &num );
     for (i = 0; i < num; i++)
     {
+        if (!pi[i].pPortName) continue;
+
         if (strncmpW( pi[i].pPortName, CUPS_Port, strlenW(CUPS_Port) ) &&
             strncmpW( pi[i].pPortName, LPR_Port, strlenW(LPR_Port) ))
             continue;
@@ -8206,8 +8209,8 @@ end:
  */
 static BOOL schedule_lpr(LPCWSTR printer_name, LPCWSTR filename)
 {
+    static const WCHAR fmtW[] = {'l','p','r',' ','-','P','\'','%','s','\'',0};
     WCHAR *cmd;
-    const WCHAR fmtW[] = {'l','p','r',' ','-','P','\'','%','s','\'',0};
     BOOL r;
 
     cmd = HeapAlloc(GetProcessHeap(), 0, strlenW(printer_name) * sizeof(WCHAR) + sizeof(fmtW));

@@ -40,6 +40,7 @@
 #include "winuser.h"
 #include "dbt.h"
 #include "winreg.h"
+#include "setupapi.h"
 #include "ddk/csq.h"
 #include "ddk/ntddk.h"
 #include "ddk/ntifs.h"
@@ -102,6 +103,16 @@ struct wine_driver
     SERVICE_STATUS_HANDLE service_handle;
 };
 
+struct device_interface
+{
+    struct wine_rb_entry entry;
+
+    UNICODE_STRING symbolic_link;
+    DEVICE_OBJECT *device;
+    GUID interface_class;
+    BOOL enabled;
+};
+
 static NTSTATUS get_device_id( DEVICE_OBJECT *device, BUS_QUERY_ID_TYPE type, WCHAR **id );
 
 static int wine_drivers_rb_compare( const void *key, const struct wine_rb_entry *entry )
@@ -113,6 +124,16 @@ static int wine_drivers_rb_compare( const void *key, const struct wine_rb_entry 
 }
 
 static struct wine_rb_tree wine_drivers = { wine_drivers_rb_compare };
+
+static int interface_rb_compare( const void *key, const struct wine_rb_entry *entry)
+{
+    const struct device_interface *iface = WINE_RB_ENTRY_VALUE( entry, const struct device_interface, entry );
+    const UNICODE_STRING *k = key;
+
+    return RtlCompareUnicodeString( k, &iface->symbolic_link, FALSE );
+}
+
+static struct wine_rb_tree device_interfaces = { interface_rb_compare };
 
 static CRITICAL_SECTION drivers_cs;
 static CRITICAL_SECTION_DEBUG critsect_debug =
@@ -1321,33 +1342,72 @@ NTSTATUS WINAPI IoDeleteSymbolicLink( UNICODE_STRING *name )
     return status;
 }
 
+static NTSTATUS create_device_symlink( DEVICE_OBJECT *device, UNICODE_STRING *symlink_name )
+{
+    UNICODE_STRING device_nameU;
+    WCHAR *device_name;
+    ULONG len = 0;
+    NTSTATUS ret;
+
+    ret = IoGetDeviceProperty( device, DevicePropertyPhysicalDeviceObjectName, 0, NULL, &len );
+    if (ret != STATUS_BUFFER_TOO_SMALL)
+        return ret;
+
+    device_name = heap_alloc( len );
+    ret = IoGetDeviceProperty( device, DevicePropertyPhysicalDeviceObjectName, len, device_name, &len );
+    if (ret)
+    {
+        heap_free( device_name );
+        return ret;
+    }
+
+    RtlInitUnicodeString( &device_nameU, device_name );
+    ret = IoCreateSymbolicLink( symlink_name, &device_nameU );
+    heap_free( device_name );
+    return ret;
+}
 
 /***********************************************************************
  *           IoSetDeviceInterfaceState   (NTOSKRNL.EXE.@)
  */
 NTSTATUS WINAPI IoSetDeviceInterfaceState( UNICODE_STRING *name, BOOLEAN enable )
 {
-    const WCHAR DeviceClassesW[] = {'\\','R','E','G','I','S','T','R','Y','\\',
+    static const WCHAR DeviceClassesW[] = {'\\','R','E','G','I','S','T','R','Y','\\',
         'M','a','c','h','i','n','e','\\','S','y','s','t','e','m','\\',
         'C','u','r','r','e','n','t','C','o','n','t','r','o','l','S','e','t','\\',
         'C','o','n','t','r','o','l','\\',
         'D','e','v','i','c','e','C','l','a','s','s','e','s','\\',0};
-    const WCHAR controlW[] = {'C','o','n','t','r','o','l',0};
-    const WCHAR linkedW[] = {'L','i','n','k','e','d',0};
-    const WCHAR slashW[] = {'\\',0};
-    const WCHAR hashW[] = {'#',0};
+    static const WCHAR controlW[] = {'C','o','n','t','r','o','l',0};
+    static const WCHAR linkedW[] = {'L','i','n','k','e','d',0};
+    static const WCHAR slashW[] = {'\\',0};
+    static const WCHAR hashW[] = {'#',0};
 
     size_t namelen = name->Length / sizeof(WCHAR);
     DEV_BROADCAST_DEVICEINTERFACE_W *broadcast;
+    struct device_interface *iface;
     HANDLE iface_key, control_key;
     OBJECT_ATTRIBUTES attr = {0};
+    struct wine_rb_entry *entry;
     WCHAR *path, *refstr, *p;
     UNICODE_STRING string;
+    DWORD data = enable;
     NTSTATUS ret;
-    size_t len;
     GUID class;
+    ULONG len;
 
     TRACE("(%s, %d)\n", debugstr_us(name), enable);
+
+    entry = wine_rb_get( &device_interfaces, name );
+    if (!entry)
+        return STATUS_OBJECT_NAME_NOT_FOUND;
+
+    iface = WINE_RB_ENTRY_VALUE( entry, struct device_interface, entry );
+
+    if (!enable && !iface->enabled)
+        return STATUS_OBJECT_NAME_NOT_FOUND;
+
+    if (enable && iface->enabled)
+        return STATUS_OBJECT_NAME_EXISTS;
 
     refstr = memrchrW(name->Buffer + 4, '\\', namelen - 4);
 
@@ -1374,22 +1434,37 @@ NTSTATUS WINAPI IoSetDeviceInterfaceState( UNICODE_STRING *name, BOOLEAN enable 
     attr.ObjectName = &string;
     RtlInitUnicodeString( &string, path );
     ret = NtOpenKey( &iface_key, KEY_CREATE_SUB_KEY, &attr );
-    if (!ret)
+    heap_free(path);
+    if (ret)
+        return ret;
+
+    attr.RootDirectory = iface_key;
+    RtlInitUnicodeString( &string, controlW );
+    ret = NtCreateKey( &control_key, KEY_SET_VALUE, &attr, 0, NULL, 0, NULL );
+    NtClose( iface_key );
+    if (ret)
+        return ret;
+
+    RtlInitUnicodeString( &string, linkedW );
+    ret = NtSetValueKey( control_key, &string, 0, REG_DWORD, &data, sizeof(data) );
+    if (ret)
     {
-        attr.RootDirectory = iface_key;
-        RtlInitUnicodeString( &string, controlW );
-        ret = NtCreateKey( &control_key, KEY_SET_VALUE, &attr, 0, NULL, 0, NULL );
-        if (!ret)
-        {
-            DWORD data = enable;
-            RtlInitUnicodeString( &string, linkedW );
-            ret = NtSetValueKey( control_key, &string, 0, REG_DWORD, &data, sizeof(data) );
-            NtClose( control_key );
-        }
-        NtClose( iface_key );
+        NtClose( control_key );
+        return ret;
     }
 
-    heap_free( path );
+    if (enable)
+        ret = create_device_symlink( iface->device, name );
+    else
+        ret = IoDeleteSymbolicLink( name );
+    if (ret)
+    {
+        NtDeleteValueKey( control_key, &string );
+        NtClose( control_key );
+        return ret;
+    }
+
+    iface->enabled = enable;
 
     len = offsetof(DEV_BROADCAST_DEVICEINTERFACE_W, dbcc_name[namelen + 1]);
 
@@ -1673,6 +1748,123 @@ NTSTATUS WINAPI IoQueryDeviceDescription(PINTERFACE_TYPE itype, PULONG bus, PCON
 {
     FIXME( "(%p %p %p %p %p %p %p %p)\n", itype, bus, ctype, cnum, ptype, pnum, callout, context);
     return STATUS_NOT_IMPLEMENTED;
+}
+
+
+static NTSTATUS get_instance_id(DEVICE_OBJECT *device, WCHAR **instance_id)
+{
+    WCHAR *id, *ptr;
+    NTSTATUS status;
+
+    status = get_device_id( device, BusQueryInstanceID, &id );
+    if (status != STATUS_SUCCESS) return status;
+
+    struprW( id );
+    for (ptr = id; *ptr; ptr++)if (*ptr == '\\') *ptr = '#';
+
+    *instance_id = id;
+    return STATUS_SUCCESS;
+}
+
+
+/*****************************************************
+ *           IoRegisterDeviceInterface(NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI IoRegisterDeviceInterface(DEVICE_OBJECT *device, const GUID *class_guid, UNICODE_STRING *reference_string, UNICODE_STRING *symbolic_link)
+{
+    WCHAR *instance_id;
+    NTSTATUS status = STATUS_SUCCESS;
+    HDEVINFO infoset;
+    WCHAR *referenceW = NULL;
+    SP_DEVINFO_DATA devInfo;
+    SP_DEVICE_INTERFACE_DATA infoData;
+    SP_DEVICE_INTERFACE_DETAIL_DATA_W *data;
+    DWORD required;
+    BOOL rc;
+    struct device_interface *iface;
+
+    TRACE( "(%p, %s, %s, %p)\n", device, debugstr_guid(class_guid), debugstr_us(reference_string), symbolic_link );
+
+    if (reference_string != NULL)
+        referenceW = reference_string->Buffer;
+
+    infoset = SetupDiGetClassDevsW( class_guid, referenceW, NULL, DIGCF_DEVICEINTERFACE );
+    if (infoset == INVALID_HANDLE_VALUE) return STATUS_UNSUCCESSFUL;
+
+    status = get_instance_id( device, &instance_id );
+    if (status != STATUS_SUCCESS) return status;
+
+    devInfo.cbSize = sizeof( devInfo );
+    rc = SetupDiCreateDeviceInfoW( infoset, instance_id, class_guid, NULL, NULL, 0, &devInfo );
+    if (rc == 0)
+    {
+        if (GetLastError() == ERROR_DEVINST_ALREADY_EXISTS)
+        {
+            DWORD index = 0;
+            DWORD size = strlenW(instance_id) + 2;
+            WCHAR *id = HeapAlloc( GetProcessHeap(), 0, size * sizeof(WCHAR) );
+            do
+            {
+                rc = SetupDiEnumDeviceInfo( infoset, index, &devInfo );
+                if (rc && IsEqualGUID( &devInfo.ClassGuid, class_guid ))
+                {
+                    BOOL check;
+                    check = SetupDiGetDeviceInstanceIdW( infoset, &devInfo, id, size, &required );
+                    if (check && strcmpW( id, instance_id ) == 0)
+                        break;
+                }
+                index++;
+            } while (rc);
+
+            HeapFree( GetProcessHeap(), 0, id );
+            if (!rc)
+            {
+                HeapFree( GetProcessHeap(), 0, instance_id );
+                return STATUS_UNSUCCESSFUL;
+            }
+        }
+        else
+        {
+            HeapFree( GetProcessHeap(), 0, instance_id );
+            return STATUS_UNSUCCESSFUL;
+        }
+    }
+    HeapFree( GetProcessHeap(), 0, instance_id );
+
+    infoData.cbSize = sizeof( infoData );
+    rc = SetupDiCreateDeviceInterfaceW( infoset, &devInfo, class_guid, NULL, 0, &infoData );
+    if (!rc) return STATUS_UNSUCCESSFUL;
+
+    required = 0;
+    SetupDiGetDeviceInterfaceDetailW( infoset, &infoData, NULL, 0, &required, NULL );
+    if (required == 0) return STATUS_UNSUCCESSFUL;
+
+    data = HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY , required );
+    data->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
+
+    rc = SetupDiGetDeviceInterfaceDetailW( infoset, &infoData, data, required, NULL, NULL );
+    if (!rc)
+    {
+        HeapFree( GetProcessHeap(), 0, data );
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    data->DevicePath[1] = '?';
+    TRACE( "Device path %s\n",debugstr_w(data->DevicePath) );
+
+    iface = heap_alloc_zero( sizeof(struct device_interface) );
+    iface->device = device;
+    iface->interface_class = *class_guid;
+    RtlCreateUnicodeString(&iface->symbolic_link, data->DevicePath);
+    if (symbolic_link)
+        RtlCreateUnicodeString( symbolic_link, data->DevicePath);
+
+    if (wine_rb_put( &device_interfaces, &iface->symbolic_link, &iface->entry ))
+        ERR( "failed to insert interface %s into tree\n", debugstr_us(&iface->symbolic_link) );
+
+    HeapFree( GetProcessHeap(), 0, data );
+
+    return status;
 }
 
 
@@ -2767,6 +2959,14 @@ VOID WINAPI KeInitializeDpc(PRKDPC Dpc, PKDEFERRED_ROUTINE DeferredRoutine, PVOI
 }
 
 /***********************************************************************
+ *          KeSetTargetProcessorDpc   (NTOSKRNL.EXE.@)
+ */
+VOID WINAPI KeSetTargetProcessorDpc(PRKDPC dpc, CCHAR number)
+{
+    FIXME("%p, %d stub\n", dpc, number);
+}
+
+/***********************************************************************
  *           READ_REGISTER_BUFFER_UCHAR   (NTOSKRNL.EXE.@)
  */
 VOID WINAPI READ_REGISTER_BUFFER_UCHAR(PUCHAR Register, PUCHAR Buffer, ULONG Count)
@@ -3210,8 +3410,7 @@ static HMODULE load_driver_module( const WCHAR *name )
 
         if ((rel = RtlImageDirectoryEntryToData( module, TRUE, IMAGE_DIRECTORY_ENTRY_BASERELOC, &size )))
         {
-            WINE_TRACE( "%s: relocating from %p to %p\n",
-                        wine_dbgstr_w(name), (char *)module - delta, module );
+            TRACE( "%s: relocating from %p to %p\n", wine_dbgstr_w(name), (char *)module - delta, module );
             end = (IMAGE_BASE_RELOCATION *)((char *)rel + size);
             while (rel < end - 1 && rel->SizeOfBlock)
             {
@@ -3270,7 +3469,7 @@ static HMODULE load_driver( const WCHAR *driver_name, const UNICODE_STRING *keyn
 
     if (RegOpenKeyW( HKEY_LOCAL_MACHINE, keyname->Buffer + 18 /* skip \registry\machine */, &driver_hkey ))
     {
-        WINE_ERR( "cannot open key %s, err=%u\n", wine_dbgstr_w(keyname->Buffer), GetLastError() );
+        ERR( "cannot open key %s, err=%u\n", wine_dbgstr_w(keyname->Buffer), GetLastError() );
         return NULL;
     }
 
@@ -3326,7 +3525,7 @@ static HMODULE load_driver( const WCHAR *driver_name, const UNICODE_STRING *keyn
     }
     RegCloseKey( driver_hkey );
 
-    WINE_TRACE( "loading driver %s\n", wine_dbgstr_w(str) );
+    TRACE( "loading driver %s\n", wine_dbgstr_w(str) );
 
     module = load_driver_module( str );
     HeapFree( GetProcessHeap(), 0, path );
@@ -3364,12 +3563,12 @@ static NTSTATUS WINAPI init_driver( DRIVER_OBJECT *driver_object, UNICODE_STRING
     TRACE_(relay)( "\1Ret  driver init %p (obj=%p,str=%s) retval=%08x\n",
                    driver_object->DriverInit, driver_object, wine_dbgstr_w(keyname->Buffer), status );
 
-    WINE_TRACE( "init done for %s obj %p\n", wine_dbgstr_w(driver_name), driver_object );
-    WINE_TRACE( "- DriverInit = %p\n", driver_object->DriverInit );
-    WINE_TRACE( "- DriverStartIo = %p\n", driver_object->DriverStartIo );
-    WINE_TRACE( "- DriverUnload = %p\n", driver_object->DriverUnload );
+    TRACE( "init done for %s obj %p\n", wine_dbgstr_w(driver_name), driver_object );
+    TRACE( "- DriverInit = %p\n", driver_object->DriverInit );
+    TRACE( "- DriverStartIo = %p\n", driver_object->DriverStartIo );
+    TRACE( "- DriverUnload = %p\n", driver_object->DriverUnload );
     for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-        WINE_TRACE( "- MajorFunction[%d] = %p\n", i, driver_object->MajorFunction[i] );
+        TRACE( "- MajorFunction[%d] = %p\n", i, driver_object->MajorFunction[i] );
 
     return status;
 }
@@ -3409,6 +3608,14 @@ NTSTATUS WINAPI ZwLoadDriver( const UNICODE_STRING *service_name )
     {
         CloseServiceHandle( (void *)service_handle );
         return STATUS_NO_MEMORY;
+    }
+
+    if (wine_rb_get( &wine_drivers, &drv_name ))
+    {
+        TRACE( "driver %s already loaded\n", debugstr_us(&drv_name) );
+        RtlFreeUnicodeString( &drv_name );
+        CloseServiceHandle( (void *)service_handle );
+        return STATUS_IMAGE_ALREADY_LOADED;
     }
 
     set_service_status( service_handle, SERVICE_START_PENDING, 0 );
@@ -3605,7 +3812,7 @@ static NTSTATUS send_power_irp( DEVICE_OBJECT *device, DEVICE_POWER_STATE power 
 static void handle_bus_relations( DEVICE_OBJECT *device )
 {
     static const WCHAR driverW[] = {'\\','D','r','i','v','e','r','\\',0};
-    WCHAR buffer[MAX_SERVICE_NAME + sizeof(servicesW)/sizeof(WCHAR)];
+    WCHAR buffer[MAX_SERVICE_NAME + ARRAY_SIZE(servicesW)];
     WCHAR driver[MAX_SERVICE_NAME] = {0};
     DRIVER_OBJECT *driver_obj;
     UNICODE_STRING string;
@@ -3641,7 +3848,8 @@ static void handle_bus_relations( DEVICE_OBJECT *device )
     strcpyW( buffer, servicesW );
     strcatW( buffer, driver );
     RtlInitUnicodeString( &string, buffer );
-    if (ZwLoadDriver( &string ) != STATUS_SUCCESS)
+    status = ZwLoadDriver( &string );
+    if (status != STATUS_SUCCESS && status != STATUS_IMAGE_ALREADY_LOADED)
     {
         ERR_(plugplay)( "Failed to load driver %s\n", debugstr_w(driver) );
         return;
@@ -3930,13 +4138,39 @@ void WINAPI IoReleaseRemoveLockAndWaitEx(PIO_REMOVE_LOCK lock, PVOID tag, ULONG 
     FIXME("stub: %p %p %u\n", lock, tag, size);
 }
 
+/*********************************************************************
+ *           DbgQueryDebugFilterState    (NTOSKRNL.@)
+ */
 NTSTATUS WINAPI DbgQueryDebugFilterState(ULONG component, ULONG level)
 {
     FIXME("stub: %d %d\n", component, level);
     return STATUS_NOT_IMPLEMENTED;
 }
 
+/*********************************************************************
+ *           ExReleaseResourceLite    (NTOSKRNL.@)
+ */
 void WINAPI ExReleaseResourceLite(PERESOURCE resource)
 {
     FIXME("stub: %p\n", resource);
+}
+
+/*********************************************************************
+ *           PsGetProcessWow64Process    (NTOSKRNL.@)
+ */
+PVOID WINAPI PsGetProcessWow64Process(PEPROCESS process)
+{
+    FIXME("stub: %p\n", process);
+    return NULL;
+}
+
+/*********************************************************************
+ *           MmCopyVirtualMemory    (NTOSKRNL.@)
+ */
+NTSTATUS WINAPI MmCopyVirtualMemory(PEPROCESS fromprocess, PVOID fromaddress, PEPROCESS toprocess,
+                                    PVOID toaddress, SIZE_T bufsize, KPROCESSOR_MODE mode,
+                                    PSIZE_T copied)
+{
+    FIXME("stub: %p %p %p %p %lu %d %p\n", fromprocess, fromaddress, toprocess, toaddress, bufsize, mode, copied);
+    return STATUS_NOT_IMPLEMENTED;
 }

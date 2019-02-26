@@ -385,7 +385,6 @@ static BOOL grab_clipping_window( const RECT *clip )
     Window clip_window;
     HWND msg_hwnd = 0;
     POINT pos;
-    RECT real_clip;
 
     if (GetWindowThreadProcessId( GetDesktopWindow(), NULL ) == GetCurrentThreadId())
         return TRUE;  /* don't clip in the desktop process */
@@ -411,28 +410,9 @@ static BOOL grab_clipping_window( const RECT *clip )
     TRACE( "clipping to %s win %lx\n", wine_dbgstr_rect(clip), clip_window );
 
     if (!data->clip_hwnd) XUnmapWindow( data->display, clip_window );
-
-    pos.x = clip->left;
-    pos.y = clip->top;
-    fs_hack_user_to_real(&pos);
-    real_clip.left = pos.x;
-    real_clip.top = pos.y;
-
-    pos.x = clip->right;
-    pos.y = clip->bottom;
-    fs_hack_user_to_real(&pos);
-    real_clip.right = pos.x;
-    real_clip.bottom = pos.y;
-
-    pos = virtual_screen_to_root( real_clip.left, real_clip.top );
-
-    TRACE("setting real clip to %d,%d x %d,%d\n",
-            pos.x, pos.y,
-            real_clip.right - real_clip.left,
-            real_clip.bottom - real_clip.top);
-
+    pos = virtual_screen_to_root( clip->left, clip->top );
     XMoveResizeWindow( data->display, clip_window, pos.x, pos.y,
-                       max( 1, real_clip.right - real_clip.left ), max( 1, real_clip.bottom - real_clip.top ) );
+                       max( 1, clip->right - clip->left ), max( 1, clip->bottom - clip->top ) );
     XMapWindow( data->display, clip_window );
 
     /* if the rectangle is shrinking we may get a pointer warp */
@@ -452,7 +432,6 @@ static BOOL grab_clipping_window( const RECT *clip )
         return FALSE;
     }
     clip_rect = *clip;
-    TRACE("new clip rect: %s\n", wine_dbgstr_rect(&clip_rect));
     if (!data->clip_hwnd) sync_window_cursor( clip_window );
     InterlockedExchangePointer( (void **)&cursor_window, msg_hwnd );
     data->clip_hwnd = msg_hwnd;
@@ -551,10 +530,8 @@ BOOL clip_fullscreen_window( HWND hwnd, BOOL reset )
     release_win_data( data );
     if (!fullscreen) return FALSE;
     if (!(thread_data = x11drv_thread_data())) return FALSE;
-    if (!reset) {
-        if (GetTickCount() - thread_data->clip_reset < 1000) return FALSE;
-        if (clipping_cursor && thread_data->clip_hwnd) return FALSE;  /* already clipping */
-    }
+    if (GetTickCount() - thread_data->clip_reset < 1000) return FALSE;
+    if (!reset && clipping_cursor && thread_data->clip_hwnd) return FALSE;  /* already clipping */
     rect = get_primary_monitor_rect();
     if (!grab_fullscreen)
     {
@@ -606,18 +583,8 @@ static void send_mouse_input( HWND hwnd, Window window, unsigned int state, INPU
             sync_window_cursor( window );
             last_cursor_change = input->u.mi.time;
         }
-
-        pt.x = clip_rect.left;
-        pt.y = clip_rect.top;
-        fs_hack_user_to_real(&pt);
-
-        pt.x += input->u.mi.dx;
-        pt.y += input->u.mi.dy;
-        fs_hack_real_to_user(&pt);
-
-        input->u.mi.dx = pt.x;
-        input->u.mi.dy = pt.y;
-
+        input->u.mi.dx += clip_rect.left;
+        input->u.mi.dy += clip_rect.top;
         __wine_send_input( hwnd, input );
         return;
     }
@@ -631,13 +598,7 @@ static void send_mouse_input( HWND hwnd, Window window, unsigned int state, INPU
 
     if (!(data = get_win_data( hwnd ))) return;
 
-    if(data->fs_hack)
-        fs_hack_real_to_user(&pt);
-
-    input->u.mi.dx = pt.x;
-    input->u.mi.dy = pt.y;
-
-    if (window == data->whole_window && !data->fs_hack)
+    if (window == data->whole_window)
     {
         pt.x += data->whole_rect.left - data->client_rect.left;
         pt.y += data->whole_rect.top - data->client_rect.top;
@@ -1471,19 +1432,13 @@ void CDECL X11DRV_SetCursor( HCURSOR handle )
 BOOL CDECL X11DRV_SetCursorPos( INT x, INT y )
 {
     struct x11drv_thread_data *data = x11drv_init_thread_data();
-    POINT pos = {x, y};
-
-    fs_hack_user_to_real(&pos);
-    pos = virtual_screen_to_root( pos.x, pos.y );
-
-    TRACE("real setting to %u, %u\n",
-            pos.x, pos.y);
+    POINT pos = virtual_screen_to_root( x, y );
 
     XWarpPointer( data->display, root_window, root_window, 0, 0, 0, 0, pos.x, pos.y );
     data->warp_serial = NextRequest( data->display );
     XNoOp( data->display );
     XFlush( data->display ); /* avoids bad mouse lag in games that do their own mouse warping */
-    TRACE( "warped to (fake) %d,%d serial %lu\n", x, y, data->warp_serial );
+    TRACE( "warped to %d,%d serial %lu\n", x, y, data->warp_serial );
     return TRUE;
 }
 
@@ -1502,8 +1457,7 @@ BOOL CDECL X11DRV_GetCursorPos(LPPOINT pos)
     if (ret)
     {
         POINT old = *pos;
-        POINT p = root_to_virtual_screen( winX, winY );
-        fs_hack_real_to_user(&p);
+        *pos = root_to_virtual_screen( winX, winY );
         TRACE( "pointer at %s server pos %s\n", wine_dbgstr_point(pos), wine_dbgstr_point(&old) );
     }
     return ret;
@@ -1533,18 +1487,17 @@ BOOL CDECL X11DRV_ClipCursor( LPCRECT clip )
         }
 
         /* we are clipping if the clip rectangle is smaller than the screen */
-        if (!(!fs_hack_enabled() && clip->left == 0 && clip->top == 0 && fs_hack_matches_last_mode(clip->right, clip->bottom)) && /* fix games trying to reset clip to full screen */
-                (clip->left > virtual_rect.left || clip->right < virtual_rect.right ||
-                 clip->top > virtual_rect.top || clip->bottom < virtual_rect.bottom))
+        if (clip->left > virtual_rect.left || clip->right < virtual_rect.right ||
+            clip->top > virtual_rect.top || clip->bottom < virtual_rect.bottom)
         {
             if (grab_clipping_window( clip )) return TRUE;
         }
-        else /* check if we should switch to fullscreen clipping */
+        else /* if currently clipping, check if we should switch to fullscreen clipping */
         {
             struct x11drv_thread_data *data = x11drv_thread_data();
-            if (data)
+            if (data && data->clip_hwnd)
             {
-                if ((data->clip_hwnd && EqualRect( clip, &clip_rect ) && !EqualRect(&clip_rect, &virtual_rect)) || clip_fullscreen_window( foreground, TRUE ))
+                if (EqualRect( clip, &clip_rect ) || clip_fullscreen_window( foreground, TRUE ))
                     return TRUE;
             }
         }
@@ -1777,7 +1730,6 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
     const double *values = event->valuators.values;
     RECT virtual_rect;
     INPUT input;
-    POINT pt;
     int i;
     double dx = 0, dy = 0, val;
     struct x11drv_thread_data *thread_data = x11drv_thread_data();
@@ -1860,12 +1812,6 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
         TRACE( "pos %d,%d old serial %lu, ignoring\n", input.u.mi.dx, input.u.mi.dy, xev->serial );
         return FALSE;
     }
-
-    pt.x = input.u.mi.dx;
-    pt.y = input.u.mi.dy;
-    fs_hack_scale_real_to_user(&pt);
-    input.u.mi.dx = pt.x;
-    input.u.mi.dy = pt.y;
 
     TRACE( "pos %d,%d (event %f,%f, accum %f,%f)\n", input.u.mi.dx, input.u.mi.dy, dx, dy, x_rel->accum, y_rel->accum );
 

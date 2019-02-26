@@ -972,7 +972,6 @@ LRESULT WIN_DestroyWindow( HWND hwnd )
     WND *wndPtr;
     HWND *list;
     HMENU menu = 0, sys_menu;
-    HWND icon_title;
     struct window_surface *surface;
 
     TRACE("%p\n", hwnd );
@@ -1020,7 +1019,6 @@ LRESULT WIN_DestroyWindow( HWND hwnd )
     sys_menu = wndPtr->hSysMenu;
     free_dce( wndPtr->dce, hwnd );
     wndPtr->dce = NULL;
-    icon_title = wndPtr->icon_title;
     HeapFree( GetProcessHeap(), 0, wndPtr->text );
     wndPtr->text = NULL;
     HeapFree( GetProcessHeap(), 0, wndPtr->pScroll );
@@ -1030,7 +1028,6 @@ LRESULT WIN_DestroyWindow( HWND hwnd )
     wndPtr->surface = NULL;
     WIN_ReleasePtr( wndPtr );
 
-    if (icon_title) DestroyWindow( icon_title );
     if (menu) DestroyMenu( menu );
     if (sys_menu) DestroyMenu( sys_menu );
     if (surface)
@@ -1613,8 +1610,8 @@ HWND WIN_CreateWindowEx( CREATESTRUCTW *cs, LPCWSTR className, HINSTANCE module,
     if (cy < 0) cy = 0;
     SetRect( &rect, cs->x, cs->y, cs->x + cx, cs->y + cy );
     /* check for wraparound */
-    if (cs->x + cx < cs->x) rect.right = 0x7fffffff;
-    if (cs->y + cy < cs->y) rect.bottom = 0x7fffffff;
+    if (cs->x > 0x7fffffff - cx) rect.right = 0x7fffffff;
+    if (cs->y > 0x7fffffff - cy) rect.bottom = 0x7fffffff;
     if (!set_window_pos( hwnd, 0, SWP_NOZORDER | SWP_NOACTIVATE, &rect, &rect, NULL )) goto failed;
 
     /* send WM_NCCREATE */
