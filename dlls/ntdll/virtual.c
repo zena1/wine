@@ -2812,7 +2812,7 @@ NTSTATUS WINAPI NtProtectVirtualMemory( HANDLE process, PVOID *addr_ptr, SIZE_T 
         {
             *addr_ptr = wine_server_get_ptr( result.virtual_protect.addr );
             *size_ptr = result.virtual_protect.size;
-            if (old_prot) *old_prot = result.virtual_protect.prot;
+            *old_prot = result.virtual_protect.prot;
         }
         return result.virtual_protect.status;
     }
@@ -2896,6 +2896,9 @@ static NTSTATUS get_basic_memory_info( HANDLE process, LPCVOID addr,
     char *base, *alloc_base = 0, *alloc_end = working_set_limit;
     struct wine_rb_entry *ptr;
     sigset_t sigset;
+
+    if (len < sizeof(MEMORY_BASIC_INFORMATION))
+        return STATUS_INFO_LENGTH_MISMATCH;
 
     if (process != NtCurrentProcess())
     {
@@ -3118,6 +3121,25 @@ found:
 }
 
 
+static NTSTATUS get_working_set_ex( HANDLE process, LPCVOID addr,
+                                    MEMORY_WORKING_SET_EX_INFORMATION *info,
+                                    SIZE_T len, SIZE_T *res_len )
+{
+    MEMORY_WORKING_SET_EX_INFORMATION *p;
+
+    for (p = info; (UINT_PTR)(p + 1) <= (UINT_PTR)info + len; p++)
+    {
+        FIXME("(VirtualAddress=%p) Unimplemented.\n", p->VirtualAddress);
+        /* FIXME Mark all addresses as invalid. */
+        info->VirtualAttributes.Valid = 0;
+    }
+
+    if (res_len)
+        *res_len = (UINT_PTR)p - (UINT_PTR)info;
+    return STATUS_SUCCESS;
+}
+
+
 #define UNIMPLEMENTED_INFO_CLASS(c) \
     case c: \
         FIXME("(process=%p,addr=%p) Unimplemented information class: " #c "\n", process, addr); \
@@ -3142,9 +3164,11 @@ NTSTATUS WINAPI NtQueryVirtualMemory( HANDLE process, LPCVOID addr,
         case MemorySectionName:
             return get_section_name( process, addr, buffer, len, res_len );
 
+        case MemoryWorkingSetExInformation:
+            return get_working_set_ex( process, addr, buffer, len, res_len );
+
         UNIMPLEMENTED_INFO_CLASS(MemoryWorkingSetList);
         UNIMPLEMENTED_INFO_CLASS(MemoryBasicVlmInformation);
-        UNIMPLEMENTED_INFO_CLASS(MemoryWorkingSetExInformation);
 
         default:
             FIXME("(%p,%p,info_class=%d,%p,%ld,%p) Unknown information class\n",

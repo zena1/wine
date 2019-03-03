@@ -1398,7 +1398,7 @@ static void wined3d_cs_exec_set_texture(struct wined3d_cs *cs, const void *data)
             /* Search for other stages the texture is bound to. Shouldn't
              * happen if applications bind textures to a single stage only. */
             TRACE("Searching for other stages the texture is bound to.\n");
-            for (i = 0; i < MAX_COMBINED_SAMPLERS; ++i)
+            for (i = 0; i < WINED3D_MAX_COMBINED_SAMPLERS; ++i)
             {
                 if (cs->state.textures[i] == prev)
                 {
@@ -1672,7 +1672,8 @@ static void wined3d_cs_exec_set_transform(struct wined3d_cs *cs, const void *dat
     const struct wined3d_cs_set_transform *op = data;
 
     cs->state.transforms[op->state] = op->matrix;
-    if (op->state < WINED3D_TS_WORLD_MATRIX(cs->device->adapter->d3d_info.limits.ffp_vertex_blend_matrices))
+    if (op->state < WINED3D_TS_WORLD_MATRIX(max(cs->device->adapter->d3d_info.limits.ffp_vertex_blend_matrices,
+            cs->device->adapter->d3d_info.limits.ffp_max_vertex_blend_matrix_index + 1)))
         device_invalidate_state(cs->device, STATE_TRANSFORM(op->state));
 }
 

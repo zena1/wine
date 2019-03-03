@@ -1584,7 +1584,7 @@ NTSTATUS WINAPI NtQueryIoCompletion( HANDLE CompletionPort, IO_COMPLETION_INFORM
 }
 
 NTSTATUS NTDLL_AddCompletion( HANDLE hFile, ULONG_PTR CompletionValue,
-                              NTSTATUS CompletionStatus, ULONG Information )
+                              NTSTATUS CompletionStatus, ULONG Information, BOOL async )
 {
     NTSTATUS status;
 
@@ -1594,6 +1594,7 @@ NTSTATUS NTDLL_AddCompletion( HANDLE hFile, ULONG_PTR CompletionValue,
         req->cvalue      = CompletionValue;
         req->status      = CompletionStatus;
         req->information = Information;
+        req->async       = async;
         status = wine_server_call( req );
     }
     SERVER_END_REQ;
