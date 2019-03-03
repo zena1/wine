@@ -870,11 +870,47 @@ static HRESULT copypixels_to_32bppRGBA(struct FormatConverter *This, const WICRe
     switch (source_format)
     {
     case format_32bppRGB:
+        if (prc)
+        {
+            INT x, y;
+
+            hr = IWICBitmapSource_CopyPixels(This->source, prc, cbStride, cbBufferSize, pbBuffer);
+            if (FAILED(hr)) return hr;
+
+            /* set all alpha values to 255 */
+            for (y=0; y<prc->Height; y++)
+                for (x=0; x<prc->Width; x++)
+                    pbBuffer[cbStride*y+4*x+3] = 0xff;
+        }
+        return S_OK;
+
     case format_32bppRGBA:
-    case format_32bppPRGBA:
         if (prc)
             return IWICBitmapSource_CopyPixels(This->source, prc, cbStride, cbBufferSize, pbBuffer);
         return S_OK;
+
+    case format_32bppPRGBA:
+        if (prc)
+        {
+            INT x, y;
+
+            hr = IWICBitmapSource_CopyPixels(This->source, prc, cbStride, cbBufferSize, pbBuffer);
+            if (FAILED(hr)) return hr;
+
+            for (y=0; y<prc->Height; y++)
+                for (x=0; x<prc->Width; x++)
+                {
+                    BYTE alpha = pbBuffer[cbStride*y+4*x+3];
+                    if (alpha != 0 && alpha != 255)
+                    {
+                        pbBuffer[cbStride*y+4*x] = pbBuffer[cbStride*y+4*x] * 255 / alpha;
+                        pbBuffer[cbStride*y+4*x+1] = pbBuffer[cbStride*y+4*x+1] * 255 / alpha;
+                        pbBuffer[cbStride*y+4*x+2] = pbBuffer[cbStride*y+4*x+2] * 255 / alpha;
+                    }
+                }
+        }
+        return S_OK;
+
     default:
         hr = copypixels_to_32bppBGRA(This, prc, cbStride, cbBufferSize, pbBuffer, source_format);
         if (SUCCEEDED(hr) && prc)

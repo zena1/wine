@@ -151,9 +151,7 @@ struct shader_glsl_priv
     BOOL ffp_proj_control;
     BOOL legacy_lighting;
 
-    BOOL ivb_use_ubo;
-    BOOL ubo_blend_mat_need_update;
-    GLuint ubo_modelview; /* World transforms matrices UBO (for vertex blending) */
+    GLuint ubo_modelview;
     struct wined3d_matrix *modelview_buffer;
 };
 
@@ -168,11 +166,11 @@ struct glsl_vs_program
     GLint pos_fixup_location;
     GLint base_vertex_id_location;
 
-    GLint modelview_matrix_location[MAX_VERTEX_BLEND_UNF];
+    GLint modelview_matrix_location[MAX_VERTEX_BLENDS];
     GLint modelview_block_index;
     GLint projection_matrix_location;
     GLint normal_matrix_location;
-    GLint texture_matrix_location[MAX_TEXTURES];
+    GLint texture_matrix_location[WINED3D_MAX_TEXTURES];
     GLint material_ambient_location;
     GLint material_diffuse_location;
     GLint material_specular_location;
@@ -193,7 +191,7 @@ struct glsl_vs_program
         GLint q_att;
         GLint cos_htheta;
         GLint cos_hphi;
-    } light_location[MAX_ACTIVE_LIGHTS];
+    } light_location[WINED3D_MAX_ACTIVE_LIGHTS];
     GLint pointsize_location;
     GLint pointsize_min_location;
     GLint pointsize_max_location;
@@ -233,10 +231,10 @@ struct glsl_ps_program
     GLint uniform_f_locations[WINED3D_MAX_PS_CONSTS_F];
     GLint uniform_i_locations[WINED3D_MAX_CONSTS_I];
     GLint uniform_b_locations[WINED3D_MAX_CONSTS_B];
-    GLint bumpenv_mat_location[MAX_TEXTURES];
-    GLint bumpenv_lum_scale_location[MAX_TEXTURES];
-    GLint bumpenv_lum_offset_location[MAX_TEXTURES];
-    GLint tss_constant_location[MAX_TEXTURES];
+    GLint bumpenv_mat_location[WINED3D_MAX_TEXTURES];
+    GLint bumpenv_lum_scale_location[WINED3D_MAX_TEXTURES];
+    GLint bumpenv_lum_offset_location[WINED3D_MAX_TEXTURES];
+    GLint tss_constant_location[WINED3D_MAX_TEXTURES];
     GLint tex_factor_location;
     GLint specular_enable_location;
     GLint fog_color_location;
@@ -270,7 +268,7 @@ struct glsl_shader_prog_link
     DWORD constant_update_mask;
     unsigned int constant_version;
     DWORD shader_controlled_clip_distances : 1;
-    DWORD clip_distance_mask : 8; /* MAX_CLIP_DISTANCES, 8 */
+    DWORD clip_distance_mask : 8; /* WINED3D_MAX_CLIP_DISTANCES, 8 */
     DWORD padding : 23;
 };
 
@@ -1305,7 +1303,7 @@ static void shader_glsl_load_np2fixup_constants(const struct glsl_ps_program *ps
     {
         float sx, sy;
     }
-    np2fixup_constants[MAX_FRAGMENT_SAMPLERS];
+    np2fixup_constants[WINED3D_MAX_FRAGMENT_SAMPLERS];
     UINT fixup = ps->np2_fixup_info->active;
     UINT i;
 
@@ -1647,7 +1645,7 @@ static void shader_glsl_ffp_vertex_texmatrix_uniform(const struct wined3d_contex
     const struct wined3d_gl_info *gl_info = context->gl_info;
     struct wined3d_matrix mat;
 
-    if (tex >= MAX_TEXTURES)
+    if (tex >= WINED3D_MAX_TEXTURES)
         return;
     if (prog->vs.texture_matrix_location[tex] == -1)
         return;
@@ -1903,73 +1901,41 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
     }
 
     if (update_mask & WINED3D_SHADER_CONST_FFP_MODELVIEW)
-    {
-        struct wined3d_matrix mat;
-
-        get_modelview_matrix(context, state, 0, &mat);
-        GL_EXTCALL(glUniformMatrix4fv(prog->vs.modelview_matrix_location[0], 1, FALSE, &mat._11));
-        checkGLcall("glUniformMatrix4fv");
-
         shader_glsl_ffp_vertex_normalmatrix_uniform(context, state, prog);
-    }
 
-    if (update_mask & (WINED3D_SHADER_CONST_FFP_VERTEXBLEND | WINED3D_SHADER_CONST_FFP_MODELVIEW))
+    if (update_mask & WINED3D_SHADER_CONST_FFP_VERTEXBLEND)
     {
         struct wined3d_matrix mat;
 
-        for (i = 1; i < MAX_VERTEX_BLEND_UNF; ++i)
+        if (prog->vs.modelview_block_index != -1)
         {
-            if (prog->vs.modelview_matrix_location[i] == -1)
-                break;
-
-            if (context->blend_mat_update_mask[i / 32] & (1 << (i & 31)))
-            {
-                get_modelview_matrix(context, state, i, &mat);
-                GL_EXTCALL(glUniformMatrix4fv(prog->vs.modelview_matrix_location[i], 1, FALSE, &mat._11));
-                checkGLcall("glUniformMatrix4fv");
-            }
-        }
-        if (prog->vs.modelview_block_index != -1 && priv->ivb_use_ubo && priv->ubo_blend_mat_need_update)
-        {
-            unsigned int start, count;
-
             if (priv->ubo_modelview == -1)
                 FIXME("UBO buffer with vertex blend matrices is not initialized.\n");
 
             GL_EXTCALL(glBindBuffer(GL_UNIFORM_BUFFER, priv->ubo_modelview));
             checkGLcall("glBindBuffer (UBO)");
+            GL_EXTCALL(glBufferData(GL_UNIFORM_BUFFER, sizeof(*priv->modelview_buffer) * MAX_VERTEX_BLEND_UBO,
+                    NULL, GL_STREAM_DRAW));
+            checkGLcall("glBufferData");
 
-            start = MAX_VERTEX_BLEND_UBO;
-            count = 0;
             for (i = 0; i < MAX_VERTEX_BLEND_UBO; ++i)
+                get_modelview_matrix(context, state, i, &priv->modelview_buffer[i]);
+
+            GL_EXTCALL(glBufferSubData(GL_UNIFORM_BUFFER, 0,
+                    sizeof(*priv->modelview_buffer) * MAX_VERTEX_BLEND_UBO, priv->modelview_buffer));
+            checkGLcall("glBufferSubData");
+        }
+        else
+        {
+            for (i = 0; i < MAX_VERTEX_BLENDS; ++i)
             {
-                if (context->blend_mat_update_mask[i / 32] & (1 << (i & 31)))
-                {
-                    get_modelview_matrix(context, state, i, &priv->modelview_buffer[i]);
-                    if (start + count == i)
-                    {
-                        ++count;
-                    }
-                    else
-                    {
-                        if (count)
-                        {
-                            GL_EXTCALL(glBufferSubData(GL_UNIFORM_BUFFER, sizeof(*priv->modelview_buffer) * start,
-                                    sizeof(*priv->modelview_buffer) * count, &priv->modelview_buffer[start]));
-                            checkGLcall("glBufferSubData");
-                        }
-                        start = i;
-                        count = 1;
-                    }
-                }
+                if (prog->vs.modelview_matrix_location[i] == -1)
+                    break;
+
+                get_modelview_matrix(context, state, i, &mat);
+                GL_EXTCALL(glUniformMatrix4fv(prog->vs.modelview_matrix_location[i], 1, FALSE, &mat._11));
+                checkGLcall("glUniformMatrix4fv");
             }
-            if (count)
-            {
-                GL_EXTCALL(glBufferSubData(GL_UNIFORM_BUFFER, sizeof(*priv->modelview_buffer) * start,
-                        sizeof(*priv->modelview_buffer) * count, &priv->modelview_buffer[start]));
-                checkGLcall("glBufferSubData");
-            }
-            priv->ubo_blend_mat_need_update = FALSE;
         }
     }
 
@@ -1984,7 +1950,7 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
 
     if (update_mask & WINED3D_SHADER_CONST_FFP_TEXMATRIX)
     {
-        for (i = 0; i < MAX_TEXTURES; ++i)
+        for (i = 0; i < WINED3D_MAX_TEXTURES; ++i)
             shader_glsl_ffp_vertex_texmatrix_uniform(context, state, i, prog);
     }
 
@@ -1999,7 +1965,7 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
         DWORD directional_count = 0;
         DWORD parallel_point_count = 0;
 
-        for (i = 0; i < MAX_ACTIVE_LIGHTS; ++i)
+        for (i = 0; i < WINED3D_MAX_ACTIVE_LIGHTS; ++i)
         {
             if (!state->light_state.lights[i])
                 continue;
@@ -2029,7 +1995,7 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
         parallel_point_idx = directional_idx + directional_count;
 
         shader_glsl_ffp_vertex_lightambient_uniform(context, state, prog);
-        for (i = 0; i < MAX_ACTIVE_LIGHTS; ++i)
+        for (i = 0; i < WINED3D_MAX_ACTIVE_LIGHTS; ++i)
         {
             const struct wined3d_light_info *light_info = state->light_state.lights[i];
             unsigned int idx;
@@ -2074,7 +2040,7 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
 
     if (update_mask & WINED3D_SHADER_CONST_PS_BUMP_ENV)
     {
-        for (i = 0; i < MAX_TEXTURES; ++i)
+        for (i = 0; i < WINED3D_MAX_TEXTURES; ++i)
         {
             if (prog->ps.bumpenv_mat_location[i] == -1)
                 continue;
@@ -2128,7 +2094,7 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
         else
             GL_EXTCALL(glUniform4f(prog->ps.specular_enable_location, 0.0f, 0.0f, 0.0f, 0.0f));
 
-        for (i = 0; i < MAX_TEXTURES; ++i)
+        for (i = 0; i < WINED3D_MAX_TEXTURES; ++i)
         {
             if (prog->ps.tss_constant_location[i] == -1)
                 continue;
@@ -2527,6 +2493,9 @@ static void shader_generate_glsl_declarations(const struct wined3d_context *cont
     const char *prefix;
     unsigned int i;
     DWORD map;
+
+    if (wined3d_settings.strict_shader_math)
+        shader_addline(buffer, "#pragma optionNV(fastmath off)\n");
 
     prefix = shader_glsl_get_prefix(version->type);
 
@@ -7432,13 +7401,13 @@ static GLuint shader_glsl_generate_vs3_rasterizer_input_setup(struct shader_glsl
     if (ps_major < 3)
     {
         DWORD colors_written_mask[2] = {0};
-        DWORD texcoords_written_mask[MAX_TEXTURES] = {0};
+        DWORD texcoords_written_mask[WINED3D_MAX_TEXTURES] = {0};
 
         if (!legacy_syntax)
         {
             declare_out_varying(gl_info, buffer, flatshading, "vec4 ffp_varying_diffuse;\n");
             declare_out_varying(gl_info, buffer, flatshading, "vec4 ffp_varying_specular;\n");
-            declare_out_varying(gl_info, buffer, FALSE, "vec4 ffp_varying_texcoord[%u];\n", MAX_TEXTURES);
+            declare_out_varying(gl_info, buffer, FALSE, "vec4 ffp_varying_texcoord[%u];\n", WINED3D_MAX_TEXTURES);
             declare_out_varying(gl_info, buffer, FALSE, "float ffp_varying_fogcoord;\n");
         }
 
@@ -7475,7 +7444,7 @@ static GLuint shader_glsl_generate_vs3_rasterizer_input_setup(struct shader_glsl
             }
             else if (shader_match_semantic(semantic_name, WINED3D_DECL_USAGE_TEXCOORD))
             {
-                if (semantic_idx < MAX_TEXTURES)
+                if (semantic_idx < WINED3D_MAX_TEXTURES)
                 {
                     shader_addline(buffer, "%s[%u]%s = outputs[%u]%s;\n",
                             legacy_syntax ? "gl_TexCoord" : "ffp_varying_texcoord",
@@ -7511,7 +7480,7 @@ static GLuint shader_glsl_generate_vs3_rasterizer_input_setup(struct shader_glsl
                             reg_mask, reg_mask);
             }
         }
-        for (i = 0; i < MAX_TEXTURES; ++i)
+        for (i = 0; i < WINED3D_MAX_TEXTURES; ++i)
         {
             if (ps && !(ps->reg_maps.texcoord & (1u << i)))
                 continue;
@@ -8015,7 +7984,7 @@ static GLuint shader_glsl_generate_pshader(const struct wined3d_context *context
                 shader_addline(buffer, "vec4 ffp_varying_diffuse;\n");
             if (glsl_is_color_reg_read(shader, 1))
                 shader_addline(buffer, "vec4 ffp_varying_specular;\n");
-            shader_addline(buffer, "vec4 ffp_texcoord[%u];\n", MAX_TEXTURES);
+            shader_addline(buffer, "vec4 ffp_texcoord[%u];\n", WINED3D_MAX_TEXTURES);
             shader_addline(buffer, "float ffp_varying_fogcoord;\n");
         }
         else
@@ -8024,8 +7993,8 @@ static GLuint shader_glsl_generate_pshader(const struct wined3d_context *context
                 declare_in_varying(gl_info, buffer, args->flatshading, "vec4 ffp_varying_diffuse;\n");
             if (glsl_is_color_reg_read(shader, 1))
                 declare_in_varying(gl_info, buffer, args->flatshading, "vec4 ffp_varying_specular;\n");
-            declare_in_varying(gl_info, buffer, FALSE, "vec4 ffp_varying_texcoord[%u];\n", MAX_TEXTURES);
-            shader_addline(buffer, "vec4 ffp_texcoord[%u];\n", MAX_TEXTURES);
+            declare_in_varying(gl_info, buffer, FALSE, "vec4 ffp_varying_texcoord[%u];\n", WINED3D_MAX_TEXTURES);
+            shader_addline(buffer, "vec4 ffp_texcoord[%u];\n", WINED3D_MAX_TEXTURES);
             declare_in_varying(gl_info, buffer, FALSE, "float ffp_varying_fogcoord;\n");
         }
     }
@@ -8328,7 +8297,7 @@ static GLuint shader_glsl_generate_vshader(const struct wined3d_context *context
         {
             declare_out_varying(gl_info, buffer, args->flatshading, "vec4 ffp_varying_diffuse;\n");
             declare_out_varying(gl_info, buffer, args->flatshading, "vec4 ffp_varying_specular;\n");
-            declare_out_varying(gl_info, buffer, FALSE, "vec4 ffp_varying_texcoord[%u];\n", MAX_TEXTURES);
+            declare_out_varying(gl_info, buffer, FALSE, "vec4 ffp_varying_texcoord[%u];\n", WINED3D_MAX_TEXTURES);
             declare_out_varying(gl_info, buffer, FALSE, "float ffp_varying_fogcoord;\n");
         }
     }
@@ -9274,14 +9243,12 @@ static GLuint shader_glsl_generate_ffp_vertex_shader(struct shader_glsl_priv *pr
     BOOL legacy_lighting = priv->legacy_lighting;
     GLuint shader_obj;
     unsigned int i;
-    BOOL use_ubo;
 
     string_buffer_clear(buffer);
 
     shader_glsl_add_version_declaration(buffer, gl_info);
-    use_ubo = settings->vertexblends > 0 && settings->vb_indices && priv->ivb_use_ubo;
-    TRACE("settings->vb_indices %d, use_ubo: %d.\n",settings->vb_indices, use_ubo);
-    if (use_ubo)
+    TRACE("settings->vb_indices %#x.\n", settings->vb_indices);
+    if (gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT])
         shader_addline(buffer,"#extension GL_ARB_uniform_buffer_object : enable\n");
 
     if (shader_glsl_use_explicit_attrib_location(gl_info))
@@ -9297,19 +9264,21 @@ static GLuint shader_glsl_generate_ffp_vertex_shader(struct shader_glsl_priv *pr
     }
     shader_addline(buffer, "\n");
 
-    shader_addline(buffer, "uniform mat4 ffp_modelview_matrix[%u];\n",
-        settings->vb_indices && !use_ubo ? MAX_VERTEX_BLEND_UNF : MAX_VERTEX_BLENDS);
-    if (use_ubo)
+    if (settings->vb_indices && gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT])
     {
         shader_addline(buffer,"layout(std140) uniform ffp_modelview_ubo\n\
                 { \n\
-                    mat4 ffp_modelviews[%u];\n\
+                    mat4 ffp_modelview_matrix[%u];\n\
                 };\n", MAX_VERTEX_BLEND_UBO);
+    }
+    else
+    {
+        shader_addline(buffer, "uniform mat4 ffp_modelview_matrix[%u];\n", MAX_VERTEX_BLENDS);
     }
 
     shader_addline(buffer, "uniform mat4 ffp_projection_matrix;\n");
     shader_addline(buffer, "uniform mat3 ffp_normal_matrix;\n");
-    shader_addline(buffer, "uniform mat4 ffp_texture_matrix[%u];\n", MAX_TEXTURES);
+    shader_addline(buffer, "uniform mat4 ffp_texture_matrix[%u];\n", WINED3D_MAX_TEXTURES);
 
     shader_addline(buffer, "uniform struct\n{\n");
     shader_addline(buffer, "    vec4 emissive;\n");
@@ -9333,7 +9302,7 @@ static GLuint shader_glsl_generate_ffp_vertex_shader(struct shader_glsl_priv *pr
     shader_addline(buffer, "    float q_att;\n");
     shader_addline(buffer, "    float cos_htheta;\n");
     shader_addline(buffer, "    float cos_hphi;\n");
-    shader_addline(buffer, "} ffp_light[%u];\n", MAX_ACTIVE_LIGHTS);
+    shader_addline(buffer, "} ffp_light[%u];\n", WINED3D_MAX_ACTIVE_LIGHTS);
 
     if (settings->point_size)
     {
@@ -9351,7 +9320,7 @@ static GLuint shader_glsl_generate_ffp_vertex_shader(struct shader_glsl_priv *pr
     {
         shader_addline(buffer, "vec4 ffp_varying_diffuse;\n");
         shader_addline(buffer, "vec4 ffp_varying_specular;\n");
-        shader_addline(buffer, "vec4 ffp_varying_texcoord[%u];\n", MAX_TEXTURES);
+        shader_addline(buffer, "vec4 ffp_varying_texcoord[%u];\n", WINED3D_MAX_TEXTURES);
         shader_addline(buffer, "float ffp_varying_fogcoord;\n");
     }
     else
@@ -9361,7 +9330,7 @@ static GLuint shader_glsl_generate_ffp_vertex_shader(struct shader_glsl_priv *pr
 
         declare_out_varying(gl_info, buffer, settings->flatshading, "vec4 ffp_varying_diffuse;\n");
         declare_out_varying(gl_info, buffer, settings->flatshading, "vec4 ffp_varying_specular;\n");
-        declare_out_varying(gl_info, buffer, FALSE, "vec4 ffp_varying_texcoord[%u];\n", MAX_TEXTURES);
+        declare_out_varying(gl_info, buffer, FALSE, "vec4 ffp_varying_texcoord[%u];\n", WINED3D_MAX_TEXTURES);
         declare_out_varying(gl_info, buffer, FALSE, "float ffp_varying_fogcoord;\n");
     }
 
@@ -9377,7 +9346,7 @@ static GLuint shader_glsl_generate_ffp_vertex_shader(struct shader_glsl_priv *pr
             shader_addline(buffer, "%s %s = vs_in%u%s;\n", attrib_info[i].type, attrib_info[i].name,
                     i, settings->swizzle_map & (1u << i) ? ".zyxw" : "");
     }
-    for (i = 0; i < MAX_TEXTURES; ++i)
+    for (i = 0; i < WINED3D_MAX_TEXTURES; ++i)
     {
         unsigned int coord_idx = settings->texgen[i] & 0x0000ffff;
         if ((settings->texgen[i] & 0xffff0000) == WINED3DTSS_TCI_PASSTHRU
@@ -9398,23 +9367,18 @@ static GLuint shader_glsl_generate_ffp_vertex_shader(struct shader_glsl_priv *pr
         for (i = 0; i < settings->vertexblends; ++i)
             shader_addline(buffer, "ffp_attrib_blendweight[%u] -= ffp_attrib_blendweight[%u];\n", settings->vertexblends, i);
 
+        shader_addline(buffer, "vec4 ec_pos = vec4(0.0);\n");
         if (settings->vb_indices)
         {
-            shader_addline(buffer, "vec4 ec_pos = vec4(0.0);\n");
             for (i = 0; i < settings->vertexblends + 1; ++i)
             {
                 shader_addline(buffer, "ind = int(ffp_attrib_blendindices[%u] + 0.1);\n", i);
-                if (use_ubo)
-                    shader_addline(buffer, "ec_pos += ffp_attrib_blendweight[%u] * "
-                            "(ffp_modelviews[ind] * ffp_attrib_position);\n", i);
-                else
-                    shader_addline(buffer, "ec_pos += ffp_attrib_blendweight[%u] * "
-                            "(ffp_modelview_matrix[ind] * ffp_attrib_position);\n", i);
+                shader_addline(buffer, "ec_pos += ffp_attrib_blendweight[%u] * "
+                        "(ffp_modelview_matrix[ind] * ffp_attrib_position);\n", i);
             }
         }
         else
         {
-            shader_addline(buffer, "vec4 ec_pos = vec4(0.0);\n");
             for (i = 0; i < settings->vertexblends + 1; ++i)
                 shader_addline(buffer, "ec_pos += ffp_attrib_blendweight[%u] * "
                         "(ffp_modelview_matrix[%u] * ffp_attrib_position);\n", i, i);
@@ -9446,12 +9410,8 @@ static GLuint shader_glsl_generate_ffp_vertex_shader(struct shader_glsl_priv *pr
                 if (settings->vb_indices)
                 {
                     shader_addline(buffer, "ind = int(ffp_attrib_blendindices[%u] + 0.1);\n", i);
-                    if (use_ubo)
-                        shader_addline(buffer, "normal += ffp_attrib_blendweight[%u] * "
-                                "(mat3(ffp_modelviews[ind]) * ffp_attrib_normal);\n", i);
-                    else
-                        shader_addline(buffer, "normal += ffp_attrib_blendweight[%u] * "
-                                "(mat3(ffp_modelview_matrix[ind]) * ffp_attrib_normal);\n", i);
+                    shader_addline(buffer, "normal += ffp_attrib_blendweight[%u] * "
+                            "(mat3(ffp_modelview_matrix[ind]) * ffp_attrib_normal);\n", i);
                 }
                 else
                 {
@@ -9477,7 +9437,7 @@ static GLuint shader_glsl_generate_ffp_vertex_shader(struct shader_glsl_priv *pr
         shader_addline(buffer, "ffp_varying_specular = clamp(ffp_varying_specular, 0.0, 1.0);\n");
     }
 
-    for (i = 0; i < MAX_TEXTURES; ++i)
+    for (i = 0; i < WINED3D_MAX_TEXTURES; ++i)
     {
         BOOL output_legacy_texcoord = legacy_syntax;
 
@@ -9836,7 +9796,7 @@ static GLuint shader_glsl_generate_ffp_fragment_shader(struct shader_glsl_priv *
     string_buffer_clear(buffer);
 
     /* Find out which textures are read */
-    for (stage = 0; stage < MAX_TEXTURES; ++stage)
+    for (stage = 0; stage < WINED3D_MAX_TEXTURES; ++stage)
     {
         if (settings->op[stage].cop == WINED3D_TOP_DISABLE)
             break;
@@ -9919,7 +9879,7 @@ static GLuint shader_glsl_generate_ffp_fragment_shader(struct shader_glsl_priv *
         shader_addline(buffer, "vec4 temp_reg = vec4(0.0);\n");
     shader_addline(buffer, "vec4 arg0, arg1, arg2;\n");
 
-    for (stage = 0; stage < MAX_TEXTURES; ++stage)
+    for (stage = 0; stage < WINED3D_MAX_TEXTURES; ++stage)
     {
         const char *sampler_type;
 
@@ -9999,16 +9959,16 @@ static GLuint shader_glsl_generate_ffp_fragment_shader(struct shader_glsl_priv *
     {
         shader_addline(buffer, "vec4 ffp_varying_diffuse;\n");
         shader_addline(buffer, "vec4 ffp_varying_specular;\n");
-        shader_addline(buffer, "vec4 ffp_varying_texcoord[%u];\n", MAX_TEXTURES);
-        shader_addline(buffer, "vec4 ffp_texcoord[%u];\n", MAX_TEXTURES);
+        shader_addline(buffer, "vec4 ffp_varying_texcoord[%u];\n", WINED3D_MAX_TEXTURES);
+        shader_addline(buffer, "vec4 ffp_texcoord[%u];\n", WINED3D_MAX_TEXTURES);
         shader_addline(buffer, "float ffp_varying_fogcoord;\n");
     }
     else
     {
         declare_in_varying(gl_info, buffer, settings->flatshading, "vec4 ffp_varying_diffuse;\n");
         declare_in_varying(gl_info, buffer, settings->flatshading, "vec4 ffp_varying_specular;\n");
-        declare_in_varying(gl_info, buffer, FALSE, "vec4 ffp_varying_texcoord[%u];\n", MAX_TEXTURES);
-        shader_addline(buffer, "vec4 ffp_texcoord[%u];\n", MAX_TEXTURES);
+        declare_in_varying(gl_info, buffer, FALSE, "vec4 ffp_varying_texcoord[%u];\n", WINED3D_MAX_TEXTURES);
+        shader_addline(buffer, "vec4 ffp_texcoord[%u];\n", WINED3D_MAX_TEXTURES);
         declare_in_varying(gl_info, buffer, FALSE, "float ffp_varying_fogcoord;\n");
     }
 
@@ -10020,7 +9980,7 @@ static GLuint shader_glsl_generate_ffp_fragment_shader(struct shader_glsl_priv *
         shader_addline(buffer, "ffp_varying_specular = gl_SecondaryColor;\n");
     }
 
-    for (stage = 0; stage < MAX_TEXTURES; ++stage)
+    for (stage = 0; stage < WINED3D_MAX_TEXTURES; ++stage)
     {
         if (tex_map & (1u << stage))
         {
@@ -10041,7 +10001,7 @@ static GLuint shader_glsl_generate_ffp_fragment_shader(struct shader_glsl_priv *
         shader_addline(buffer, "if (any(lessThan(ffp_texcoord[7], vec4(0.0)))) discard;\n");
 
     /* Generate texture sampling instructions */
-    for (stage = 0; stage < MAX_TEXTURES && settings->op[stage].cop != WINED3D_TOP_DISABLE; ++stage)
+    for (stage = 0; stage < WINED3D_MAX_TEXTURES && settings->op[stage].cop != WINED3D_TOP_DISABLE; ++stage)
     {
         const char *texture_function, *coord_mask;
         BOOL proj;
@@ -10158,7 +10118,7 @@ static GLuint shader_glsl_generate_ffp_fragment_shader(struct shader_glsl_priv *
     shader_addline(buffer, "ret = ffp_varying_diffuse;\n");
 
     /* Generate the main shader */
-    for (stage = 0; stage < MAX_TEXTURES; ++stage)
+    for (stage = 0; stage < WINED3D_MAX_TEXTURES; ++stage)
     {
         BOOL op_equal;
 
@@ -10284,7 +10244,7 @@ static void shader_glsl_init_vs_uniform_locations(const struct wined3d_gl_info *
         vs->vs_c_block_index = GL_EXTCALL(glGetUniformBlockIndex(program_id, "vs_c_ubo"));
         checkGLcall("glGetUniformBlockIndex");
         if (vs->vs_c_block_index == -1)
-            FIXME("Could not get ubo_vs_c block index.\n");
+            ERR("Could not get ubo_vs_c block index.\n");
 
         wined3d_gl_limits_get_uniform_block_range(&gl_info->limits, WINED3D_SHADER_TYPE_VERTEX,
                 &base, &count);
@@ -10300,7 +10260,7 @@ static void shader_glsl_init_vs_uniform_locations(const struct wined3d_gl_info *
             checkGLcall("glBindBufferBase");
         }
     }
-    else
+    else if (!priv->consts_ubo)
     {
         for (i = 0; i < min(vs_c_count, priv->max_vs_consts_f); ++i)
         {
@@ -10326,13 +10286,13 @@ static void shader_glsl_init_vs_uniform_locations(const struct wined3d_gl_info *
     vs->pos_fixup_location = GL_EXTCALL(glGetUniformLocation(program_id, "pos_fixup"));
     vs->base_vertex_id_location = GL_EXTCALL(glGetUniformLocation(program_id, "base_vertex_id"));
 
-    for (i = 0; i < MAX_VERTEX_BLEND_UNF; ++i)
+    for (i = 0; i < MAX_VERTEX_BLENDS; ++i)
     {
         string_buffer_sprintf(name, "ffp_modelview_matrix[%u]", i);
         vs->modelview_matrix_location[i] = GL_EXTCALL(glGetUniformLocation(program_id, name->buffer));
     }
-    vs->modelview_block_index = -1;
-    if (priv->ivb_use_ubo)
+
+    if (gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT])
     {
         vs->modelview_block_index = GL_EXTCALL(glGetUniformBlockIndex(program_id, "ffp_modelview_ubo"));
         checkGLcall("glGetUniformBlockIndex");
@@ -10343,6 +10303,7 @@ static void shader_glsl_init_vs_uniform_locations(const struct wined3d_gl_info *
             wined3d_gl_limits_get_uniform_block_range(&gl_info->limits, WINED3D_SHADER_TYPE_VERTEX,
                     &base, &count);
             assert(count >= 1);
+
             GL_EXTCALL(glUniformBlockBinding(program_id, vs->modelview_block_index, base + count));
             checkGLcall("glUniformBlockBinding");
             if (priv->ubo_modelview == -1)
@@ -10355,14 +10316,17 @@ static void shader_glsl_init_vs_uniform_locations(const struct wined3d_gl_info *
                 checkGLcall("glBufferData (UBO)");
                 GL_EXTCALL(glBindBufferBase(GL_UNIFORM_BUFFER, base + count, priv->ubo_modelview));
                 checkGLcall("glBindBufferBase");
-                priv->ubo_blend_mat_need_update = TRUE;
             }
         }
+    }
+    else
+    {
+        vs->modelview_block_index = -1;
     }
 
     vs->projection_matrix_location = GL_EXTCALL(glGetUniformLocation(program_id, "ffp_projection_matrix"));
     vs->normal_matrix_location = GL_EXTCALL(glGetUniformLocation(program_id, "ffp_normal_matrix"));
-    for (i = 0; i < MAX_TEXTURES; ++i)
+    for (i = 0; i < WINED3D_MAX_TEXTURES; ++i)
     {
         string_buffer_sprintf(name, "ffp_texture_matrix[%u]", i);
         vs->texture_matrix_location[i] = GL_EXTCALL(glGetUniformLocation(program_id, name->buffer));
@@ -10373,7 +10337,7 @@ static void shader_glsl_init_vs_uniform_locations(const struct wined3d_gl_info *
     vs->material_emissive_location = GL_EXTCALL(glGetUniformLocation(program_id, "ffp_material.emissive"));
     vs->material_shininess_location = GL_EXTCALL(glGetUniformLocation(program_id, "ffp_material.shininess"));
     vs->light_ambient_location = GL_EXTCALL(glGetUniformLocation(program_id, "ffp_light_ambient"));
-    for (i = 0; i < MAX_ACTIVE_LIGHTS; ++i)
+    for (i = 0; i < WINED3D_MAX_ACTIVE_LIGHTS; ++i)
     {
         string_buffer_sprintf(name, "ffp_light[%u].diffuse", i);
         vs->light_location[i].diffuse = GL_EXTCALL(glGetUniformLocation(program_id, name->buffer));
@@ -10448,7 +10412,7 @@ static void shader_glsl_init_ps_uniform_locations(const struct wined3d_gl_info *
         ps->uniform_b_locations[i] = GL_EXTCALL(glGetUniformLocation(program_id, name->buffer));
     }
 
-    for (i = 0; i < MAX_TEXTURES; ++i)
+    for (i = 0; i < WINED3D_MAX_TEXTURES; ++i)
     {
         string_buffer_sprintf(name, "bumpenv_mat%u", i);
         ps->bumpenv_mat_location[i] = GL_EXTCALL(glGetUniformLocation(program_id, name->buffer));
@@ -10939,7 +10903,7 @@ static void set_glsl_shader_program(const struct wined3d_context *context, const
         entry->constant_update_mask |= WINED3D_SHADER_CONST_FFP_MODELVIEW
                 | WINED3D_SHADER_CONST_FFP_PROJ;
 
-        for (i = 1; i < MAX_VERTEX_BLEND_UNF; ++i)
+        for (i = 1; i < MAX_VERTEX_BLENDS; ++i)
         {
             if (entry->vs.modelview_matrix_location[i] != -1)
             {
@@ -10951,7 +10915,7 @@ static void set_glsl_shader_program(const struct wined3d_context *context, const
         if (entry->vs.modelview_block_index != -1)
             entry->constant_update_mask |= WINED3D_SHADER_CONST_FFP_VERTEXBLEND;
 
-        for (i = 0; i < MAX_TEXTURES; ++i)
+        for (i = 0; i < WINED3D_MAX_TEXTURES; ++i)
         {
             if (entry->vs.texture_matrix_location[i] != -1)
             {
@@ -11013,7 +10977,7 @@ static void set_glsl_shader_program(const struct wined3d_context *context, const
             shader_glsl_load_samplers(context, priv, program_id, NULL);
         }
 
-        for (i = 0; i < MAX_TEXTURES; ++i)
+        for (i = 0; i < WINED3D_MAX_TEXTURES; ++i)
         {
             if (entry->ps.bumpenv_mat_location[i] != -1)
             {
@@ -11056,7 +11020,6 @@ static void shader_glsl_select(void *shader_priv, struct wined3d_context *contex
     struct glsl_shader_prog_link *glsl_program;
     GLenum current_vertex_color_clamp;
     GLuint program_id, prev_id;
-    unsigned int i;
 
     priv->vertex_pipe->vp_enable(gl_info, !use_vs(state));
     priv->fragment_pipe->enable_extension(gl_info, !use_ps(state));
@@ -11100,11 +11063,7 @@ static void shader_glsl_select(void *shader_priv, struct wined3d_context *contex
         checkGLcall("glUseProgram");
 
         if (glsl_program)
-        {
-            context->constant_update_mask |= ctx_data->glsl_program->constant_update_mask;
-            for (i = 0; i < MAX_VB_UPD_WORDS; ++i)
-                context->blend_mat_update_mask[i] = 0xFFFFFFFF;
-        }
+            context->constant_update_mask |= glsl_program->constant_update_mask;
     }
 
     context->shader_update_mask |= (1u << WINED3D_SHADER_TYPE_COMPUTE);
@@ -11430,7 +11389,7 @@ static HRESULT shader_glsl_alloc(struct wined3d_device *device, const struct win
     if (!(priv = heap_alloc_zero(sizeof(*priv))))
         return E_OUTOFMEMORY;
 
-    priv->consts_ubo = wined3d_settings.consts_ubo && gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT];
+    priv->consts_ubo = gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT];
     priv->max_vs_consts_f = priv->consts_ubo
             ? gl_info->limits.glsl_max_uniform_block_size / sizeof(struct wined3d_vec4)
             : gl_info->limits.glsl_vs_float_constants;
@@ -11492,9 +11451,8 @@ static HRESULT shader_glsl_alloc(struct wined3d_device *device, const struct win
     fragment_pipe->get_caps(gl_info, &fragment_caps);
     priv->ffp_proj_control = fragment_caps.wined3d_caps & WINED3D_FRAGMENT_CAP_PROJ_CONTROL;
     priv->legacy_lighting = device->wined3d->flags & WINED3D_LEGACY_FFP_LIGHTING;
-    priv->ivb_use_ubo = gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT];
     priv->ubo_modelview = -1; /* To be initialized on first usage. */
-    if (priv->ivb_use_ubo)
+    if (gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT])
     {
         priv->modelview_buffer = HeapAlloc(GetProcessHeap(), 0, sizeof(*priv->modelview_buffer)
                 * MAX_VERTEX_BLEND_UBO);
@@ -11628,7 +11586,7 @@ static void shader_glsl_get_caps(const struct wined3d_gl_info *gl_info, struct s
     caps->ps_version = gl_info->supported[ARB_FRAGMENT_SHADER] ? caps->ps_version : 0;
 
     caps->vs_uniform_count = min(WINED3D_MAX_VS_CONSTS_F_SWVP,
-            wined3d_settings.consts_ubo && gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT]
+            gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT]
             ? gl_info->limits.glsl_max_uniform_block_size / sizeof(struct wined3d_vec4)
             : gl_info->limits.glsl_vs_float_constants);
     caps->ps_uniform_count = min(WINED3D_MAX_PS_CONSTS_F, gl_info->limits.glsl_ps_float_constants);
@@ -11958,12 +11916,12 @@ static void glsl_vertex_pipe_vp_get_caps(const struct wined3d_gl_info *gl_info, 
     caps->xyzrhw = TRUE;
     caps->emulated_flatshading = !needs_legacy_glsl_syntax(gl_info);
     caps->ffp_generic_attributes = TRUE;
-    caps->max_active_lights = MAX_ACTIVE_LIGHTS;
+    caps->max_active_lights = WINED3D_MAX_ACTIVE_LIGHTS;
     caps->max_vertex_blend_matrices = MAX_VERTEX_BLENDS;
     if (gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT])
         caps->max_vertex_blend_matrix_index = MAX_VERTEX_BLEND_UBO - 1;
     else
-        caps->max_vertex_blend_matrix_index = MAX_VERTEX_BLEND_UNF - 1;
+        caps->max_vertex_blend_matrix_index = MAX_VERTEX_BLENDS - 1;
 
     caps->vertex_processing_caps = WINED3DVTXPCAPS_TEXGEN
             | WINED3DVTXPCAPS_MATERIALSOURCE7
@@ -12163,39 +12121,24 @@ static void glsl_vertex_pipe_pixel_shader(struct wined3d_context *context,
 static void glsl_vertex_pipe_world(struct wined3d_context *context,
         const struct wined3d_state *state, DWORD state_id)
 {
-    unsigned int i;
-
-    struct shader_glsl_priv *priv = context->device->shader_priv;
-    context->constant_update_mask |= WINED3D_SHADER_CONST_FFP_MODELVIEW;
-    for (i = 0; i < MAX_VB_UPD_WORDS; ++i)
-        context->blend_mat_update_mask[i] = 0xFFFFFFFF;
-    priv->ubo_blend_mat_need_update = TRUE;
+    context->constant_update_mask |= WINED3D_SHADER_CONST_FFP_MODELVIEW
+            | WINED3D_SHADER_CONST_FFP_VERTEXBLEND;
 }
 
 static void glsl_vertex_pipe_vertexblend(struct wined3d_context *context,
         const struct wined3d_state *state, DWORD state_id)
 {
-    UINT matrix_ind;
-    struct shader_glsl_priv *priv = context->device->shader_priv;
-    matrix_ind = state_id - STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(0));
     context->constant_update_mask |= WINED3D_SHADER_CONST_FFP_VERTEXBLEND;
-    context->blend_mat_update_mask[matrix_ind / 32] |= 1 << (matrix_ind & 31);
-    priv->ubo_blend_mat_need_update = TRUE;
 }
 
 static void glsl_vertex_pipe_view(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
 {
     const struct wined3d_gl_info *gl_info = context->gl_info;
     unsigned int k;
-    unsigned int i;
-    struct shader_glsl_priv *priv = context->device->shader_priv;
 
     context->constant_update_mask |= WINED3D_SHADER_CONST_FFP_MODELVIEW
             | WINED3D_SHADER_CONST_FFP_LIGHTS
             | WINED3D_SHADER_CONST_FFP_VERTEXBLEND;
-    for (i = 0; i < MAX_VB_UPD_WORDS; ++i)
-        context->blend_mat_update_mask[i] = 0xFFFFFFFF;
-    priv->ubo_blend_mat_need_update = TRUE;
 
     if (needs_legacy_glsl_syntax(gl_info))
     {
@@ -12248,7 +12191,7 @@ static void glsl_vertex_pipe_texmatrix_np2(struct wined3d_context *context,
     if (!texture)
         return;
 
-    if (sampler >= MAX_TEXTURES)
+    if (sampler >= WINED3D_MAX_TEXTURES)
         return;
 
     if ((np2 = !(texture->flags & WINED3D_TEXTURE_POW2_MAT_IDENT))
@@ -12368,152 +12311,152 @@ static const struct StateEntryTemplate glsl_vertex_pipe_vp_states[] =
     {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(1)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(1)),                glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
     {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(2)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(2)),                glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
     {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(3)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(3)),                glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(4)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(4)),                glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(5)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(5)),                glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(6)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(6)),                glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(7)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(7)),                glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(8)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(8)),                glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(9)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(9)),                glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(10)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(10)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(11)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(11)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(12)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(12)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(13)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(13)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(14)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(14)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(15)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(15)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(16)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(16)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(17)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(17)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(18)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(18)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(19)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(19)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(20)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(20)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(21)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(21)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(22)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(22)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(23)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(23)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(24)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(24)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(25)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(25)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(26)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(26)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(27)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(27)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(28)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(28)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(29)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(29)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(30)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(30)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(31)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(31)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(32)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(32)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(33)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(33)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(34)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(34)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(35)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(35)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(36)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(36)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(37)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(37)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(38)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(38)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(39)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(39)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(40)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(40)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(41)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(41)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(42)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(42)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(43)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(43)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(44)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(44)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(45)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(45)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(46)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(46)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(47)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(47)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(48)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(48)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(49)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(49)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(50)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(50)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(51)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(51)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(52)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(52)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(53)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(53)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(54)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(54)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(55)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(55)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(56)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(56)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(57)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(57)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(58)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(58)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(59)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(59)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(60)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(60)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(61)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(61)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(62)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(62)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(63)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(63)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(64)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(64)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(65)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(65)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(66)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(66)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(67)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(67)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(68)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(68)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(69)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(69)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(70)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(70)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(71)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(71)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(72)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(72)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(73)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(73)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(74)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(74)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(75)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(75)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(76)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(76)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(77)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(77)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(78)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(78)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(79)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(79)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(80)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(80)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(81)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(81)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(82)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(82)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(83)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(83)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(84)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(84)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(85)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(85)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(86)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(86)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(87)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(87)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(88)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(88)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(89)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(89)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(90)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(90)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(91)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(91)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(92)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(92)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(93)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(93)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(94)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(94)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(95)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(95)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(96)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(96)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(97)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(97)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(98)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(98)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(99)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(99)),               glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(100)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(100)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(101)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(101)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(102)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(102)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(103)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(103)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(104)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(104)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(105)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(105)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(106)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(106)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(107)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(107)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(108)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(108)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(109)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(109)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(110)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(110)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(111)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(111)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(112)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(112)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(113)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(113)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(114)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(114)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(115)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(115)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(116)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(116)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(117)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(117)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(118)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(118)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(119)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(119)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(120)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(120)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(121)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(121)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(122)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(122)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(123)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(123)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(124)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(124)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(125)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(125)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(126)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(126)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(127)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(127)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(128)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(128)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(129)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(129)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(130)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(130)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(131)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(131)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(132)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(132)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(133)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(133)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(134)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(134)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(135)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(135)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(136)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(136)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(137)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(137)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(138)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(138)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(139)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(139)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(140)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(140)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(141)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(141)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(142)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(142)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(143)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(143)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(144)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(144)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(145)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(145)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(146)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(146)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(147)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(147)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(148)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(148)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
-    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(149)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(149)),              glsl_vertex_pipe_vertexblend }, WINED3D_GL_EXT_NONE    },
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(4)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(4)),              glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(5)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(5)),              glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(6)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(6)),              glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(7)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(7)),              glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(8)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(8)),              glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(9)),                {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(9)),              glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(10)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(10)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(11)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(11)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(12)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(12)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(13)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(13)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(14)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(14)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(15)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(15)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(16)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(16)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(17)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(17)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(18)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(18)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(19)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(19)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(20)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(20)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(21)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(21)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(22)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(22)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(23)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(23)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(24)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(24)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(25)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(25)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(26)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(26)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(27)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(27)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(28)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(28)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(29)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(29)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(30)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(30)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(31)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(31)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(32)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(32)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(33)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(33)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(34)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(34)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(35)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(35)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(36)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(36)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(37)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(37)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(38)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(38)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(39)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(39)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(40)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(40)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(41)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(41)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(42)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(42)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(43)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(43)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(44)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(44)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(45)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(45)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(46)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(46)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(47)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(47)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(48)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(48)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(49)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(49)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(50)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(50)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(51)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(51)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(52)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(52)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(53)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(53)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(54)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(54)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(55)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(55)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(56)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(56)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(57)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(57)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(58)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(58)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(59)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(59)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(60)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(60)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(61)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(61)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(62)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(62)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(63)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(63)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(64)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(64)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(65)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(65)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(66)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(66)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(67)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(67)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(68)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(68)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(69)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(69)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(70)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(70)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(71)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(71)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(72)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(72)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(73)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(73)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(74)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(74)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(75)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(75)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(76)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(76)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(77)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(77)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(78)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(78)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(79)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(79)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(80)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(80)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(81)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(81)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(82)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(82)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(83)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(83)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(84)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(84)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(85)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(85)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(86)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(86)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(87)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(87)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(88)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(88)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(89)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(89)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(90)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(90)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(91)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(91)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(92)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(92)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(93)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(93)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(94)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(94)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(95)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(95)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(96)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(96)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(97)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(97)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(98)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(98)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(99)),               {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(99)),             glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(100)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(100)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(101)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(101)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(102)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(102)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(103)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(103)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(104)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(104)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(105)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(105)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(106)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(106)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(107)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(107)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(108)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(108)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(109)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(109)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(110)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(110)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(111)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(111)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(112)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(112)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(113)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(113)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(114)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(114)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(115)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(115)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(116)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(116)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(117)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(117)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(118)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(118)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(119)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(119)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(120)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(120)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(121)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(121)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(122)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(122)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(123)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(123)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(124)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(124)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(125)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(125)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(126)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(126)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(127)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(127)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(128)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(128)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(129)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(129)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(130)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(130)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(131)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(131)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(132)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(132)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(133)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(133)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(134)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(134)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(135)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(135)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(136)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(136)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(137)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(137)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(138)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(138)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(139)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(139)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(140)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(140)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(141)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(141)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(142)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(142)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(143)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(143)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(144)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(144)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(145)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(145)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(146)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(146)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(147)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(147)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(148)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(148)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
+    {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(149)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(149)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
     {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(150)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(150)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
     {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(151)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(151)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
     {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(152)),              {STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(152)),            glsl_vertex_pipe_vertexblend }, ARB_UNIFORM_BUFFER_OBJECT},
@@ -12748,8 +12691,8 @@ static void glsl_fragment_pipe_get_caps(const struct wined3d_gl_info *gl_info, s
             | WINED3DTEXOPCAPS_LERP
             | WINED3DTEXOPCAPS_BUMPENVMAP
             | WINED3DTEXOPCAPS_BUMPENVMAPLUMINANCE;
-    caps->MaxTextureBlendStages = MAX_TEXTURES;
-    caps->MaxSimultaneousTextures = min(gl_info->limits.samplers[WINED3D_SHADER_TYPE_PIXEL], MAX_TEXTURES);
+    caps->MaxTextureBlendStages = WINED3D_MAX_TEXTURES;
+    caps->MaxSimultaneousTextures = min(gl_info->limits.samplers[WINED3D_SHADER_TYPE_PIXEL], WINED3D_MAX_TEXTURES);
 }
 
 static DWORD glsl_fragment_pipe_get_emul_mask(const struct wined3d_gl_info *gl_info)

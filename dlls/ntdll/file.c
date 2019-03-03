@@ -931,7 +931,7 @@ NTSTATUS WINAPI NtReadFile(HANDLE hFile, HANDLE hEvent,
     int result, unix_handle, needs_close;
     unsigned int options;
     struct io_timeouts timeouts;
-    NTSTATUS status;
+    NTSTATUS status, ret_status;
     ULONG total = 0;
     enum server_fd_type type;
     ULONG_PTR cvalue = apc ? 0 : (ULONG_PTR)apc_user;
@@ -1113,9 +1113,11 @@ err:
         if (status != STATUS_PENDING && hEvent) NtResetEvent( hEvent, NULL );
     }
 
-    if (send_completion) NTDLL_AddCompletion( hFile, cvalue, status, total );
+    ret_status = async_read && (options & FILE_NO_INTERMEDIATE_BUFFERING) && status == STATUS_SUCCESS
+            ? STATUS_PENDING : status;
 
-    return status;
+    if (send_completion) NTDLL_AddCompletion( hFile, cvalue, status, total, ret_status == STATUS_PENDING );
+    return ret_status;
 }
 
 
@@ -1188,7 +1190,7 @@ NTSTATUS WINAPI NtReadFileScatter( HANDLE file, HANDLE event, PIO_APC_ROUTINE ap
     if (event) NtSetEvent( event, NULL );
     if (apc) NtQueueApcThread( GetCurrentThread(), (PNTAPCFUNC)apc,
                                (ULONG_PTR)apc_user, (ULONG_PTR)io_status, 0 );
-    if (send_completion) NTDLL_AddCompletion( file, cvalue, status, total );
+    if (send_completion) NTDLL_AddCompletion( file, cvalue, status, total, TRUE );
 
     return STATUS_PENDING;
 
@@ -1507,7 +1509,7 @@ err:
         if (status != STATUS_PENDING && hEvent) NtResetEvent( hEvent, NULL );
     }
 
-    if (send_completion) NTDLL_AddCompletion( hFile, cvalue, status, total );
+    if (send_completion) NTDLL_AddCompletion( hFile, cvalue, status, total, FALSE );
 
     return status;
 }
@@ -1599,7 +1601,7 @@ NTSTATUS WINAPI NtWriteFileGather( HANDLE file, HANDLE event, PIO_APC_ROUTINE ap
         if (status != STATUS_PENDING && event) NtResetEvent( event, NULL );
     }
 
-    if (send_completion) NTDLL_AddCompletion( file, cvalue, status, total );
+    if (send_completion) NTDLL_AddCompletion( file, cvalue, status, total, FALSE );
 
     return status;
 }

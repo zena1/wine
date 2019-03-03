@@ -261,13 +261,13 @@ static inline enum complex_fixup get_complex_fixup(struct color_fixup_desc fixup
 }
 
 /* Device caps */
-#define MAX_STREAMS                 16
-#define MAX_TEXTURES                8
-#define MAX_FRAGMENT_SAMPLERS       16
-#define MAX_VERTEX_SAMPLERS         4
-#define MAX_COMBINED_SAMPLERS       (MAX_FRAGMENT_SAMPLERS + MAX_VERTEX_SAMPLERS)
-#define MAX_ACTIVE_LIGHTS           8
-#define MAX_CLIP_DISTANCES          8
+#define WINED3D_MAX_STREAMS         16
+#define WINED3D_MAX_TEXTURES        8
+#define WINED3D_MAX_FRAGMENT_SAMPLERS 16
+#define WINED3D_MAX_VERTEX_SAMPLERS 4
+#define WINED3D_MAX_COMBINED_SAMPLERS (WINED3D_MAX_FRAGMENT_SAMPLERS + WINED3D_MAX_VERTEX_SAMPLERS)
+#define WINED3D_MAX_ACTIVE_LIGHTS   8
+#define WINED3D_MAX_CLIP_DISTANCES  8
 #define MAX_CONSTANT_BUFFERS        15
 #define MAX_SAMPLER_OBJECTS         16
 #define MAX_SHADER_RESOURCE_VIEWS   128
@@ -276,8 +276,7 @@ static inline enum complex_fixup get_complex_fixup(struct color_fixup_desc fixup
 #define MAX_TGSM_REGISTERS          8192
 #define MAX_VERTEX_BLENDS           4
 #define MAX_VERTEX_BLEND_UBO        256
-#define MAX_VERTEX_BLEND_UNF        150
-#define MAX_VB_UPD_WORDS ((MAX_VERTEX_BLEND_UBO + 31) / 32)
+#define MAX_RENDER_TARGETS          8
 
 struct min_lookup
 {
@@ -381,13 +380,20 @@ static inline void wined3d_pause(void)
 #define PCI_VENDOR_NONE 0xffff /* e.g. 0x8086 for Intel and 0x10de for Nvidia */
 #define PCI_DEVICE_NONE 0xffff /* e.g. 0x14f for a Geforce6200 */
 
+enum wined3d_shader_backend
+{
+    WINED3D_SHADER_BACKEND_AUTO,
+    WINED3D_SHADER_BACKEND_GLSL,
+    WINED3D_SHADER_BACKEND_ARB,
+    WINED3D_SHADER_BACKEND_NONE,
+};
+
 /* NOTE: When adding fields to this structure, make sure to update the default
  * values in wined3d_main.c as well. */
 struct wined3d_settings
 {
     unsigned int cs_multithreaded;
     DWORD max_gl_version;
-    BOOL use_glsl;
     int offscreen_rendering_mode;
     unsigned short pci_vendor_id;
     unsigned short pci_device_id;
@@ -397,6 +403,7 @@ struct wined3d_settings
     unsigned int multisample_textures;
     unsigned int sample_count;
     BOOL check_float_constants;
+    unsigned int strict_shader_math;
     unsigned int max_sm_vs;
     unsigned int max_sm_hs;
     unsigned int max_sm_ds;
@@ -404,7 +411,7 @@ struct wined3d_settings
     unsigned int max_sm_ps;
     unsigned int max_sm_cs;
     BOOL no_3d;
-    unsigned int consts_ubo;
+    enum wined3d_shader_backend shader_backend;
 };
 
 extern struct wined3d_settings wined3d_settings DECLSPEC_HIDDEN;
@@ -1011,14 +1018,14 @@ struct wined3d_shader_reg_maps
     struct wined3d_shader_resource_info resource_info[MAX_SHADER_RESOURCE_VIEWS];
     struct wined3d_shader_sampler_map sampler_map;
     DWORD sampler_comparison_mode;
-    BYTE bumpmat;                                   /* MAX_TEXTURES, 8 */
-    BYTE luminanceparams;                           /* MAX_TEXTURES, 8 */
+    BYTE bumpmat;                                   /* WINED3D_MAX_TEXTURES, 8 */
+    BYTE luminanceparams;                           /* WINED3D_MAX_TEXTURES, 8 */
     struct wined3d_shader_resource_info uav_resource_info[MAX_UNORDERED_ACCESS_VIEWS];
     DWORD uav_read_mask : 8;                        /* MAX_UNORDERED_ACCESS_VIEWS, 8 */
     DWORD uav_counter_mask : 8;                     /* MAX_UNORDERED_ACCESS_VIEWS, 8 */
 
-    DWORD clip_distance_mask : 8;                   /* MAX_CLIP_DISTANCES, 8 */
-    DWORD cull_distance_mask : 8;                   /* MAX_CLIP_DISTANCES, 8 */
+    DWORD clip_distance_mask : 8;                   /* WINED3D_MAX_CLIP_DISTANCES, 8 */
+    DWORD cull_distance_mask : 8;                   /* WINED3D_MAX_CLIP_DISTANCES, 8 */
     DWORD usesnrm        : 1;
     DWORD vpos           : 1;
     DWORD usesdsx        : 1;
@@ -1353,7 +1360,7 @@ enum wined3d_shader_tex_types
 
 struct ps_compile_args
 {
-    struct color_fixup_desc     color_fixup[MAX_FRAGMENT_SAMPLERS];
+    struct color_fixup_desc     color_fixup[WINED3D_MAX_FRAGMENT_SAMPLERS];
     enum wined3d_vertex_processing_mode vp_mode;
     enum wined3d_ffp_ps_fog_mode fog;
     WORD                        tex_transform; /* ps 1.0-1.3, 4 textures */
@@ -1363,8 +1370,8 @@ struct ps_compile_args
        D3D9 has a limit of 16 samplers and the fixup is superfluous
        in D3D10 (unconditional NP2 support mandatory). */
     WORD                        np2_fixup;
-    WORD shadow; /* MAX_FRAGMENT_SAMPLERS, 16 */
-    WORD texcoords_initialized; /* MAX_TEXTURES, 8 */
+    WORD shadow; /* WINED3D_MAX_FRAGMENT_SAMPLERS, 16 */
+    WORD texcoords_initialized; /* WINED3D_MAX_TEXTURES, 8 */
     DWORD pointsprite : 1;
     DWORD flatshading : 1;
     DWORD alpha_test_func : 3;
@@ -1456,7 +1463,7 @@ static inline void wined3d_color_from_d3dcolor(struct wined3d_color *wined3d_col
     wined3d_color->a = D3DCOLOR_B_A(d3d_color) / 255.0f;
 }
 
-#define HIGHEST_TRANSFORMSTATE WINED3D_TS_WORLD_MATRIX(255) /* Highest value in wined3d_transform_state. */
+#define WINED3D_HIGHEST_TRANSFORM_STATE WINED3D_TS_WORLD_MATRIX(255) /* Highest value in wined3d_transform_state. */
 
 void wined3d_check_gl_call(const struct wined3d_gl_info *gl_info,
         const char *file, unsigned int line, const char *name) DECLSPEC_HIDDEN;
@@ -1587,13 +1594,13 @@ enum wined3d_pipeline
 #define STATE_TEXTURESTAGE(stage, num) \
     (STATE_RENDER(WINEHIGHEST_RENDER_STATE) + 1 + (stage) * (WINED3D_HIGHEST_TEXTURE_STATE + 1) + (num))
 #define STATE_IS_TEXTURESTAGE(a) \
-    ((a) >= STATE_TEXTURESTAGE(0, 1) && (a) <= STATE_TEXTURESTAGE(MAX_TEXTURES - 1, WINED3D_HIGHEST_TEXTURE_STATE))
+    ((a) >= STATE_TEXTURESTAGE(0, 1) && (a) <= STATE_TEXTURESTAGE(WINED3D_MAX_TEXTURES - 1, WINED3D_HIGHEST_TEXTURE_STATE))
 
 /* + 1 because samplers start with 0 */
-#define STATE_SAMPLER(num) (STATE_TEXTURESTAGE(MAX_TEXTURES - 1, WINED3D_HIGHEST_TEXTURE_STATE) + 1 + (num))
-#define STATE_IS_SAMPLER(num) ((num) >= STATE_SAMPLER(0) && (num) <= STATE_SAMPLER(MAX_COMBINED_SAMPLERS - 1))
+#define STATE_SAMPLER(num) (STATE_TEXTURESTAGE(WINED3D_MAX_TEXTURES - 1, WINED3D_HIGHEST_TEXTURE_STATE) + 1 + (num))
+#define STATE_IS_SAMPLER(num) ((num) >= STATE_SAMPLER(0) && (num) <= STATE_SAMPLER(WINED3D_MAX_COMBINED_SAMPLERS - 1))
 
-#define STATE_GRAPHICS_SHADER(a) (STATE_SAMPLER(MAX_COMBINED_SAMPLERS) + (a))
+#define STATE_GRAPHICS_SHADER(a) (STATE_SAMPLER(WINED3D_MAX_COMBINED_SAMPLERS) + (a))
 #define STATE_IS_GRAPHICS_SHADER(a) \
     ((a) >= STATE_GRAPHICS_SHADER(0) && (a) < STATE_GRAPHICS_SHADER(WINED3D_SHADER_TYPE_GRAPHICS_COUNT))
 
@@ -1625,15 +1632,15 @@ enum wined3d_pipeline
 #define STATE_LIGHT_TYPE (STATE_VIEWPORT + 1)
 #define STATE_IS_LIGHT_TYPE(a) ((a) == STATE_LIGHT_TYPE)
 #define STATE_ACTIVELIGHT(a) (STATE_LIGHT_TYPE + 1 + (a))
-#define STATE_IS_ACTIVELIGHT(a) ((a) >= STATE_ACTIVELIGHT(0) && (a) < STATE_ACTIVELIGHT(MAX_ACTIVE_LIGHTS))
+#define STATE_IS_ACTIVELIGHT(a) ((a) >= STATE_ACTIVELIGHT(0) && (a) < STATE_ACTIVELIGHT(WINED3D_MAX_ACTIVE_LIGHTS))
 
-#define STATE_SCISSORRECT (STATE_ACTIVELIGHT(MAX_ACTIVE_LIGHTS - 1) + 1)
+#define STATE_SCISSORRECT (STATE_ACTIVELIGHT(WINED3D_MAX_ACTIVE_LIGHTS - 1) + 1)
 #define STATE_IS_SCISSORRECT(a) ((a) == STATE_SCISSORRECT)
 
 #define STATE_CLIPPLANE(a) (STATE_SCISSORRECT + 1 + (a))
-#define STATE_IS_CLIPPLANE(a) ((a) >= STATE_CLIPPLANE(0) && (a) <= STATE_CLIPPLANE(MAX_CLIP_DISTANCES - 1))
+#define STATE_IS_CLIPPLANE(a) ((a) >= STATE_CLIPPLANE(0) && (a) <= STATE_CLIPPLANE(WINED3D_MAX_CLIP_DISTANCES - 1))
 
-#define STATE_MATERIAL (STATE_CLIPPLANE(MAX_CLIP_DISTANCES))
+#define STATE_MATERIAL (STATE_CLIPPLANE(WINED3D_MAX_CLIP_DISTANCES))
 #define STATE_IS_MATERIAL(a) ((a) == STATE_MATERIAL)
 
 #define STATE_RASTERIZER (STATE_MATERIAL + 1)
@@ -1912,10 +1919,10 @@ struct wined3d_context
     DWORD destroyed : 1;
     DWORD valid : 1;
 
-    DWORD texShaderBumpMap : 8;         /* MAX_TEXTURES, 8 */
-    DWORD lastWasPow2Texture : 8;       /* MAX_TEXTURES, 8 */
-    DWORD fixed_function_usage_map : 8; /* MAX_TEXTURES, 8 */
-    DWORD lowest_disabled_stage : 4;    /* Max MAX_TEXTURES, 8 */
+    DWORD texShaderBumpMap : 8;         /* WINED3D_MAX_TEXTURES, 8 */
+    DWORD lastWasPow2Texture : 8;       /* WINED3D_MAX_TEXTURES, 8 */
+    DWORD fixed_function_usage_map : 8; /* WINED3D_MAX_TEXTURES, 8 */
+    DWORD lowest_disabled_stage : 4;    /* Max WINED3D_MAX_TEXTURES, 8 */
     DWORD use_immediate_mode_draw : 1;
     DWORD rebind_fbo : 1;
     DWORD needs_set : 1;
@@ -1931,13 +1938,12 @@ struct wined3d_context
     DWORD transform_feedback_active : 1;
     DWORD transform_feedback_paused : 1;
     DWORD shader_update_mask : 6; /* WINED3D_SHADER_TYPE_COUNT, 6 */
-    DWORD clip_distance_mask : 8; /* MAX_CLIP_DISTANCES, 8 */
+    DWORD clip_distance_mask : 8; /* WINED3D_MAX_CLIP_DISTANCES, 8 */
     DWORD num_untracked_materials : 2;  /* Max value 2 */
     DWORD last_was_dual_blend : 1;
     DWORD padding : 6;
 
     DWORD constant_update_mask;
-    DWORD blend_mat_update_mask[MAX_VB_UPD_WORDS];
     DWORD numbered_array_mask;
     GLenum                  tracking_parm;     /* Which source is tracking current colour         */
     GLenum                  untracked_materials[2];
@@ -2007,8 +2013,8 @@ struct wined3d_context
 
     GLuint blit_vbo;
 
-    DWORD tex_unit_map[MAX_COMBINED_SAMPLERS];
-    DWORD rev_tex_unit_map[MAX_GL_FRAGMENT_SAMPLERS + MAX_VERTEX_SAMPLERS];
+    DWORD tex_unit_map[WINED3D_MAX_COMBINED_SAMPLERS];
+    DWORD rev_tex_unit_map[MAX_GL_FRAGMENT_SAMPLERS + WINED3D_MAX_VERTEX_SAMPLERS];
 
     /* Extension emulation */
     GLint                   gl_fog_source;
@@ -2118,8 +2124,6 @@ enum wined3d_blit_op
     WINED3D_BLIT_OP_COLOR_BLIT,
     WINED3D_BLIT_OP_COLOR_BLIT_ALPHATEST,
     WINED3D_BLIT_OP_COLOR_BLIT_CKEY,
-    WINED3D_BLIT_OP_COLOR_FILL,
-    WINED3D_BLIT_OP_DEPTH_FILL,
     WINED3D_BLIT_OP_DEPTH_BLIT,
     WINED3D_BLIT_OP_RAW_BLIT,
 };
@@ -2525,6 +2529,7 @@ enum wined3d_pci_device
     CARD_INTEL_IP580_2              = 0x193b,
     CARD_INTEL_IPP580_1             = 0x193a,
     CARD_INTEL_IPP580_2             = 0x193d,
+    CARD_INTEL_HD620                = 0x5916,
     CARD_INTEL_HD630                = 0x5912,
 };
 
@@ -2769,7 +2774,7 @@ struct texture_stage_op
 
 struct ffp_frag_settings
 {
-    struct texture_stage_op op[MAX_TEXTURES];
+    struct texture_stage_op op[WINED3D_MAX_TEXTURES];
     enum wined3d_ffp_ps_fog_mode fog;
     unsigned char sRGB_write;
     unsigned char emul_clipplanes;
@@ -2838,14 +2843,14 @@ struct wined3d_ffp_vs_settings
     DWORD point_size      : 1;
     DWORD per_vertex_point_size : 1;
     DWORD fog_mode        : 2;
-    DWORD texcoords       : 8;  /* MAX_TEXTURES */
+    DWORD texcoords       : 8;  /* WINED3D_MAX_TEXTURES */
     DWORD ortho_fog       : 1;
     DWORD flatshading     : 1;
     DWORD swizzle_map     : 16; /* MAX_ATTRIBS, 16 */
     DWORD vb_indices      : 1;
     DWORD padding         : 1;
 
-    DWORD texgen[MAX_TEXTURES];
+    DWORD texgen[WINED3D_MAX_TEXTURES];
 };
 
 struct wined3d_ffp_vs_desc
@@ -2913,7 +2918,7 @@ struct wined3d_light_state
 {
     /* Light hashmap. Collisions are handled using linked lists. */
     struct list light_map[LIGHTMAP_SIZE];
-    const struct wined3d_light_info *lights[MAX_ACTIVE_LIGHTS];
+    const struct wined3d_light_info *lights[WINED3D_MAX_ACTIVE_LIGHTS];
 };
 
 #define WINED3D_STATE_NO_REF        0x00000001
@@ -2926,7 +2931,7 @@ struct wined3d_state
 
     struct wined3d_vertex_declaration *vertex_declaration;
     struct wined3d_stream_output stream_output[WINED3D_MAX_STREAM_OUTPUT_BUFFERS];
-    struct wined3d_stream_state streams[MAX_STREAMS + 1 /* tesselated pseudo-stream */];
+    struct wined3d_stream_state streams[WINED3D_MAX_STREAMS + 1 /* tesselated pseudo-stream */];
     struct wined3d_buffer *index_buffer;
     enum wined3d_format_id index_format;
     unsigned int index_offset;
@@ -2951,12 +2956,12 @@ struct wined3d_state
     struct wined3d_ivec4 ps_consts_i[WINED3D_MAX_CONSTS_I];
     struct wined3d_vec4 ps_consts_f[WINED3D_MAX_PS_CONSTS_F];
 
-    struct wined3d_texture *textures[MAX_COMBINED_SAMPLERS];
-    DWORD sampler_states[MAX_COMBINED_SAMPLERS][WINED3D_HIGHEST_SAMPLER_STATE + 1];
-    DWORD texture_states[MAX_TEXTURES][WINED3D_HIGHEST_TEXTURE_STATE + 1];
+    struct wined3d_texture *textures[WINED3D_MAX_COMBINED_SAMPLERS];
+    DWORD sampler_states[WINED3D_MAX_COMBINED_SAMPLERS][WINED3D_HIGHEST_SAMPLER_STATE + 1];
+    DWORD texture_states[WINED3D_MAX_TEXTURES][WINED3D_HIGHEST_TEXTURE_STATE + 1];
 
-    struct wined3d_matrix transforms[HIGHEST_TRANSFORMSTATE + 1];
-    struct wined3d_vec4 clip_planes[MAX_CLIP_DISTANCES];
+    struct wined3d_matrix transforms[WINED3D_HIGHEST_TRANSFORM_STATE + 1];
+    struct wined3d_vec4 clip_planes[WINED3D_MAX_CLIP_DISTANCES];
     struct wined3d_material material;
     struct wined3d_viewport viewports[WINED3D_MAX_VIEWPORTS];
     unsigned int viewport_count;
@@ -3011,7 +3016,7 @@ struct wined3d_dummy_textures
 struct wined3d_stateblock_state
 {
     struct wined3d_vertex_declaration *vertex_declaration;
-    struct wined3d_stream_state streams[MAX_STREAMS + 1];
+    struct wined3d_stream_state streams[WINED3D_MAX_STREAMS + 1];
     struct wined3d_buffer *index_buffer;
     enum wined3d_format_id index_format;
     int base_vertex_index;
@@ -3029,12 +3034,12 @@ struct wined3d_stateblock_state
     DWORD rs[WINEHIGHEST_RENDER_STATE + 1];
     struct wined3d_color blend_factor;
 
-    struct wined3d_texture *textures[MAX_COMBINED_SAMPLERS];
-    DWORD sampler_states[MAX_COMBINED_SAMPLERS][WINED3D_HIGHEST_SAMPLER_STATE + 1];
-    DWORD texture_states[MAX_TEXTURES][WINED3D_HIGHEST_TEXTURE_STATE + 1];
+    struct wined3d_texture *textures[WINED3D_MAX_COMBINED_SAMPLERS];
+    DWORD sampler_states[WINED3D_MAX_COMBINED_SAMPLERS][WINED3D_HIGHEST_SAMPLER_STATE + 1];
+    DWORD texture_states[WINED3D_MAX_TEXTURES][WINED3D_HIGHEST_TEXTURE_STATE + 1];
 
-    struct wined3d_matrix transforms[HIGHEST_TRANSFORMSTATE + 1];
-    struct wined3d_vec4 clip_planes[MAX_CLIP_DISTANCES];
+    struct wined3d_matrix transforms[WINED3D_HIGHEST_TRANSFORM_STATE + 1];
+    struct wined3d_vec4 clip_planes[WINED3D_MAX_CLIP_DISTANCES];
     struct wined3d_material material;
     struct wined3d_viewport viewport;
     RECT scissor_rect;
@@ -3600,12 +3605,12 @@ struct wined3d_vertex_declaration
 
 struct wined3d_saved_states
 {
-    DWORD transform[(HIGHEST_TRANSFORMSTATE >> 5) + 1];
-    WORD streamSource;                          /* MAX_STREAMS, 16 */
-    WORD streamFreq;                            /* MAX_STREAMS, 16 */
+    DWORD transform[(WINED3D_HIGHEST_TRANSFORM_STATE >> 5) + 1];
+    WORD streamSource;                          /* WINED3D_MAX_STREAMS, 16 */
+    WORD streamFreq;                            /* WINED3D_MAX_STREAMS, 16 */
     DWORD renderState[(WINEHIGHEST_RENDER_STATE >> 5) + 1];
-    DWORD textureState[MAX_TEXTURES];           /* WINED3D_HIGHEST_TEXTURE_STATE + 1, 18 */
-    WORD samplerState[MAX_COMBINED_SAMPLERS];   /* WINED3D_HIGHEST_SAMPLER_STATE + 1, 14 */
+    DWORD textureState[WINED3D_MAX_TEXTURES];   /* WINED3D_HIGHEST_TEXTURE_STATE + 1, 18 */
+    WORD samplerState[WINED3D_MAX_COMBINED_SAMPLERS];   /* WINED3D_HIGHEST_SAMPLER_STATE + 1, 14 */
     DWORD clipplane;                            /* WINED3D_MAX_USER_CLIP_PLANES, 32 */
     WORD pixelShaderConstantsB;                 /* WINED3D_MAX_CONSTS_B, 16 */
     WORD pixelShaderConstantsI;                 /* WINED3D_MAX_CONSTS_I, 16 */
@@ -3613,7 +3618,7 @@ struct wined3d_saved_states
     WORD vertexShaderConstantsB;                /* WINED3D_MAX_CONSTS_B, 16 */
     WORD vertexShaderConstantsI;                /* WINED3D_MAX_CONSTS_I, 16 */
     BOOL vs_consts_f[WINED3D_MAX_VS_CONSTS_F_SWVP];
-    DWORD textures : 20;                        /* MAX_COMBINED_SAMPLERS, 20 */
+    DWORD textures : 20;                        /* WINED3D_MAX_COMBINED_SAMPLERS, 20 */
     DWORD indices : 1;
     DWORD material : 1;
     DWORD viewport : 1;
@@ -3642,7 +3647,7 @@ struct wined3d_stateblock
     /* Contained state management */
     DWORD                     contained_render_states[WINEHIGHEST_RENDER_STATE + 1];
     unsigned int              num_contained_render_states;
-    DWORD                     contained_transform_states[HIGHEST_TRANSFORMSTATE + 1];
+    DWORD                     contained_transform_states[WINED3D_HIGHEST_TRANSFORM_STATE + 1];
     unsigned int              num_contained_transform_states;
     DWORD                     contained_vs_consts_i[WINED3D_MAX_CONSTS_I];
     unsigned int              num_contained_vs_consts_i;
@@ -3656,9 +3661,9 @@ struct wined3d_stateblock
     unsigned int              num_contained_ps_consts_b;
     DWORD                     contained_ps_consts_f[WINED3D_MAX_PS_CONSTS_F];
     unsigned int              num_contained_ps_consts_f;
-    struct StageState         contained_tss_states[MAX_TEXTURES * (WINED3D_HIGHEST_TEXTURE_STATE + 1)];
+    struct StageState         contained_tss_states[WINED3D_MAX_TEXTURES * (WINED3D_HIGHEST_TEXTURE_STATE + 1)];
     unsigned int              num_contained_tss_states;
-    struct StageState         contained_sampler_states[MAX_COMBINED_SAMPLERS * WINED3D_HIGHEST_SAMPLER_STATE];
+    struct StageState         contained_sampler_states[WINED3D_MAX_COMBINED_SAMPLERS * WINED3D_HIGHEST_SAMPLER_STATE];
     unsigned int              num_contained_sampler_states;
 };
 
@@ -4456,7 +4461,7 @@ void get_fog_start_end(const struct wined3d_context *context, const struct wined
  *
  * This structure is shared between the GLSL and the ARB backend.*/
 struct ps_np2fixup_info {
-    unsigned char     idx[MAX_FRAGMENT_SAMPLERS]; /* indices to the real constant */
+    unsigned char     idx[WINED3D_MAX_FRAGMENT_SAMPLERS]; /* indices to the real constant */
     WORD              active; /* bitfield indicating if we can apply the fixup */
     WORD              num_consts;
 };
@@ -4632,6 +4637,18 @@ static inline void context_apply_state(struct wined3d_context *context,
     state_table[rep].apply(context, state, rep);
 }
 
+static inline BOOL is_srgb_enabled(const DWORD *sampler_states)
+{
+    /* Only use the LSB of the WINED3D_SAMP_SRGB_TEXTURE value. This matches
+     * the behaviour of the AMD Windows driver.
+     *
+     * Might & Magic: Heroes VI - Shades of Darkness sets
+     * WINED3D_SAMP_SRGB_TEXTURE to a large value that looks like a
+     * pointer—presumably by accident—and expects sRGB decoding to be
+     * disabled. */
+    return sampler_states[WINED3D_SAMP_SRGB_TEXTURE] & 0x1;
+}
+
 static inline BOOL needs_separate_srgb_gl_texture(const struct wined3d_context *context,
         const struct wined3d_texture *texture)
 {
@@ -4726,6 +4743,13 @@ static inline void wined3d_from_cs(const struct wined3d_cs *cs)
 static inline void wined3d_not_from_cs(struct wined3d_cs *cs)
 {
     assert(cs->thread_id != GetCurrentThreadId());
+}
+
+static inline BOOL is_indexed_vertex_blending(const struct wined3d_context *context,
+        const struct wined3d_state *state)
+{
+    return state->render_states[WINED3D_RS_INDEXEDVERTEXBLENDENABLE]
+            && (context->stream_info.use_map & (1 << WINED3D_FFP_BLENDINDICES));
 }
 
 /* The WNDCLASS-Name for the fake window which we use to retrieve the GL capabilities */
