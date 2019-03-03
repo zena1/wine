@@ -3325,7 +3325,7 @@ static void tex_coordindex(struct wined3d_context *context, const struct wined3d
         return;
     }
 
-    if (mapped_stage >= min(gl_info->limits.samplers[WINED3D_SHADER_TYPE_PIXEL], MAX_FRAGMENT_SAMPLERS))
+    if (mapped_stage >= min(gl_info->limits.samplers[WINED3D_SHADER_TYPE_PIXEL], WINED3D_MAX_FRAGMENT_SAMPLERS))
     {
         WARN("stage %u not mapped to a valid texture unit (%u)\n", stage, mapped_stage);
         return;
@@ -3498,7 +3498,7 @@ static void sampler_texmatrix(struct wined3d_context *context, const struct wine
      * wined3d_texture_apply_state_changes() multiplies the set matrix with a fixup matrix. Before the
      * scaling is reapplied or removed, the texture matrix has to be reapplied.
      */
-    if (sampler < MAX_TEXTURES)
+    if (sampler < WINED3D_MAX_TEXTURES)
     {
         const BOOL tex_is_pow2 = !(texture->flags & WINED3D_TEXTURE_POW2_MAT_IDENT);
 
@@ -3571,7 +3571,7 @@ static void wined3d_sampler_desc_from_sampler_states(struct wined3d_sampler_desc
         desc->max_anisotropy = 1;
     desc->compare = texture_gl->t.resource.format_flags & WINED3DFMT_FLAG_SHADOW;
     desc->comparison_func = WINED3D_CMP_LESSEQUAL;
-    desc->srgb_decode = sampler_states[WINED3D_SAMP_SRGB_TEXTURE];
+    desc->srgb_decode = is_srgb_enabled(sampler_states);
 
     if (!(texture_gl->t.resource.format_flags & WINED3DFMT_FLAG_FILTERING))
     {
@@ -3612,9 +3612,9 @@ static void sampler(struct wined3d_context *context, const struct wined3d_state 
     if (state->textures[sampler_idx])
     {
         struct wined3d_texture_gl *texture_gl = wined3d_texture_gl(state->textures[sampler_idx]);
-        BOOL srgb = state->sampler_states[sampler_idx][WINED3D_SAMP_SRGB_TEXTURE];
         const DWORD *sampler_states = state->sampler_states[sampler_idx];
         struct wined3d_device *device = context->device;
+        BOOL srgb = is_srgb_enabled(sampler_states);
         struct wined3d_sampler_desc desc;
         struct wined3d_sampler *sampler;
         struct wine_rb_entry *entry;
@@ -3670,7 +3670,7 @@ void apply_pixelshader(struct wined3d_context *context, const struct wined3d_sta
             /* Former draw without a pixel shader, some samplers may be
              * disabled because of WINED3D_TSS_COLOR_OP = WINED3DTOP_DISABLE
              * make sure to enable them. */
-            for (i = 0; i < MAX_FRAGMENT_SAMPLERS; ++i)
+            for (i = 0; i < WINED3D_MAX_FRAGMENT_SAMPLERS; ++i)
             {
                 if (!isStateDirty(context, STATE_SAMPLER(i)))
                     sampler(context, state, STATE_SAMPLER(i));
@@ -3990,7 +3990,7 @@ static void vertexdeclaration(struct wined3d_context *context, const struct wine
     {
         unsigned int i;
 
-        for (i = 0; i < MAX_TEXTURES; ++i)
+        for (i = 0; i < WINED3D_MAX_TEXTURES; ++i)
         {
             if (!isStateDirty(context, STATE_TRANSFORM(WINED3D_TS_TEXTURE0 + i)))
                 transform_texture(context, state, STATE_TEXTURESTAGE(i, WINED3D_TSS_TEXTURE_TRANSFORM_FLAGS));
@@ -5397,7 +5397,7 @@ static void prune_invalid_states(struct StateEntry *state_table, const struct wi
     unsigned int start, last, i;
 
     start = STATE_TEXTURESTAGE(d3d_info->limits.ffp_blend_stages, 0);
-    last = STATE_TEXTURESTAGE(MAX_TEXTURES - 1, WINED3D_HIGHEST_TEXTURE_STATE);
+    last = STATE_TEXTURESTAGE(WINED3D_MAX_TEXTURES - 1, WINED3D_HIGHEST_TEXTURE_STATE);
     for (i = start; i <= last; ++i)
     {
         state_table[i].representative = 0;
@@ -5405,14 +5405,15 @@ static void prune_invalid_states(struct StateEntry *state_table, const struct wi
     }
 
     start = STATE_TRANSFORM(WINED3D_TS_TEXTURE0 + d3d_info->limits.ffp_blend_stages);
-    last = STATE_TRANSFORM(WINED3D_TS_TEXTURE0 + MAX_TEXTURES - 1);
+    last = STATE_TRANSFORM(WINED3D_TS_TEXTURE0 + WINED3D_MAX_TEXTURES - 1);
     for (i = start; i <= last; ++i)
     {
         state_table[i].representative = 0;
         state_table[i].apply = state_undefined;
     }
 
-    start = STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(d3d_info->limits.ffp_vertex_blend_matrices));
+    start = STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(max(d3d_info->limits.ffp_vertex_blend_matrices,
+            d3d_info->limits.ffp_max_vertex_blend_matrix_index + 1)));
     last = STATE_TRANSFORM(WINED3D_TS_WORLD_MATRIX(255));
     for (i = start; i <= last; ++i)
     {

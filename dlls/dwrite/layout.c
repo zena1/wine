@@ -2563,7 +2563,7 @@ static BOOL set_layout_range_attrval(struct layout_range_header *h, enum layout_
         changed = set_layout_range_iface_attr((IUnknown**)&dest->object, (IUnknown*)value->u.object);
         break;
     case LAYOUT_RANGE_ATTR_EFFECT:
-        changed = set_layout_range_iface_attr((IUnknown**)&dest_iface->iface, (IUnknown*)value->u.effect);
+        changed = set_layout_range_iface_attr(&dest_iface->iface, value->u.effect);
         break;
     case LAYOUT_RANGE_ATTR_UNDERLINE:
         changed = dest_bool->value != value->u.underline;
@@ -2603,7 +2603,7 @@ static BOOL set_layout_range_attrval(struct layout_range_header *h, enum layout_
         dest_spacing->min_advance = value->u.spacing.min_advance;
         break;
     case LAYOUT_RANGE_ATTR_TYPOGRAPHY:
-        changed = set_layout_range_iface_attr((IUnknown**)&dest_iface->iface, (IUnknown*)value->u.typography);
+        changed = set_layout_range_iface_attr(&dest_iface->iface, (IUnknown*)value->u.typography);
         break;
     default:
         ;
