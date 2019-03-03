@@ -191,9 +191,9 @@ ULONG WINAPI HttpCreateServerSession( HTTPAPI_VERSION version, HTTP_SERVER_SESSI
 {
     FIXME( "({%d,%d}, %p, %d): stub!\n", version.HttpApiMajorVersion, version.HttpApiMinorVersion, id, reserved );
 
-    if(!id)
+    if(!id || reserved)
         return ERROR_INVALID_PARAMETER;
-    if(version.HttpApiMajorVersion != 2 || version.HttpApiMinorVersion != 0)
+    if((version.HttpApiMajorVersion != 1 && version.HttpApiMajorVersion != 2)  || version.HttpApiMinorVersion != 0)
         return ERROR_REVISION_MISMATCH;
 
     *id = 0xabcdefff;

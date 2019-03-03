@@ -5480,6 +5480,7 @@ todo_wine
 
     GdipFree(palette);
     GdipDisposeImage((GpImage *)bitmap);
+    HeapFree(GetProcessHeap(), 0, data);
 }
 
 #include "pshpack2.h"

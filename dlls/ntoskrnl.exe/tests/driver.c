@@ -51,6 +51,10 @@ static int running_under_wine;
 static int winetest_debug;
 static int winetest_report_success;
 
+static POBJECT_TYPE *pExEventObjectType, *pIoFileObjectType, *pPsThreadType;
+
+void WINAPI ObfReferenceObject( void *obj );
+
 extern int CDECL _vsnprintf(char *str, size_t len, const char *format, __ms_va_list argptr);
 
 static void kvprintf(const char *format, __ms_va_list ap)
@@ -176,6 +180,21 @@ static void winetest_end_todo(void)
 #define todo_wine_if(is_todo)   todo_if((is_todo) && running_under_wine)
 #define win_skip(...)           win_skip_(__FILE__, __LINE__, __VA_ARGS__)
 
+static unsigned int strlenW( const WCHAR *str )
+{
+    const WCHAR *s = str;
+    while (*s) s++;
+    return s - str;
+}
+
+void *kmemcpy(void *dest, const void *src, SIZE_T n)
+{
+    const char *s = src;
+    char *d = dest;
+    while (n--) *d++ = *s++;
+    return dest;
+}
+
 static void *get_proc_address(const char *name)
 {
     UNICODE_STRING name_u;
@@ -291,7 +310,14 @@ static NTSTATUS wait_multiple(ULONG count, void *objs[], WAIT_TYPE wait_type, UL
     return KeWaitForMultipleObjects(count, objs, wait_type, Executive, KernelMode, FALSE, &integer, NULL);
 }
 
-static void run_thread(PKSTART_ROUTINE proc, void *arg)
+static void sleep(void)
+{
+    LARGE_INTEGER timeout;
+    timeout.QuadPart = -2000;
+    KeDelayExecutionThread( KernelMode, FALSE, &timeout );
+}
+
+static HANDLE create_thread(PKSTART_ROUTINE proc, void *arg)
 {
     OBJECT_ATTRIBUTES attr = {0};
     HANDLE thread;
@@ -302,10 +328,23 @@ static void run_thread(PKSTART_ROUTINE proc, void *arg)
     ret = PsCreateSystemThread(&thread, THREAD_ALL_ACCESS, &attr, NULL, NULL, proc, arg);
     ok(!ret, "got %#x\n", ret);
 
+    return thread;
+}
+
+static void join_thread(HANDLE thread)
+{
+    NTSTATUS ret;
+
     ret = ZwWaitForSingleObject(thread, FALSE, NULL);
     ok(!ret, "got %#x\n", ret);
     ret = ZwClose(thread);
     ok(!ret, "got %#x\n", ret);
+}
+
+static void run_thread(PKSTART_ROUTINE proc, void *arg)
+{
+    HANDLE thread = create_thread(proc, arg);
+    join_thread(thread);
 }
 
 static KMUTEX test_mutex;
@@ -638,6 +677,402 @@ static void test_version(void)
     ok(*pNtBuildNumber == build, "Expected build number %u, got %u\n", build, *pNtBuildNumber);
 }
 
+static void WINAPI thread_proc(void *arg)
+{
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
+static void test_ob_reference(const WCHAR *test_path)
+{
+    OBJECT_ATTRIBUTES attr = { sizeof(attr) };
+    HANDLE event_handle, file_handle, file_handle2, thread_handle;
+    FILE_OBJECT *file;
+    void *obj1, *obj2;
+    UNICODE_STRING pathU;
+    IO_STATUS_BLOCK io;
+    WCHAR *tmp_path;
+    SIZE_T len;
+    NTSTATUS status;
+
+    static const WCHAR tmpW[] = {'.','t','m','p',0};
+
+    InitializeObjectAttributes(&attr, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
+    status = ZwCreateEvent(&event_handle, SYNCHRONIZE, &attr, NotificationEvent, TRUE);
+    ok(!status, "ZwCreateEvent failed: %#x\n", status);
+
+    len = strlenW(test_path);
+    tmp_path = ExAllocatePool(PagedPool, len * sizeof(WCHAR) + sizeof(tmpW));
+    kmemcpy(tmp_path, test_path, len * sizeof(WCHAR));
+    kmemcpy(tmp_path + len, tmpW, sizeof(tmpW));
+
+    RtlInitUnicodeString(&pathU, tmp_path);
+    attr.ObjectName = &pathU;
+    attr.Attributes = OBJ_KERNEL_HANDLE;
+    status = ZwCreateFile(&file_handle,  DELETE | FILE_WRITE_DATA | SYNCHRONIZE, &attr, &io, NULL, 0, 0, FILE_CREATE,
+                          FILE_DELETE_ON_CLOSE | FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
+    ok(!status, "ZwCreateFile failed: %#x\n", status);
+    ExFreePool(tmp_path);
+
+    status = ZwDuplicateObject(NtCurrentProcess(), file_handle, NtCurrentProcess(), &file_handle2,
+                               0, OBJ_KERNEL_HANDLE, DUPLICATE_SAME_ACCESS);
+    ok(!status, "ZwDuplicateObject failed: %#x\n", status);
+
+    InitializeObjectAttributes(&attr, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
+    status = PsCreateSystemThread(&thread_handle, SYNCHRONIZE, &attr, NULL, NULL, thread_proc, NULL);
+    ok(!status, "PsCreateSystemThread returned: %#x\n", status);
+
+    status = ObReferenceObjectByHandle(NULL, SYNCHRONIZE, *pExEventObjectType, KernelMode, &obj1, NULL);
+    ok(status == STATUS_INVALID_HANDLE, "ObReferenceObjectByHandle failed: %#x\n", status);
+
+    status = ObReferenceObjectByHandle(event_handle, SYNCHRONIZE, *pIoFileObjectType, KernelMode, &obj1, NULL);
+    ok(status == STATUS_OBJECT_TYPE_MISMATCH, "ObReferenceObjectByHandle returned: %#x\n", status);
+
+    status = ObReferenceObjectByHandle(event_handle, SYNCHRONIZE, *pExEventObjectType, KernelMode, &obj1, NULL);
+    ok(!status, "ObReferenceObjectByHandle failed: %#x\n", status);
+
+    if (sizeof(void *) != 4) /* avoid dealing with fastcall */
+    {
+        ObfReferenceObject(obj1);
+        ObDereferenceObject(obj1);
+    }
+
+    status = ObReferenceObjectByHandle(event_handle, SYNCHRONIZE, *pIoFileObjectType, KernelMode, &obj2, NULL);
+    ok(status == STATUS_OBJECT_TYPE_MISMATCH, "ObReferenceObjectByHandle returned: %#x\n", status);
+
+    status = ObReferenceObjectByHandle(event_handle, SYNCHRONIZE, *pExEventObjectType, KernelMode, &obj2, NULL);
+    ok(!status, "ObReferenceObjectByHandle failed: %#x\n", status);
+    todo_wine
+    ok(obj1 == obj2, "obj1 != obj2\n");
+
+    ObDereferenceObject(obj1);
+    ObDereferenceObject(obj2);
+
+    status = ObReferenceObjectByHandle(file_handle, SYNCHRONIZE, *pIoFileObjectType, KernelMode, &obj1, NULL);
+    ok(!status, "ObReferenceObjectByHandle failed: %#x\n", status);
+
+    status = ObReferenceObjectByHandle(file_handle2, SYNCHRONIZE, *pIoFileObjectType, KernelMode, &obj2, NULL);
+    ok(!status, "ObReferenceObjectByHandle failed: %#x\n", status);
+    todo_wine
+    ok(obj1 == obj2, "obj1 != obj2\n");
+
+    file = obj1;
+    ok(file->Type == 5, "Type = %u\n", file->Type);
+
+    ObDereferenceObject(obj1);
+    ObDereferenceObject(obj2);
+
+    status = ObReferenceObjectByHandle(thread_handle, SYNCHRONIZE, *pPsThreadType, KernelMode, &obj1, NULL);
+    ok(!status, "ObReferenceObjectByHandle failed: %#x\n", status);
+
+    status = ObReferenceObjectByHandle(thread_handle, SYNCHRONIZE, *pPsThreadType, KernelMode, &obj2, NULL);
+    ok(!status, "ObReferenceObjectByHandle failed: %#x\n", status);
+    todo_wine
+    ok(obj1 == obj2, "obj1 != obj2\n");
+
+    ObDereferenceObject(obj1);
+    ObDereferenceObject(obj2);
+
+    status = ZwClose(thread_handle);
+    ok(!status, "ZwClose failed: %#x\n", status);
+
+    status = ZwClose(event_handle);
+    ok(!status, "ZwClose failed: %#x\n", status);
+
+    status = ZwClose(file_handle);
+    ok(!status, "ZwClose failed: %#x\n", status);
+
+    status = ZwClose(file_handle2);
+    ok(!status, "ZwClose failed: %#x\n", status);
+}
+
+static void check_resource_(int line, ERESOURCE *resource, ULONG exclusive_waiters,
+        ULONG shared_waiters, BOOLEAN exclusive, ULONG shared_count)
+{
+    BOOLEAN ret;
+    ULONG count;
+
+    count = ExGetExclusiveWaiterCount(resource);
+    ok_(__FILE__, line, count == exclusive_waiters,
+            "expected %u exclusive waiters, got %u\n", exclusive_waiters, count);
+    count = ExGetSharedWaiterCount(resource);
+    ok_(__FILE__, line, count == shared_waiters,
+            "expected %u shared waiters, got %u\n", shared_waiters, count);
+    ret = ExIsResourceAcquiredExclusiveLite(resource);
+    ok_(__FILE__, line, ret == exclusive,
+            "expected exclusive %u, got %u\n", exclusive, ret);
+    count = ExIsResourceAcquiredSharedLite(resource);
+    ok_(__FILE__, line, count == shared_count,
+            "expected shared %u, got %u\n", shared_count, count);
+}
+#define check_resource(a,b,c,d,e) check_resource_(__LINE__,a,b,c,d,e)
+
+static KEVENT resource_shared_ready, resource_shared_done, resource_exclusive_ready, resource_exclusive_done;
+
+static void WINAPI resource_shared_thread(void *arg)
+{
+    ERESOURCE *resource = arg;
+    BOOLEAN ret;
+
+    check_resource(resource, 0, 0, FALSE, 0);
+
+    ret = ExAcquireResourceSharedLite(resource, TRUE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+
+    check_resource(resource, 0, 0, FALSE, 1);
+
+    KeSetEvent(&resource_shared_ready, IO_NO_INCREMENT, FALSE);
+    KeWaitForSingleObject(&resource_shared_done, Executive, KernelMode, FALSE, NULL);
+
+    ExReleaseResourceForThreadLite(resource, (ULONG_PTR)PsGetCurrentThread());
+
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
+static void WINAPI resource_exclusive_thread(void *arg)
+{
+    ERESOURCE *resource = arg;
+    BOOLEAN ret;
+
+    check_resource(resource, 0, 0, FALSE, 0);
+
+    ret = ExAcquireResourceExclusiveLite(resource, TRUE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+
+    check_resource(resource, 0, 0, TRUE, 1);
+
+    KeSetEvent(&resource_exclusive_ready, IO_NO_INCREMENT, FALSE);
+    KeWaitForSingleObject(&resource_exclusive_done, Executive, KernelMode, FALSE, NULL);
+
+    ExReleaseResourceForThreadLite(resource, (ULONG_PTR)PsGetCurrentThread());
+
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
+static void test_resource(void)
+{
+    ERESOURCE resource;
+    NTSTATUS status;
+    BOOLEAN ret;
+    HANDLE thread, thread2;
+
+    memset(&resource, 0xcc, sizeof(resource));
+
+    status = ExInitializeResourceLite(&resource);
+    ok(status == STATUS_SUCCESS, "got status %#x\n", status);
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    KeEnterCriticalRegion();
+
+    ret = ExAcquireResourceExclusiveLite(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, TRUE, 1);
+
+    ret = ExAcquireResourceExclusiveLite(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, TRUE, 2);
+
+    ret = ExAcquireResourceSharedLite(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, TRUE, 3);
+
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+    check_resource(&resource, 0, 0, TRUE, 2);
+
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+    check_resource(&resource, 0, 0, TRUE, 1);
+
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    ret = ExAcquireResourceSharedLite(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, FALSE, 1);
+
+    ret = ExAcquireResourceSharedLite(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, FALSE, 2);
+
+    ret = ExAcquireResourceExclusiveLite(&resource, FALSE);
+    ok(ret == FALSE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, FALSE, 2);
+
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+    check_resource(&resource, 0, 0, FALSE, 1);
+
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    ret = ExAcquireSharedStarveExclusive(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, FALSE, 1);
+
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    ret = ExAcquireSharedWaitForExclusive(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, FALSE, 1);
+
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    /* Do not acquire the resource ourselves, but spawn a shared thread holding it. */
+
+    KeInitializeEvent(&resource_shared_ready, SynchronizationEvent, FALSE);
+    KeInitializeEvent(&resource_shared_done, SynchronizationEvent, FALSE);
+    thread = create_thread(resource_shared_thread, &resource);
+    KeWaitForSingleObject(&resource_shared_ready, Executive, KernelMode, FALSE, NULL);
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    ret = ExAcquireResourceExclusiveLite(&resource, FALSE);
+    ok(ret == FALSE, "got ret %u\n", ret);
+
+    ret = ExAcquireResourceSharedLite(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, FALSE, 1);
+
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    ret = ExAcquireSharedStarveExclusive(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, FALSE, 1);
+
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    ret = ExAcquireSharedWaitForExclusive(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, FALSE, 1);
+
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    KeSetEvent(&resource_shared_done, IO_NO_INCREMENT, FALSE);
+    join_thread(thread);
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    /* Acquire the resource as exclusive, and then spawn a shared thread. */
+
+    ret = ExAcquireResourceExclusiveLite(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, TRUE, 1);
+
+    thread = create_thread(resource_shared_thread, &resource);
+    sleep();
+    check_resource(&resource, 0, 1, TRUE, 1);
+
+    ret = ExAcquireResourceExclusiveLite(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 1, TRUE, 2);
+
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+    KeWaitForSingleObject(&resource_shared_ready, Executive, KernelMode, FALSE, NULL);
+    KeSetEvent(&resource_shared_done, IO_NO_INCREMENT, FALSE);
+    join_thread(thread);
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    /* Do not acquire the resource ourselves, but spawn an exclusive thread holding it. */
+
+    KeInitializeEvent(&resource_exclusive_ready, SynchronizationEvent, FALSE);
+    KeInitializeEvent(&resource_exclusive_done, SynchronizationEvent, FALSE);
+    thread = create_thread(resource_exclusive_thread, &resource);
+    KeWaitForSingleObject(&resource_exclusive_ready, Executive, KernelMode, FALSE, NULL);
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    ret = ExAcquireResourceExclusiveLite(&resource, FALSE);
+    ok(ret == FALSE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    ret = ExAcquireResourceSharedLite(&resource, FALSE);
+    ok(ret == FALSE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    ret = ExAcquireSharedStarveExclusive(&resource, FALSE);
+    ok(ret == FALSE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    ret = ExAcquireSharedWaitForExclusive(&resource, FALSE);
+    ok(ret == FALSE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    KeSetEvent(&resource_exclusive_done, IO_NO_INCREMENT, FALSE);
+    join_thread(thread);
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    /* Acquire the resource as shared, and then spawn an exclusive waiter. */
+
+    ret = ExAcquireResourceSharedLite(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 0, 0, FALSE, 1);
+
+    thread = create_thread(resource_exclusive_thread, &resource);
+    sleep();
+    check_resource(&resource, 1, 0, FALSE, 1);
+
+    ret = ExAcquireResourceSharedLite(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 1, 0, FALSE, 2);
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+
+    ret = ExAcquireSharedStarveExclusive(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 1, 0, FALSE, 2);
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+
+    ret = ExAcquireSharedWaitForExclusive(&resource, FALSE);
+    ok(ret == FALSE, "got ret %u\n", ret);
+    check_resource(&resource, 1, 0, FALSE, 1);
+
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+    KeWaitForSingleObject(&resource_exclusive_ready, Executive, KernelMode, FALSE, NULL);
+    KeSetEvent(&resource_exclusive_done, IO_NO_INCREMENT, FALSE);
+    join_thread(thread);
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    /* Spawn a shared and then exclusive waiter. */
+
+    KeInitializeEvent(&resource_shared_ready, SynchronizationEvent, FALSE);
+    KeInitializeEvent(&resource_shared_done, SynchronizationEvent, FALSE);
+    thread = create_thread(resource_shared_thread, &resource);
+    KeWaitForSingleObject(&resource_shared_ready, Executive, KernelMode, FALSE, NULL);
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    thread2 = create_thread(resource_exclusive_thread, &resource);
+    sleep();
+    check_resource(&resource, 1, 0, FALSE, 0);
+
+    ret = ExAcquireResourceExclusiveLite(&resource, FALSE);
+    ok(ret == FALSE, "got ret %u\n", ret);
+    check_resource(&resource, 1, 0, FALSE, 0);
+
+    ret = ExAcquireResourceSharedLite(&resource, FALSE);
+    ok(ret == FALSE, "got ret %u\n", ret);
+    check_resource(&resource, 1, 0, FALSE, 0);
+
+    ret = ExAcquireSharedStarveExclusive(&resource, FALSE);
+    ok(ret == TRUE, "got ret %u\n", ret);
+    check_resource(&resource, 1, 0, FALSE, 1);
+    ExReleaseResourceForThreadLite(&resource, (ULONG_PTR)PsGetCurrentThread());
+
+    ret = ExAcquireSharedWaitForExclusive(&resource, FALSE);
+    ok(ret == FALSE, "got ret %u\n", ret);
+    check_resource(&resource, 1, 0, FALSE, 0);
+
+    KeSetEvent(&resource_shared_done, IO_NO_INCREMENT, FALSE);
+    join_thread(thread);
+    KeWaitForSingleObject(&resource_exclusive_ready, Executive, KernelMode, FALSE, NULL);
+    KeSetEvent(&resource_exclusive_done, IO_NO_INCREMENT, FALSE);
+    join_thread(thread2);
+    check_resource(&resource, 0, 0, FALSE, 0);
+
+    KeLeaveCriticalRegion();
+
+    status = ExDeleteResourceLite(&resource);
+    ok(status == STATUS_SUCCESS, "got status %#x\n", status);
+}
+
 static void test_default_modules(void)
 {
     BOOL win32k = FALSE, dxgkrnl = FALSE, dxgmms1 = FALSE;
@@ -695,7 +1130,6 @@ static NTSTATUS main_test(DEVICE_OBJECT *device, IRP *irp, IO_STACK_LOCATION *st
 
     if (!buffer)
         return STATUS_ACCESS_VIOLATION;
-
     if (length < sizeof(failures))
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -708,6 +1142,15 @@ static NTSTATUS main_test(DEVICE_OBJECT *device, IRP *irp, IO_STACK_LOCATION *st
     attr.Attributes = OBJ_KERNEL_HANDLE; /* needed to be accessible from system threads */
     ZwOpenFile(&okfile, FILE_APPEND_DATA | SYNCHRONIZE, &attr, &io, 0, FILE_SYNCHRONOUS_IO_NONALERT);
 
+    pExEventObjectType = get_proc_address("ExEventObjectType");
+    ok(!!pExEventObjectType, "ExEventObjectType not found\n");
+
+    pIoFileObjectType = get_proc_address("IoFileObjectType");
+    ok(!!pIoFileObjectType, "IofileObjectType not found\n");
+
+    pPsThreadType = get_proc_address("PsThreadType");
+    ok(!!pPsThreadType, "IofileObjectType not found\n");
+
     test_irp_struct(irp, device);
     test_currentprocess();
     test_mdl_map();
@@ -717,10 +1160,12 @@ static NTSTATUS main_test(DEVICE_OBJECT *device, IRP *irp, IO_STACK_LOCATION *st
     test_version();
     test_stack_callout();
     test_lookaside_list();
+    test_ob_reference(test_input->path);
     test_default_modules();
+    test_resource();
 
     /* print process report */
-    if (test_input->winetest_debug)
+    if (winetest_debug)
     {
         kprintf("%04x:ntoskrnl: %d tests executed (%d marked as todo, %d %s), %d skipped.\n",
             PsGetCurrentProcessId(), successes + failures + todo_successes + todo_failures,
