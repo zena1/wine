@@ -856,53 +856,29 @@ static void get_next_minimized_child_pos( const RECT *parent, const MINIMIZEDMET
     }
 }
 
-/* detect whether another child window has already been minimized here */
-static BOOL find_minimized_child( HWND hwnd, HWND parent, POINT pt )
+static POINT get_minimized_pos( HWND hwnd, POINT pt )
 {
-    HWND child;
-    RECT rect;
-
-    for (child = GetWindow( parent, GW_CHILD ); child; child = GetWindow( child, GW_HWNDNEXT ))
-    {
-        if (child == hwnd) continue;
-        if ((GetWindowLongW( child, GWL_STYLE ) & (WS_VISIBLE|WS_MINIMIZE)) != (WS_VISIBLE|WS_MINIMIZE))
-            continue;
-        if (WIN_GetRectangles( child, COORDS_PARENT, &rect, NULL )
-            && pt.x >= rect.left && pt.x < rect.right && pt.y >= rect.top && pt.y < rect.bottom)
-        {
-            return TRUE;
-        }
-    }
-
-    return FALSE;
-}
-
-static POINT get_minimized_pos( HWND hwnd )
-{
+    RECT rect, rectParent;
+    HWND parent, child;
+    HRGN hrgn, tmp;
     MINIMIZEDMETRICS metrics;
     int width, height;
-    HWND parent;
-    RECT rect;
-    POINT pt;
 
-    if ((parent = GetAncestor( hwnd, GA_PARENT )) && parent != GetDesktopWindow())
-    {
-        GetClientRect( parent, &rect );
-    }
-    else if (GetWindow( hwnd, GW_OWNER ))
+    parent = GetAncestor( hwnd, GA_PARENT );
+    if (parent == GetDesktopWindow())
     {
         MONITORINFO mon_info;
         HMONITOR monitor = MonitorFromWindow( hwnd, MONITOR_DEFAULTTOPRIMARY );
 
-        mon_info.cbSize = sizeof(mon_info);
+        mon_info.cbSize = sizeof( mon_info );
         GetMonitorInfoW( monitor, &mon_info );
-        rect = mon_info.rcWork;
+        rectParent = mon_info.rcWork;
     }
-    else
-    {
-        pt.x = pt.y = -32000;
-        return pt;
-    }
+    else GetClientRect( parent, &rectParent );
+
+    if ((pt.x >= rectParent.left) && (pt.x + GetSystemMetrics( SM_CXMINIMIZED ) < rectParent.right) &&
+        (pt.y >= rectParent.top) && (pt.y + GetSystemMetrics( SM_CYMINIMIZED ) < rectParent.bottom))
+        return pt;  /* The icon already has a suitable position */
 
     width = GetSystemMetrics( SM_CXMINIMIZED );
     height = GetSystemMetrics( SM_CYMINIMIZED );
@@ -910,10 +886,35 @@ static POINT get_minimized_pos( HWND hwnd )
     metrics.cbSize = sizeof(metrics);
     SystemParametersInfoW( SPI_GETMINIMIZEDMETRICS, sizeof(metrics), &metrics, 0 );
 
-    pt = get_first_minimized_child_pos( &rect, &metrics, width, height );
-    while (find_minimized_child( hwnd, parent, pt ))
-        get_next_minimized_child_pos( &rect, &metrics, width, height, &pt );
+    /* Check if another icon already occupies this spot */
+    /* FIXME: this is completely inefficient */
 
+    hrgn = CreateRectRgn( 0, 0, 0, 0 );
+    tmp = CreateRectRgn( 0, 0, 0, 0 );
+    for (child = GetWindow( parent, GW_CHILD ); child; child = GetWindow( child, GW_HWNDNEXT ))
+    {
+        if (child == hwnd) continue;
+        if ((GetWindowLongW( child, GWL_STYLE ) & (WS_VISIBLE|WS_MINIMIZE)) != (WS_VISIBLE|WS_MINIMIZE))
+            continue;
+        if (WIN_GetRectangles( child, COORDS_PARENT, &rect, NULL ))
+        {
+            SetRectRgn( tmp, rect.left, rect.top, rect.right, rect.bottom );
+            CombineRgn( hrgn, hrgn, tmp, RGN_OR );
+        }
+    }
+    DeleteObject( tmp );
+
+    pt = get_first_minimized_child_pos( &rectParent, &metrics, width, height );
+    for (;;)
+    {
+        SetRect( &rect, pt.x, pt.y, pt.x + width, pt.y + height );
+        if (!RectInRegion( hrgn, &rect ))
+            break;
+
+        get_next_minimized_child_pos( &rectParent, &metrics, width, height, &pt );
+    }
+
+    DeleteObject( hrgn );
     return pt;
 }
 
@@ -944,7 +945,7 @@ UINT WINPOS_MinMaximize( HWND hwnd, UINT cmd, LPRECT rect )
         case SW_SHOWMINIMIZED:
         case SW_FORCEMINIMIZE:
         case SW_MINIMIZE:
-            wpl.ptMinPosition = get_minimized_pos( hwnd );
+            wpl.ptMinPosition = get_minimized_pos( hwnd, wpl.ptMinPosition );
 
             SetRect( rect, wpl.ptMinPosition.x, wpl.ptMinPosition.y,
                      wpl.ptMinPosition.x + GetSystemMetrics(SM_CXMINIMIZED),
@@ -974,7 +975,7 @@ UINT WINPOS_MinMaximize( HWND hwnd, UINT cmd, LPRECT rect )
 
         old_style = WIN_SetStyle( hwnd, WS_MINIMIZE, WS_MAXIMIZE );
 
-        wpl.ptMinPosition = get_minimized_pos( hwnd );
+        wpl.ptMinPosition = get_minimized_pos( hwnd, wpl.ptMinPosition );
 
         if (!(old_style & WS_MINIMIZE)) swpFlags |= SWP_STATECHANGED;
         SetRect( rect, wpl.ptMinPosition.x, wpl.ptMinPosition.y,
@@ -1119,8 +1120,7 @@ static BOOL show_window( HWND hwnd, INT cmd )
         if (!IsWindow( hwnd )) goto done;
     }
 
-    if (!IsIconic( hwnd ))
-        swp = USER_Driver->pShowWindow( hwnd, cmd, &newPos, swp );
+    swp = USER_Driver->pShowWindow( hwnd, cmd, &newPos, swp );
 
     parent = GetAncestor( hwnd, GA_PARENT );
     if (parent && !IsWindowVisible( parent ) && !(swp & SWP_STATECHANGED))

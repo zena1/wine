@@ -47,7 +47,6 @@ typedef enum
     TYPE_STDCALL,      /* stdcall function (Win32) */
     TYPE_CDECL,        /* cdecl function (Win32) */
     TYPE_VARARGS,      /* varargs function (Win32) */
-    TYPE_THISCALL,     /* thiscall function (Win32 on i386) */
     TYPE_EXTERN,       /* external symbol (Win32) */
     TYPE_NBTYPES
 } ORD_TYPE;
@@ -176,13 +175,15 @@ struct strarray
 #define FLAG_REGISTER  0x10  /* use register calling convention */
 #define FLAG_PRIVATE   0x20  /* function is private (cannot be imported) */
 #define FLAG_ORDINAL   0x40  /* function should be imported by ordinal */
+#define FLAG_THISCALL  0x80  /* use thiscall calling convention */
+#define FLAG_FASTCALL  0x100 /* use fastcall calling convention */
 
-#define FLAG_FORWARD   0x100  /* function is a forwarded name */
-#define FLAG_EXT_LINK  0x200  /* function links to an external symbol */
-#define FLAG_EXPORT32  0x400  /* 32-bit export in 16-bit spec file */
-#define FLAG_SYSCALL   0x800  /* function should be called through a syscall thunk */
+#define FLAG_FORWARD   0x200  /* function is a forwarded name */
+#define FLAG_EXT_LINK  0x400  /* function links to an external symbol */
+#define FLAG_EXPORT32  0x800  /* 32-bit export in 16-bit spec file */
+#define FLAG_SYSCALL   0x1000  /* function should be called through a syscall thunk */
 
-#define FLAG_CPU(cpu)  (0x01000 << (cpu))
+#define FLAG_CPU(cpu)  (0x02000 << (cpu))
 #define FLAG_CPU_MASK  (FLAG_CPU(CPU_LAST + 1) - FLAG_CPU(0))
 #define FLAG_CPU_WIN64 (FLAG_CPU(CPU_x86_64) | FLAG_CPU(CPU_ARM64))
 #define FLAG_CPU_WIN32 (FLAG_CPU_MASK & ~FLAG_CPU_WIN64)

@@ -2846,6 +2846,8 @@ AC_CHECK_FUNCS(\
 	exp2f \
 	expm1 \
 	expm1f \
+	ilogb \
+	ilogbf \
 	j0 \
 	j1 \
 	jn \
@@ -2865,6 +2867,8 @@ AC_CHECK_FUNCS(\
 	lroundf \
 	nearbyint \
 	nearbyintf \
+	nexttoward \
+	nexttowardf \
 	powl \
 	remainder \
 	remainderf \
@@ -3205,6 +3209,8 @@ WINE_CONFIG_MAKEFILE(dlls/atl110)
 WINE_CONFIG_MAKEFILE(dlls/atl80)
 WINE_CONFIG_MAKEFILE(dlls/atl80/tests)
 WINE_CONFIG_MAKEFILE(dlls/atl90)
+WINE_CONFIG_MAKEFILE(dlls/atlthunk)
+WINE_CONFIG_MAKEFILE(dlls/atlthunk/tests)
 WINE_CONFIG_MAKEFILE(dlls/atmlib)
 WINE_CONFIG_MAKEFILE(dlls/authz)
 WINE_CONFIG_MAKEFILE(dlls/avicap32)
@@ -3415,17 +3421,25 @@ WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-appmodel-usercontext-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-authz-context-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-domainjoin-netjoin-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-dwmapi-ext-l1-1-0)
+WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-gdi-dc-create-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-gdi-dc-create-l1-1-1)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-gdi-dc-l1-2-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-gdi-devcaps-l1-1-0)
+WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-gdi-draw-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-gdi-draw-l1-1-1)
+WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-gdi-font-l1-1-0)
+WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-gdi-font-l1-1-1)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-gdi-render-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-kernel32-package-current-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-kernel32-package-l1-1-1)
+WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-dialogbox-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-draw-l1-1-0)
+WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-gui-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-gui-l1-3-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-keyboard-l1-3-0)
+WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-message-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-message-l1-1-1)
+WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-misc-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-misc-l1-2-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-misc-l1-5-1)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-mouse-l1-1-0)
@@ -3433,8 +3447,10 @@ WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-private-l1-1-1)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-private-l1-3-1)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-rectangle-ext-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-uicontext-ext-l1-1-0)
+WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-window-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-window-l1-1-1)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-window-l1-1-4)
+WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-windowclass-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ntuser-windowclass-l1-1-1)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-oleacc-l1-1-0)
 WINE_CONFIG_MAKEFILE(dlls/ext-ms-win-ras-rasapi32-l1-1-0)
@@ -3549,6 +3565,7 @@ WINE_CONFIG_MAKEFILE(dlls/mf/tests)
 WINE_CONFIG_MAKEFILE(dlls/mf3216)
 WINE_CONFIG_MAKEFILE(dlls/mfplat)
 WINE_CONFIG_MAKEFILE(dlls/mfplat/tests)
+WINE_CONFIG_MAKEFILE(dlls/mfplay)
 WINE_CONFIG_MAKEFILE(dlls/mfreadwrite)
 WINE_CONFIG_MAKEFILE(dlls/mfreadwrite/tests)
 WINE_CONFIG_MAKEFILE(dlls/mfuuid)
