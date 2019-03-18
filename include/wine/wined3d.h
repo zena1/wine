@@ -1348,6 +1348,7 @@ enum wined3d_shader_type
 #define WINED3D_NO_PRIMITIVE_RESTART                            0x00000800
 #define WINED3D_LEGACY_CUBEMAP_FILTERING                        0x00001000
 #define WINED3D_NORMALIZED_DEPTH_BIAS                           0x00002000
+#define WINED3D_LEGACY_SHADER_CONSTANTS                         0x00004000
 
 #define WINED3D_RESZ_CODE                                       0x7fa05000
 
@@ -1733,17 +1734,19 @@ struct wined3d_tri_patch_info
 struct wined3d_adapter_identifier
 {
     char *driver;
-    UINT driver_size;
+    unsigned int driver_size;
     char *description;
-    UINT description_size;
+    unsigned int description_size;
     char *device_name;
-    UINT device_name_size;
+    unsigned int device_name_size;
     LARGE_INTEGER driver_version;
     DWORD vendor_id;
     DWORD device_id;
     DWORD subsystem_id;
     DWORD revision;
     GUID device_identifier;
+    GUID driver_uuid;
+    GUID device_uuid;
     DWORD whql_level;
     LUID adapter_luid;
     SIZE_T video_memory;
