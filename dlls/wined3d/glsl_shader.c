@@ -1180,6 +1180,12 @@ static void shader_glsl_load_constants_f(const struct wined3d_shader *shader, co
         unsigned int const_count;
         unsigned max_const_used;
 
+        if (priv->ubo_vs_c == -1)
+        {
+            ERR("UBO is not initialized.\n");
+            return;
+        }
+
         bind_and_orphan_consts_ubo(gl_info, priv);
         const_count = device_swvp ? priv->max_vs_consts_f : WINED3D_MAX_VS_CONSTS_F;
         max_const_used = shader->reg_maps.usesrelconstF ? const_count : shader->reg_maps.constant_float_count;
@@ -2167,6 +2173,9 @@ static void shader_glsl_update_float_vertex_constants(struct wined3d_device *dev
     struct constant_heap *heap = &priv->vconst_heap;
     UINT i;
 
+    if (!(device->adapter->d3d_info.wined3d_creation_flags & WINED3D_LEGACY_SHADER_CONSTANTS))
+        WARN("Called without legacy shader constant mode.\n");
+
     if (priv->consts_ubo)
         return;
 
@@ -2181,6 +2190,9 @@ static void shader_glsl_update_float_pixel_constants(struct wined3d_device *devi
     struct shader_glsl_priv *priv = device->shader_priv;
     struct constant_heap *heap = &priv->pconst_heap;
     UINT i;
+
+    if (!(device->adapter->d3d_info.wined3d_creation_flags & WINED3D_LEGACY_SHADER_CONSTANTS))
+        WARN("Called without legacy shader constant mode.\n");
 
     for (i = start; i < count + start; ++i)
     {
@@ -6263,6 +6275,22 @@ static void shader_glsl_sample_info(const struct wined3d_shader_instruction *ins
     shader_addline(buffer, ", 0, 0, 0)%s);\n", dst_swizzle);
 }
 
+static void shader_glsl_interpolate(const struct wined3d_shader_instruction *ins)
+{
+    const struct wined3d_shader_src_param *input = &ins->src[0];
+    struct wined3d_string_buffer *buffer = ins->ctx->buffer;
+    struct glsl_src_param sample_param;
+    char dst_swizzle[6];
+    DWORD write_mask;
+
+    write_mask = shader_glsl_append_dst(buffer, ins);
+    shader_glsl_get_swizzle(input, FALSE, write_mask, dst_swizzle);
+
+    shader_glsl_add_src_param(ins, &ins->src[1], WINED3DSP_WRITEMASK_0, &sample_param);
+    shader_addline(buffer, "interpolateAtSample(shader_in.reg%u, %s)%s);\n",
+            input->reg.idx[0].offset, sample_param.param_str, dst_swizzle);
+}
+
 static void shader_glsl_ld(const struct wined3d_shader_instruction *ins)
 {
     const struct wined3d_shader_reg_maps *reg_maps = ins->ctx->reg_maps;
@@ -9273,7 +9301,7 @@ static GLuint shader_glsl_generate_ffp_vertex_shader(struct shader_glsl_priv *pr
     }
     else
     {
-        shader_addline(buffer, "uniform mat4 ffp_modelview_matrix[%u];\n", MAX_VERTEX_BLENDS);
+        shader_addline(buffer, "uniform mat4 ffp_modelview_matrix[%u];\n", settings->vertexblends + 1);
     }
 
     shader_addline(buffer, "uniform mat4 ffp_projection_matrix;\n");
@@ -10249,14 +10277,14 @@ static void shader_glsl_init_vs_uniform_locations(const struct wined3d_gl_info *
         wined3d_gl_limits_get_uniform_block_range(&gl_info->limits, WINED3D_SHADER_TYPE_VERTEX,
                 &base, &count);
         assert(count >= 1);
-        GL_EXTCALL(glUniformBlockBinding(program_id, vs->vs_c_block_index, base + count + 1));
+        GL_EXTCALL(glUniformBlockBinding(program_id, vs->vs_c_block_index, base));
         checkGLcall("glUniformBlockBinding");
         if (priv->ubo_vs_c == -1)
         {
             GL_EXTCALL(glGenBuffers(1, &priv->ubo_vs_c));
             GL_EXTCALL(glBindBuffer(GL_UNIFORM_BUFFER, priv->ubo_vs_c));
             checkGLcall("glBindBuffer (UBO)");
-            GL_EXTCALL(glBindBufferBase(GL_UNIFORM_BUFFER, base + count + 1, priv->ubo_vs_c));
+            GL_EXTCALL(glBindBufferBase(GL_UNIFORM_BUFFER, base, priv->ubo_vs_c));
             checkGLcall("glBindBufferBase");
         }
     }
@@ -10302,9 +10330,9 @@ static void shader_glsl_init_vs_uniform_locations(const struct wined3d_gl_info *
 
             wined3d_gl_limits_get_uniform_block_range(&gl_info->limits, WINED3D_SHADER_TYPE_VERTEX,
                     &base, &count);
-            assert(count >= 1);
+            assert(count >= 2);
 
-            GL_EXTCALL(glUniformBlockBinding(program_id, vs->modelview_block_index, base + count));
+            GL_EXTCALL(glUniformBlockBinding(program_id, vs->modelview_block_index, base + 1));
             checkGLcall("glUniformBlockBinding");
             if (priv->ubo_modelview == -1)
             {
@@ -10314,7 +10342,7 @@ static void shader_glsl_init_vs_uniform_locations(const struct wined3d_gl_info *
                 GL_EXTCALL(glBufferData(GL_UNIFORM_BUFFER,
                         sizeof(struct wined3d_matrix) * MAX_VERTEX_BLEND_UBO, NULL, GL_DYNAMIC_DRAW));
                 checkGLcall("glBufferData (UBO)");
-                GL_EXTCALL(glBindBufferBase(GL_UNIFORM_BUFFER, base + count, priv->ubo_modelview));
+                GL_EXTCALL(glBindBufferBase(GL_UNIFORM_BUFFER, base + 1, priv->ubo_modelview));
                 checkGLcall("glBindBufferBase");
             }
         }
@@ -10903,7 +10931,7 @@ static void set_glsl_shader_program(const struct wined3d_context *context, const
         entry->constant_update_mask |= WINED3D_SHADER_CONST_FFP_MODELVIEW
                 | WINED3D_SHADER_CONST_FFP_PROJ;
 
-        for (i = 1; i < MAX_VERTEX_BLENDS; ++i)
+        for (i = 0; i < MAX_VERTEX_BLENDS; ++i)
         {
             if (entry->vs.modelview_matrix_location[i] != -1)
             {
@@ -11389,7 +11417,8 @@ static HRESULT shader_glsl_alloc(struct wined3d_device *device, const struct win
     if (!(priv = heap_alloc_zero(sizeof(*priv))))
         return E_OUTOFMEMORY;
 
-    priv->consts_ubo = gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT];
+    priv->consts_ubo = (device->adapter->d3d_info.wined3d_creation_flags & WINED3D_LEGACY_SHADER_CONSTANTS)
+            && gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT];
     priv->max_vs_consts_f = priv->consts_ubo
             ? gl_info->limits.glsl_max_uniform_block_size / sizeof(struct wined3d_vec4)
             : gl_info->limits.glsl_vs_float_constants;
@@ -11718,7 +11747,7 @@ static const SHADER_HANDLER shader_glsl_instruction_handler_table[WINED3DSIH_TAB
     /* WINED3DSIH_ENDREP                           */ shader_glsl_end,
     /* WINED3DSIH_ENDSWITCH                        */ shader_glsl_end,
     /* WINED3DSIH_EQ                               */ shader_glsl_relop,
-    /* WINED3DSIH_EVAL_SAMPLE_INDEX                */ NULL,
+    /* WINED3DSIH_EVAL_SAMPLE_INDEX                */ shader_glsl_interpolate,
     /* WINED3DSIH_EXP                              */ shader_glsl_scalar_op,
     /* WINED3DSIH_EXPP                             */ shader_glsl_expp,
     /* WINED3DSIH_F16TOF32                         */ shader_glsl_float16,
@@ -12258,7 +12287,7 @@ static void glsl_vertex_pipe_clip_plane(struct wined3d_context *context,
     context->constant_update_mask |= WINED3D_SHADER_CONST_VS_CLIP_PLANES;
 }
 
-static const struct StateEntryTemplate glsl_vertex_pipe_vp_states[] =
+static const struct wined3d_state_entry_template glsl_vertex_pipe_vp_states[] =
 {
     {STATE_VDECL,                                                {STATE_VDECL,                                                glsl_vertex_pipe_vdecl }, WINED3D_GL_EXT_NONE          },
     {STATE_SHADER(WINED3D_SHADER_TYPE_VERTEX),                   {STATE_SHADER(WINED3D_SHADER_TYPE_VERTEX),                   glsl_vertex_pipe_vs    }, WINED3D_GL_EXT_NONE          },
@@ -12879,7 +12908,7 @@ static void glsl_fragment_pipe_shademode(struct wined3d_context *context,
     context->shader_update_mask |= 1u << WINED3D_SHADER_TYPE_PIXEL;
 }
 
-static const struct StateEntryTemplate glsl_fragment_pipe_state_template[] =
+static const struct wined3d_state_entry_template glsl_fragment_pipe_state_template[] =
 {
     {STATE_VDECL,                                               {STATE_VDECL,                                                glsl_fragment_pipe_vdecl               }, WINED3D_GL_EXT_NONE },
     {STATE_SHADER(WINED3D_SHADER_TYPE_VERTEX),                  {STATE_SHADER(WINED3D_SHADER_TYPE_VERTEX),                   glsl_fragment_pipe_vs                  }, WINED3D_GL_EXT_NONE },

@@ -224,23 +224,22 @@ static UINT STREAMS_delete_row(struct tagMSIVIEW *view, UINT row)
     WCHAR *encname;
     HRESULT hr;
 
-    TRACE("(%p %d)!\n", view, row);
+    TRACE("(%p %d)\n", view, row);
+
+    if (!db->num_streams || row > num_rows)
+        return ERROR_FUNCTION_FAILED;
 
     name = msi_string_lookup( db->strings, db->streams[row].str_index, NULL );
     if (!(encname = encode_streamname( FALSE, name ))) return ERROR_OUTOFMEMORY;
-    hr = IStorage_DestroyElement( db->storage, encname );
-    msi_free( encname );
-    if (FAILED( hr ))
-        return ERROR_FUNCTION_FAILED;
-    hr = IStream_Release( db->streams[row].stream );
-    if (FAILED( hr ))
-        return ERROR_FUNCTION_FAILED;
+    IStream_Release( db->streams[row].stream );
 
     for (i = row; i < num_rows; i++)
         db->streams[i] = db->streams[i + 1];
     db->num_streams = num_rows;
 
-    return ERROR_SUCCESS;
+    hr = IStorage_DestroyElement( db->storage, encname );
+    msi_free( encname );
+    return FAILED( hr ) ? ERROR_FUNCTION_FAILED : ERROR_SUCCESS;
 }
 
 static UINT STREAMS_execute(struct tagMSIVIEW *view, MSIRECORD *record)
@@ -616,7 +615,10 @@ UINT msi_commit_streams( MSIDATABASE *db )
     for (i = 0; i < db->num_streams; i++)
     {
         name = msi_string_lookup( db->strings, db->streams[i].str_index, NULL );
+        if (!strcmpW( name, szSumInfo )) continue;
+
         if (!(encname = encode_streamname( FALSE, name ))) return ERROR_OUTOFMEMORY;
+        TRACE("saving stream %s as %s\n", debugstr_w(name), debugstr_w(encname));
 
         hr = IStorage_CreateStream( db->storage, encname, STGM_WRITE|STGM_SHARE_EXCLUSIVE, 0, 0, &stream );
         if (SUCCEEDED( hr ))
