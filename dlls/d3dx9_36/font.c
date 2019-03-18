@@ -311,7 +311,7 @@ static INT WINAPI ID3DXFontImpl_DrawTextW(ID3DXFont *iface, ID3DXSprite *sprite,
                 DeleteObject(This->bitmap);
             }
 
-            hr = D3DXCreateTexture(This->device, This->tex_width, This->tex_height, 1, 0,
+            hr = D3DXCreateTexture(This->device, This->tex_width, This->tex_height, 1, D3DUSAGE_DYNAMIC,
                                    D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &This->texture);
             if (FAILED(hr))
             {
