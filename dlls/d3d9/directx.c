@@ -255,10 +255,11 @@ static HRESULT WINAPI d3d9_CheckDeviceFormat(IDirect3D9Ex *iface, UINT adapter, 
     TRACE("iface %p, adapter %u, device_type %#x, adapter_format %#x, usage %#x, resource_type %#x, format %#x.\n",
             iface, adapter, device_type, adapter_format, usage, resource_type, format);
 
-    if (!adapter_format)
+    if (adapter_format != D3DFMT_X8R8G8B8 && adapter_format != D3DFMT_R5G6B5
+            && adapter_format != D3DFMT_X1R5G5B5)
     {
         WARN("Invalid adapter format.\n");
-        return D3DERR_INVALIDCALL;
+        return adapter_format ? D3DERR_NOTAVAILABLE : D3DERR_INVALIDCALL;
     }
 
     bind_flags = wined3d_bind_flags_from_d3d9_usage(usage);
@@ -584,7 +585,7 @@ BOOL d3d9_init(struct d3d9 *d3d9, BOOL extended)
     DWORD flags = WINED3D_PRESENT_CONVERSION | WINED3D_HANDLE_RESTORE | WINED3D_PIXEL_CENTER_INTEGER
             | WINED3D_SRGB_READ_WRITE_CONTROL | WINED3D_LEGACY_UNBOUND_RESOURCE_COLOR
             | WINED3D_NO_PRIMITIVE_RESTART | WINED3D_LEGACY_CUBEMAP_FILTERING
-            | WINED3D_NORMALIZED_DEPTH_BIAS;
+            | WINED3D_NORMALIZED_DEPTH_BIAS | WINED3D_LEGACY_SHADER_CONSTANTS;
 
     if (!extended)
         flags |= WINED3D_VIDMEM_ACCOUNTING;
