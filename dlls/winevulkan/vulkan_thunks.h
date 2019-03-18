@@ -3,7 +3,7 @@
  * This file is generated from Vulkan vk.xml file covered
  * by the following copyright and permission notice:
  *
- * Copyright (c) 2015-2018 The Khronos Group Inc.
+ * Copyright (c) 2015-2019 The Khronos Group Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -478,6 +478,13 @@ typedef struct VkMemoryRequirements2KHR_host
     void *pNext;
     VkMemoryRequirements_host memoryRequirements;
 } VkMemoryRequirements2KHR_host;
+
+typedef struct VkBufferDeviceAddressInfoEXT_host
+{
+    VkStructureType sType;
+    const void *pNext;
+    VkBuffer buffer;
+} VkBufferDeviceAddressInfoEXT_host;
 
 typedef struct VkBufferMemoryRequirementsInfo2_host
 {
@@ -1050,6 +1057,11 @@ struct vulkan_device_funcs
     void (*p_vkGetAccelerationStructureMemoryRequirementsNV)(VkDevice, const VkAccelerationStructureMemoryRequirementsInfoNV *, VkMemoryRequirements2KHR *);
 #endif
 #if defined(USE_STRUCT_CONVERSION)
+    VkDeviceAddress (*p_vkGetBufferDeviceAddressEXT)(VkDevice, const VkBufferDeviceAddressInfoEXT_host *);
+#else
+    VkDeviceAddress (*p_vkGetBufferDeviceAddressEXT)(VkDevice, const VkBufferDeviceAddressInfoEXT *);
+#endif
+#if defined(USE_STRUCT_CONVERSION)
     void (*p_vkGetBufferMemoryRequirements)(VkDevice, VkBuffer, VkMemoryRequirements_host *);
 #else
     void (*p_vkGetBufferMemoryRequirements)(VkDevice, VkBuffer, VkMemoryRequirements *);
@@ -1135,6 +1147,7 @@ struct vulkan_device_funcs
     VkResult (*p_vkResetDescriptorPool)(VkDevice, VkDescriptorPool, VkDescriptorPoolResetFlags);
     VkResult (*p_vkResetEvent)(VkDevice, VkEvent);
     VkResult (*p_vkResetFences)(VkDevice, uint32_t, const VkFence *);
+    void (*p_vkResetQueryPoolEXT)(VkDevice, VkQueryPool, uint32_t, uint32_t);
     VkResult (*p_vkSetEvent)(VkDevice, VkEvent);
     void (*p_vkTrimCommandPool)(VkDevice, VkCommandPool, VkCommandPoolTrimFlags);
     void (*p_vkTrimCommandPoolKHR)(VkDevice, VkCommandPool, VkCommandPoolTrimFlags);
@@ -1160,6 +1173,7 @@ struct vulkan_instance_funcs
     VkResult (*p_vkEnumeratePhysicalDeviceGroups)(VkInstance, uint32_t *, VkPhysicalDeviceGroupProperties *);
     VkResult (*p_vkEnumeratePhysicalDeviceGroupsKHR)(VkInstance, uint32_t *, VkPhysicalDeviceGroupProperties *);
     VkResult (*p_vkEnumeratePhysicalDevices)(VkInstance, uint32_t *, VkPhysicalDevice *);
+    VkResult (*p_vkGetPhysicalDeviceCooperativeMatrixPropertiesNV)(VkPhysicalDevice, uint32_t *, VkCooperativeMatrixPropertiesNV *);
     void (*p_vkGetPhysicalDeviceFeatures)(VkPhysicalDevice, VkPhysicalDeviceFeatures *);
     void (*p_vkGetPhysicalDeviceFeatures2)(VkPhysicalDevice, VkPhysicalDeviceFeatures2 *);
     void (*p_vkGetPhysicalDeviceFeatures2KHR)(VkPhysicalDevice, VkPhysicalDeviceFeatures2 *);
@@ -1384,6 +1398,7 @@ struct vulkan_instance_funcs
     USE_VK_FUNC(vkFreeMemory) \
     USE_VK_FUNC(vkGetAccelerationStructureHandleNV) \
     USE_VK_FUNC(vkGetAccelerationStructureMemoryRequirementsNV) \
+    USE_VK_FUNC(vkGetBufferDeviceAddressEXT) \
     USE_VK_FUNC(vkGetBufferMemoryRequirements) \
     USE_VK_FUNC(vkGetBufferMemoryRequirements2) \
     USE_VK_FUNC(vkGetBufferMemoryRequirements2KHR) \
@@ -1426,6 +1441,7 @@ struct vulkan_instance_funcs
     USE_VK_FUNC(vkResetDescriptorPool) \
     USE_VK_FUNC(vkResetEvent) \
     USE_VK_FUNC(vkResetFences) \
+    USE_VK_FUNC(vkResetQueryPoolEXT) \
     USE_VK_FUNC(vkSetEvent) \
     USE_VK_FUNC(vkTrimCommandPool) \
     USE_VK_FUNC(vkTrimCommandPoolKHR) \
@@ -1444,6 +1460,7 @@ struct vulkan_instance_funcs
     USE_VK_FUNC(vkEnumeratePhysicalDeviceGroups) \
     USE_VK_FUNC(vkEnumeratePhysicalDeviceGroupsKHR) \
     USE_VK_FUNC(vkEnumeratePhysicalDevices) \
+    USE_VK_FUNC(vkGetPhysicalDeviceCooperativeMatrixPropertiesNV) \
     USE_VK_FUNC(vkGetPhysicalDeviceFeatures) \
     USE_VK_FUNC(vkGetPhysicalDeviceFeatures2) \
     USE_VK_FUNC(vkGetPhysicalDeviceFeatures2KHR) \

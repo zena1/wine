@@ -182,7 +182,7 @@ static int process_argument( struct msidb_state *state, int i, int argc, WCHAR *
 
 static int open_database( struct msidb_state *state )
 {
-    LPCWSTR db_mode = state->create_database ? MSIDBOPEN_CREATEDIRECT : MSIDBOPEN_DIRECT;
+    LPCWSTR db_mode = state->create_database ? MSIDBOPEN_CREATE : MSIDBOPEN_TRANSACT;
     UINT ret;
 
     ret = MsiOpenDatabaseW( state->database_file, db_mode, &state->database_handle );
@@ -228,11 +228,13 @@ static const WCHAR *basenameW( const WCHAR *filename )
 
 static int add_stream( struct msidb_state *state, const WCHAR *stream_filename )
 {
-    static const char insert_command[] = "INSERT INTO _Streams (Name, Data) VALUES (?, ?)";
+    static const WCHAR insert_command[] =
+        {'I','N','S','E','R','T',' ','I','N','T','O',' ','_','S','t','r','e','a','m','s',' ',
+         '(','N','a','m','e',',',' ','D','a','t','a',')',' ','V','A','L','U','E','S',' ','(','?',',',' ','?',')',0};
     MSIHANDLE view = 0, record = 0;
     UINT ret;
 
-    ret = MsiDatabaseOpenViewA( state->database_handle, insert_command, &view );
+    ret = MsiDatabaseOpenViewW( state->database_handle, insert_command, &view );
     if (ret != ERROR_SUCCESS)
     {
         ERR( "Failed to open _Streams table.\n" );
@@ -287,11 +289,13 @@ static int add_streams( struct msidb_state *state )
 
 static int kill_stream( struct msidb_state *state, const WCHAR *stream_filename )
 {
-    static const char delete_command[] = "DELETE FROM _Streams WHERE Name = ?";
+    static const WCHAR delete_command[] =
+        {'D','E','L','E','T','E',' ','F','R','O','M',' ','_','S','t','r','e','a','m','s',' ',
+         'W','H','E','R','E',' ','N','a','m','e',' ','=',' ','?',0};
     MSIHANDLE view = 0, record = 0;
     UINT ret;
 
-    ret = MsiDatabaseOpenViewA( state->database_handle, delete_command, &view );
+    ret = MsiDatabaseOpenViewW( state->database_handle, delete_command, &view );
     if (ret != ERROR_SUCCESS)
     {
         ERR( "Failed to open _Streams table.\n" );
@@ -340,7 +344,9 @@ static int kill_streams( struct msidb_state *state )
 
 static int extract_stream( struct msidb_state *state, const WCHAR *stream_filename )
 {
-    static const char select_command[] = "SELECT Data FROM _Streams WHERE Name = ?";
+    static const WCHAR select_command[] =
+        {'S','E','L','E','C','T',' ','D','a','t','a',' ','F','R','O','M',' ','_','S','t','r','e','a','m','s',' ',
+         'W','H','E','R','E',' ','N','a','m','e',' ','=',' ','?',0};
     HANDLE file = INVALID_HANDLE_VALUE;
     MSIHANDLE view = 0, record = 0;
     DWORD read_size, write_size;
@@ -355,7 +361,7 @@ static int extract_stream( struct msidb_state *state, const WCHAR *stream_filena
         ERR( "Failed to open destination file %s.\n", wine_dbgstr_w(stream_filename) );
         goto cleanup;
     }
-    ret = MsiDatabaseOpenViewA( state->database_handle, select_command, &view );
+    ret = MsiDatabaseOpenViewW( state->database_handle, select_command, &view );
     if (ret != ERROR_SUCCESS)
     {
         ERR( "Failed to open _Streams table.\n" );
@@ -433,7 +439,7 @@ static int import_table( struct msidb_state *state, const WCHAR *table_name )
     WCHAR table_path[MAX_PATH];
     UINT ret;
 
-    snprintfW( table_path, sizeof(table_path)/sizeof(WCHAR), format, table_name );
+    snprintfW( table_path, ARRAY_SIZE(table_path), format, table_name );
     ret = MsiDatabaseImportW( state->database_handle, state->table_folder, table_path );
     if (ret != ERROR_SUCCESS)
     {
@@ -463,7 +469,7 @@ static int export_table( struct msidb_state *state, const WCHAR *table_name )
     WCHAR table_path[MAX_PATH];
     UINT ret;
 
-    snprintfW( table_path, sizeof(table_path)/sizeof(WCHAR), format, table_name );
+    snprintfW( table_path, ARRAY_SIZE(table_path), format, table_name );
     ret = MsiDatabaseExportW( state->database_handle, table_name, state->table_folder, table_path );
     if (ret != ERROR_SUCCESS)
     {
@@ -475,13 +481,14 @@ static int export_table( struct msidb_state *state, const WCHAR *table_name )
 
 static int export_all_tables( struct msidb_state *state )
 {
-    static const WCHAR summary_information[] = {
-        '_','S','u','m','m','a','r','y','I','n','f','o','r','m','a','t','i','o','n',0 };
-    static const char query_command[] = "SELECT Name FROM _Tables";
+    static const WCHAR summary_information[] =
+        {'_','S','u','m','m','a','r','y','I','n','f','o','r','m','a','t','i','o','n',0};
+    static const WCHAR query_command[] =
+        {'S','E','L','E','C','T',' ','N','a','m','e',' ','F','R','O','M',' ','_','T','a','b','l','e','s',0};
     MSIHANDLE view = 0;
     UINT ret;
 
-    ret = MsiDatabaseOpenViewA( state->database_handle, query_command, &view );
+    ret = MsiDatabaseOpenViewW( state->database_handle, query_command, &view );
     if (ret != ERROR_SUCCESS)
     {
         ERR( "Failed to open _Tables table.\n" );
@@ -493,7 +500,7 @@ static int export_all_tables( struct msidb_state *state )
         ERR( "Failed to query list from _Tables table.\n" );
         goto cleanup;
     }
-    for (;;)
+    while( 1 )
     {
         MSIHANDLE record = 0;
         WCHAR table[256];
@@ -507,22 +514,22 @@ static int export_all_tables( struct msidb_state *state )
             ERR( "Failed to query row from _Tables table.\n" );
             goto cleanup;
         }
-        size = sizeof(table)/sizeof(WCHAR);
+        size = ARRAY_SIZE(table);
         ret = MsiRecordGetStringW( record, 1, table, &size );
         if (ret != ERROR_SUCCESS)
         {
             ERR( "Failed to retrieve name string.\n" );
             goto cleanup;
         }
+        if (!export_table( state, table ))
+        {
+            ret = ERROR_FUNCTION_FAILED;
+            goto cleanup;
+        }
         ret = MsiCloseHandle( record );
         if (ret != ERROR_SUCCESS)
         {
             ERR( "Failed to close record handle.\n" );
-            goto cleanup;
-        }
-        if (!export_table( state, table ))
-        {
-            ret = ERROR_FUNCTION_FAILED;
             goto cleanup;
         }
     }
@@ -535,8 +542,11 @@ static int export_all_tables( struct msidb_state *state )
     }
 
 cleanup:
-    if (view)
-        MsiViewClose( view );
+    if (view && MsiViewClose( view ) != ERROR_SUCCESS)
+    {
+        ERR( "Failed to close _Streams table.\n" );
+        return 0;
+    }
     return (ret == ERROR_SUCCESS);
 }
 
@@ -551,12 +561,10 @@ static int export_tables( struct msidb_state *state )
         {
             if (!export_all_tables( state ))
                 return 0; /* failed, do not commit changes */
+            continue;
         }
-        else
-        {
-            if (!export_table( state, data->name ))
-                return 0; /* failed, do not commit changes */
-        }
+        if (!export_table( state, data->name ))
+            return 0; /* failed, do not commit changes */
     }
     return 1;
 }
