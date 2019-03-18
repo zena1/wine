@@ -197,7 +197,6 @@ struct wined3d_d3d_info
 {
     struct wined3d_d3d_limits limits;
     struct wined3d_ffp_attrib_ops ffp_attrib_ops;
-    DWORD valid_rt_mask;
     DWORD valid_dual_rt_mask;
     DWORD wined3d_creation_flags;
     unsigned int xyzrhw : 1;
@@ -209,7 +208,11 @@ struct wined3d_d3d_info
     unsigned int viewport_array_index_any_shader : 1;
     unsigned int texture_npot : 1;
     unsigned int texture_npot_conditional : 1;
+    unsigned int draw_base_vertex_offset : 1;
+    unsigned int vertex_bgra : 1;
     enum wined3d_feature_level feature_level;
+
+    DWORD multisample_draw_location;
 };
 
 static const struct color_fixup_desc COLOR_FIXUP_IDENTITY =
@@ -1517,8 +1520,7 @@ struct wined3d_stream_info
 };
 
 void wined3d_stream_info_from_declaration(struct wined3d_stream_info *stream_info,
-        const struct wined3d_state *state, const struct wined3d_gl_info *gl_info,
-        const struct wined3d_d3d_info *d3d_info) DECLSPEC_HIDDEN;
+        const struct wined3d_state *state, const struct wined3d_d3d_info *d3d_info) DECLSPEC_HIDDEN;
 
 struct wined3d_direct_dispatch_parameters
 {
@@ -1879,7 +1881,7 @@ struct wined3d_context
 {
     const struct wined3d_gl_info *gl_info;
     const struct wined3d_d3d_info *d3d_info;
-    const struct StateEntry *state_table;
+    const struct wined3d_state_entry *state_table;
     /* State dirtification
      * dirtyArray is an array that contains markers for dirty states. numDirtyEntries states are dirty, their numbers are in indices
      * 0...numDirtyEntries - 1. isStateDirty is a redundant copy of the dirtyArray. Technically only one of them would be needed,
@@ -2034,17 +2036,17 @@ struct wined3d_fb_state
 
 typedef void (*APPLYSTATEFUNC)(struct wined3d_context *ctx, const struct wined3d_state *state, DWORD state_id);
 
-struct StateEntry
+struct wined3d_state_entry
 {
-    DWORD representative;
+    unsigned int representative;
     APPLYSTATEFUNC apply;
 };
 
-struct StateEntryTemplate
+struct wined3d_state_entry_template
 {
     DWORD state;
-    struct StateEntry content;
-    enum wined3d_gl_extension extension;
+    struct wined3d_state_entry content;
+    unsigned int extension;
 };
 
 #define WINED3D_FRAGMENT_CAP_PROJ_CONTROL   0x00000001
@@ -2073,7 +2075,7 @@ struct fragment_pipeline
     BOOL (*allocate_context_data)(struct wined3d_context *context);
     void (*free_context_data)(struct wined3d_context *context);
     BOOL (*color_fixup_supported)(struct color_fixup_desc fixup);
-    const struct StateEntryTemplate *states;
+    const struct wined3d_state_entry_template *states;
 };
 
 struct wined3d_vertex_caps
@@ -2097,10 +2099,10 @@ struct wined3d_vertex_pipe_ops
     DWORD (*vp_get_emul_mask)(const struct wined3d_gl_info *gl_info);
     void *(*vp_alloc)(const struct wined3d_shader_backend_ops *shader_backend, void *shader_priv);
     void (*vp_free)(struct wined3d_device *device);
-    const struct StateEntryTemplate *vp_states;
+    const struct wined3d_state_entry_template *vp_states;
 };
 
-extern const struct StateEntryTemplate misc_state_template[] DECLSPEC_HIDDEN;
+extern const struct wined3d_state_entry_template misc_state_template[] DECLSPEC_HIDDEN;
 extern const struct fragment_pipeline none_fragment_pipe DECLSPEC_HIDDEN;
 extern const struct fragment_pipeline ffp_fragment_pipeline DECLSPEC_HIDDEN;
 extern const struct fragment_pipeline atifs_fragment_pipeline DECLSPEC_HIDDEN;
@@ -2114,10 +2116,10 @@ extern const struct wined3d_vertex_pipe_ops ffp_vertex_pipe DECLSPEC_HIDDEN;
 extern const struct wined3d_vertex_pipe_ops glsl_vertex_pipe DECLSPEC_HIDDEN;
 
 /* "Base" state table */
-HRESULT compile_state_table(struct StateEntry *StateTable, APPLYSTATEFUNC **dev_multistate_funcs,
-        const struct wined3d_gl_info *gl_info, const struct wined3d_d3d_info *d3d_info,
+HRESULT compile_state_table(struct wined3d_state_entry *state_table, APPLYSTATEFUNC **dev_multistate_funcs,
+        const struct wined3d_d3d_info *d3d_info, const BOOL *supported_extensions,
         const struct wined3d_vertex_pipe_ops *vertex, const struct fragment_pipeline *fragment,
-        const struct StateEntryTemplate *misc) DECLSPEC_HIDDEN;
+        const struct wined3d_state_entry_template *misc) DECLSPEC_HIDDEN;
 
 enum wined3d_blit_op
 {
@@ -2695,7 +2697,7 @@ BOOL wined3d_adapter_gl_create_context(struct wined3d_context *context,
 /* The adapter structure */
 struct wined3d_adapter
 {
-    UINT ordinal;
+    unsigned int ordinal;
     POINT monitor_position;
     enum wined3d_format_id screen_format;
 
@@ -2703,6 +2705,8 @@ struct wined3d_adapter
     struct wined3d_d3d_info d3d_info;
     struct wined3d_driver_info driver_info;
     UINT64 vram_bytes_used;
+    GUID driver_uuid;
+    GUID device_uuid;
     LUID luid;
 
     WCHAR device_name[CCHDEVICENAME]; /* for use with e.g. ChangeDisplaySettings() */
@@ -3062,7 +3066,7 @@ struct wined3d_device
     void *shader_priv;
     void *fragment_priv;
     void *vertex_priv;
-    struct StateEntry StateTable[STATE_HIGHEST + 1];
+    struct wined3d_state_entry state_table[STATE_HIGHEST + 1];
     /* Array of functions for states which are handled by more than one pipeline part */
     APPLYSTATEFUNC *multistate_funcs[STATE_HIGHEST + 1];
     struct wined3d_blitter *blitter;
@@ -3253,6 +3257,7 @@ BOOL wined3d_resource_allocate_sysmem(struct wined3d_resource *resource) DECLSPE
 void wined3d_resource_free_sysmem(struct wined3d_resource *resource) DECLSPEC_HIDDEN;
 const struct wined3d_format *wined3d_resource_get_decompress_format(
         const struct wined3d_resource *resource) DECLSPEC_HIDDEN;
+unsigned int wined3d_resource_get_sample_count(const struct wined3d_resource *resource) DECLSPEC_HIDDEN;
 GLbitfield wined3d_resource_gl_map_flags(DWORD d3d_flags) DECLSPEC_HIDDEN;
 GLenum wined3d_resource_gl_legacy_map_flags(DWORD d3d_flags) DECLSPEC_HIDDEN;
 BOOL wined3d_resource_is_offscreen(struct wined3d_resource *resource) DECLSPEC_HIDDEN;
@@ -4630,8 +4635,8 @@ static inline BOOL use_ps(const struct wined3d_state *state)
 static inline void context_apply_state(struct wined3d_context *context,
         const struct wined3d_state *state, DWORD state_id)
 {
-    const struct StateEntry *state_table = context->state_table;
-    DWORD rep = state_table[state_id].representative;
+    const struct wined3d_state_entry *state_table = context->state_table;
+    unsigned int rep = state_table[state_id].representative;
     state_table[rep].apply(context, state, rep);
 }
 

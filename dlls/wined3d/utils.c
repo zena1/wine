@@ -633,6 +633,7 @@ static const struct wined3d_format_vertex_info format_vertex_info[] =
     {WINED3DFMT_R16G16B16A16_FLOAT, WINED3D_FFP_EMIT_FLOAT16_4, GL_HALF_FLOAT, ARB_HALF_FLOAT_VERTEX},
     {WINED3DFMT_R8G8B8A8_SNORM,     WINED3D_FFP_EMIT_INVALID,   GL_BYTE},
     {WINED3DFMT_R8G8B8A8_SINT,      WINED3D_FFP_EMIT_INVALID,   GL_BYTE},
+    {WINED3DFMT_R8G8_UNORM,         WINED3D_FFP_EMIT_INVALID,   GL_UNSIGNED_BYTE},
     {WINED3DFMT_R16G16B16A16_UINT,  WINED3D_FFP_EMIT_INVALID,   GL_UNSIGNED_SHORT},
     {WINED3DFMT_R8_UNORM,           WINED3D_FFP_EMIT_INVALID,   GL_UNSIGNED_BYTE},
     {WINED3DFMT_R8_UINT,            WINED3D_FFP_EMIT_INVALID,   GL_UNSIGNED_BYTE},
@@ -5626,7 +5627,6 @@ void wined3d_format_get_float_color_key(const struct wined3d_format *format,
     }
 }
 
-/* DirectDraw stuff */
 enum wined3d_format_id pixelformat_for_depth(DWORD depth)
 {
     switch (depth)
@@ -6442,12 +6442,6 @@ void wined3d_gl_limits_get_texture_unit_range(const struct wined3d_gl_limits *gl
         if (i == shader_type)
             return;
         *base += *count;
-        if (i == WINED3D_SHADER_TYPE_VERTEX)
-        {
-            /* Reserve binding locations for vs_c UBO and modelview UBO
-               used for indexed vertex blending. */
-            *base += 2;
-        }
     }
 
     ERR("Unrecognized shader type %#x.\n", shader_type);

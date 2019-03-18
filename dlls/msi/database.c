@@ -53,13 +53,6 @@ WINE_DEFAULT_DEBUG_CHANNEL(msi);
 
 #define IS_INTMSIDBOPEN(x)      (((ULONG_PTR)(x) >> 16) == 0)
 
-struct row_export_info
-{
-    HANDLE handle;
-    LPCWSTR folder;
-    LPCWSTR table;
-};
-
 static void free_transforms( MSIDATABASE *db )
 {
     while( !list_empty( &db->transforms ) )
@@ -928,11 +921,10 @@ end:
 static UINT msi_export_field( HANDLE handle, MSIRECORD *row, UINT field )
 {
     char *buffer;
-    BOOL bret;
-    DWORD sz;
+    BOOL ret;
+    DWORD sz = 0x100;
     UINT r;
 
-    sz = 0x100;
     buffer = msi_alloc( sz );
     if (!buffer)
         return ERROR_OUTOFMEMORY;
@@ -940,16 +932,16 @@ static UINT msi_export_field( HANDLE handle, MSIRECORD *row, UINT field )
     r = MSI_RecordGetStringA( row, field, buffer, &sz );
     if (r == ERROR_MORE_DATA)
     {
-        char *p;
+        char *tmp;
 
         sz++; /* leave room for NULL terminator */
-        p = msi_realloc( buffer, sz );
-        if (!p)
+        tmp = msi_realloc( buffer, sz );
+        if (!tmp)
         {
             msi_free( buffer );
             return ERROR_OUTOFMEMORY;
         }
-        buffer = p;
+        buffer = tmp;
 
         r = MSI_RecordGetStringA( row, field, buffer, &sz );
         if (r != ERROR_SUCCESS)
@@ -959,49 +951,49 @@ static UINT msi_export_field( HANDLE handle, MSIRECORD *row, UINT field )
         }
     }
     else if (r != ERROR_SUCCESS)
+    {
+        msi_free( buffer );
         return r;
+    }
 
-    bret = WriteFile( handle, buffer, sz, &sz, NULL );
+    ret = WriteFile( handle, buffer, sz, &sz, NULL );
     msi_free( buffer );
-    if (!bret)
-        return ERROR_FUNCTION_FAILED;
-
-    return r;
+    return ret ? ERROR_SUCCESS : ERROR_FUNCTION_FAILED;
 }
 
-static UINT msi_export_stream( LPCWSTR folder, LPCWSTR table, MSIRECORD *row, UINT field,
-                               UINT start )
+static UINT msi_export_stream( const WCHAR *folder, const WCHAR *table, MSIRECORD *row, UINT field, UINT start )
 {
-    static const WCHAR fmt_file[] = { '%','s','/','%','s','/','%','s',0 };
-    static const WCHAR fmt_folder[] = { '%','s','/','%','s',0 };
-    WCHAR stream_name[256], stream_filename[MAX_PATH];
+    static const WCHAR fmt[] = {'%','s','\\','%','s',0};
+    WCHAR stream[MAX_STREAM_NAME_LEN + 1], *path;
     DWORD sz, read_size, write_size;
     char buffer[1024];
     HANDLE file;
-    UINT r;
+    UINT len, r;
 
-    /* get the name of the file */
-    sz = sizeof(stream_name)/sizeof(WCHAR);
-    r = MSI_RecordGetStringW( row, start, stream_name, &sz );
+    sz = ARRAY_SIZE( stream );
+    r = MSI_RecordGetStringW( row, start, stream, &sz );
     if (r != ERROR_SUCCESS)
         return r;
 
-    /* if the destination folder does not exist then create it (folder name = table name) */
-    snprintfW( stream_filename, sizeof(stream_filename)/sizeof(WCHAR), fmt_folder, folder, table );
-    if (GetFileAttributesW( stream_filename ) == INVALID_FILE_ATTRIBUTES)
+    len = (sz + strlenW( folder ) + strlenW( table ) + ARRAY_SIZE( fmt ) + 1) * sizeof(WCHAR);
+    if (!(path = msi_alloc( len )))
+        return ERROR_OUTOFMEMORY;
+
+    len = sprintfW( path, fmt, folder, table );
+    if (!CreateDirectoryW( path, NULL ) && GetLastError() != ERROR_ALREADY_EXISTS)
     {
-        if (!CreateDirectoryW( stream_filename, NULL ))
-            return ERROR_PATH_NOT_FOUND;
+        msi_free( path );
+        return ERROR_FUNCTION_FAILED;
     }
 
-    /* actually create the file */
-    snprintfW( stream_filename, sizeof(stream_filename)/sizeof(WCHAR), fmt_file, folder, table, stream_name );
-    file = CreateFileW( stream_filename, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+    path[len++] = '\\';
+    strcpyW( path + len, stream );
+    file = CreateFileW( path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
                         NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
+    msi_free( path );
     if (file == INVALID_HANDLE_VALUE)
-        return ERROR_FILE_NOT_FOUND;
+        return ERROR_FUNCTION_FAILED;
 
-    /* copy the stream to the file */
     read_size = sizeof(buffer);
     while (read_size == sizeof(buffer))
     {
@@ -1020,6 +1012,13 @@ static UINT msi_export_stream( LPCWSTR folder, LPCWSTR table, MSIRECORD *row, UI
     CloseHandle( file );
     return r;
 }
+
+struct row_export_info
+{
+    HANDLE       handle;
+    const WCHAR *folder;
+    const WCHAR *table;
+};
 
 static UINT msi_export_record( struct row_export_info *row_export_info, MSIRECORD *row, UINT start )
 {
@@ -1062,11 +1061,8 @@ static UINT msi_export_forcecodepage( HANDLE handle, UINT codepage )
 {
     static const char fmt[] = "\r\n\r\n%u\t_ForceCodepage\r\n";
     char data[sizeof(fmt) + 10];
-    DWORD sz;
+    DWORD sz = sprintf( data, fmt, codepage );
 
-    sprintf( data, fmt, codepage );
-
-    sz = lstrlenA(data) + 1;
     if (!WriteFile(handle, data, sz, &sz, NULL))
         return ERROR_FUNCTION_FAILED;
 
@@ -1078,24 +1074,22 @@ static UINT msi_export_summaryinformation( MSIDATABASE *db, HANDLE handle )
     static const char header[] = "PropertyId\tValue\r\n"
                                  "i2\tl255\r\n"
                                  "_SummaryInformation\tPropertyId\r\n";
-    DWORD sz;
+    DWORD sz = ARRAY_SIZE(header) - 1;
 
-    sz = lstrlenA(header);
     if (!WriteFile(handle, header, sz, &sz, NULL))
         return ERROR_WRITE_FAULT;
 
     return msi_export_suminfo( db, handle );
 }
 
-static UINT MSI_DatabaseExport( MSIDATABASE *db, LPCWSTR table,
-               LPCWSTR folder, LPCWSTR file )
+static UINT MSI_DatabaseExport( MSIDATABASE *db, LPCWSTR table, LPCWSTR folder, LPCWSTR file )
 {
-    static const WCHAR summaryinformation[] = {
-        '_','S','u','m','m','a','r','y','I','n','f','o','r','m','a','t','i','o','n',0 };
     static const WCHAR query[] = {
         's','e','l','e','c','t',' ','*',' ','f','r','o','m',' ','%','s',0 };
     static const WCHAR forcecodepage[] = {
         '_','F','o','r','c','e','C','o','d','e','p','a','g','e',0 };
+    static const WCHAR summaryinformation[] = {
+        '_','S','u','m','m','a','r','y','I','n','f','o','r','m','a','t','i','o','n',0 };
     MSIRECORD *rec = NULL;
     MSIQUERY *view = NULL;
     LPWSTR filename;
