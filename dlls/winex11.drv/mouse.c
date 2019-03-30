@@ -468,7 +468,7 @@ void reset_clipping_window(void)
     ClipCursor( NULL );  /* make sure the clip rectangle is reset too */
 }
 
-BOOL CDECL X11DRV_ClipCursor( LPCRECT clip );
+BOOL CDECL X11DRV_ClipCursor( const RECT *clip );
 
 /***********************************************************************
  *             clip_cursor_notify

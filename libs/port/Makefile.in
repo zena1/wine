@@ -73,6 +73,8 @@ C_SRCS = \
 	c_936.c \
 	c_949.c \
 	c_950.c \
+	casemap.c \
+	collation.c \
 	combclass.c \
 	compose.c \
 	cpsymbol.c \
@@ -96,6 +98,7 @@ C_SRCS = \
 	pwrite.c \
 	readlink.c \
 	rint.c \
+	sortkey.c \
 	spawn.c \
 	statvfs.c \
 	strnlen.c \
@@ -103,4 +106,6 @@ C_SRCS = \
 	usleep.c \
 	utf8.c \
 	wctomb.c \
+	wctype.c \
 	xattr.c
+
