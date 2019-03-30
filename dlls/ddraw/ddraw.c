@@ -3793,6 +3793,9 @@ static HRESULT WINAPI d3d7_EnumDevices(IDirect3D7 *iface, LPD3DENUMDEVICESCALLBA
     {
         HRESULT ret;
 
+        if (!(device_list[i].version_mask & D3D_VERSION(ddraw->d3dversion)))
+            continue;
+
         device_desc7.deviceGUID = *device_list[i].device_guid;
         device_desc7.dwDevCaps  = dev_caps & ~device_list[i].remove_caps;
 

@@ -425,6 +425,7 @@ void release_object( void *ptr )
         assert( !obj->handle_count );
         /* if the refcount is 0, nobody can be in the wait queue */
         assert( list_empty( &obj->wait_queue ));
+        free_kernel_objects( obj );
         unlink_named_object( obj );
         obj->ops->destroy( obj );
         free_object( obj );
@@ -705,10 +706,6 @@ struct object *no_open_file( struct object *obj, unsigned int access, unsigned i
 {
     set_error( STATUS_OBJECT_TYPE_MISMATCH );
     return NULL;
-}
-
-void no_alloc_handle( struct object *obj, struct process *process, obj_handle_t handle )
-{
 }
 
 int no_close_handle( struct object *obj, struct process *process, obj_handle_t handle )

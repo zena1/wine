@@ -1549,6 +1549,12 @@ static HRESULT ddraw_surface_blt_clipped(struct ddraw_surface *dst_surface, cons
         return hr;
     }
 
+    if (!ddraw_clipper_is_valid(dst_surface->clipper))
+    {
+        FIXME("Attempting to blit with an invalid clipper.\n");
+        return DDERR_INVALIDPARAMS;
+    }
+
     scale_x = (float)(src_rect.right - src_rect.left) / (float)(dst_rect.right - dst_rect.left);
     scale_y = (float)(src_rect.bottom - src_rect.top) / (float)(dst_rect.bottom - dst_rect.top);
 
@@ -4426,7 +4432,8 @@ static HRESULT WINAPI ddraw_surface7_GetClipper(IDirectDrawSurface7 *iface, IDir
     }
 
     *clipper = &surface->clipper->IDirectDrawClipper_iface;
-    IDirectDrawClipper_AddRef(*clipper);
+    if (ddraw_clipper_is_valid(surface->clipper))
+        IDirectDrawClipper_AddRef(*clipper);
     wined3d_mutex_unlock();
 
     return DD_OK;
@@ -4501,7 +4508,7 @@ static HRESULT WINAPI ddraw_surface7_SetClipper(IDirectDrawSurface7 *iface,
 
     if (clipper != NULL)
         IDirectDrawClipper_AddRef(iclipper);
-    if (old_clipper)
+    if (old_clipper && ddraw_clipper_is_valid(old_clipper))
         IDirectDrawClipper_Release(&old_clipper->IDirectDrawClipper_iface);
 
     if ((This->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE) && This->ddraw->wined3d_swapchain)
@@ -5791,7 +5798,7 @@ static void STDMETHODCALLTYPE ddraw_surface_wined3d_object_destroyed(void *paren
     /* Reduce the ddraw surface count. */
     list_remove(&surface->surface_list_entry);
 
-    if (surface->clipper)
+    if (surface->clipper && ddraw_clipper_is_valid(surface->clipper))
         IDirectDrawClipper_Release(&surface->clipper->IDirectDrawClipper_iface);
 
     if (surface == surface->ddraw->primary)
@@ -6191,10 +6198,10 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
          * specified location and try to create rendering targets in video memory if
          * possible.
          */
-        if ((desc->ddsCaps.dwCaps & DDSCAPS_3DDEVICE) &&
-            SUCCEEDED(hr = wined3d_check_device_format(ddraw->wined3d, WINED3DADAPTER_DEFAULT,
-                        WINED3D_DEVICE_TYPE_HAL, mode.format_id, 0,
-                        bind_flags, WINED3D_RTYPE_TEXTURE_2D, wined3d_desc.format)))
+        if (bind_flags
+                && SUCCEEDED(hr = wined3d_check_device_format(ddraw->wined3d, WINED3DADAPTER_DEFAULT,
+                WINED3D_DEVICE_TYPE_HAL, mode.format_id, 0,
+                bind_flags, WINED3D_RTYPE_TEXTURE_2D, wined3d_desc.format)))
         {
             FIXME("Application wants to create rendering target in system memory, using video memory instead\n");
             wined3d_desc.bind_flags = bind_flags;
