@@ -34,6 +34,7 @@
 #include "winreg.h"
 #include "shellapi.h"
 #include "shlwapi.h"
+#include "winternl.h"
 #include "wine/debug.h"
 
 #include "winemapi_private.h"
@@ -112,7 +113,7 @@ static ULONG BrowserSendMail(LHANDLE session, ULONG_PTR uiparam,
 
         if (address)
         {
-            if (!strncasecmp(address, smtp, sizeof(smtp) - 1))
+            if (!_strnicmp(address, smtp, sizeof(smtp) - 1))
                 address += sizeof(smtp) - 1;
 
             switch (message->lpRecips[i].ulRecipClass)
@@ -204,7 +205,7 @@ static ULONG BrowserSendMail(LHANDLE session, ULONG_PTR uiparam,
 
         if (address)
         {
-            if (!strncasecmp(address, smtp, sizeof(smtp) - 1))
+            if (!_strnicmp(address, smtp, sizeof(smtp) - 1))
                 address += sizeof(smtp) - 1;
 
             switch (message->lpRecips[i].ulRecipClass)

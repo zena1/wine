@@ -192,7 +192,6 @@ static BOOL async_switch = FALSE;
 static BOOL strict_bsc_qi;
 static DWORD bindtest_flags;
 static const char *test_file;
-static const char *ftp_url;
 
 static WCHAR file_url[INTERNET_MAX_URL_LENGTH], current_url[INTERNET_MAX_URL_LENGTH];
 
@@ -2907,10 +2906,7 @@ static void init_bind_test(int protocol, DWORD flags, DWORD t)
         url_a = (flags & BINDTEST_INVALID_CN) ? "https://4.15.184.77/favicon.ico" : "https://test.winehq.org/tests/hello.html";
         break;
     case FTP_TEST:
-        if(!ftp_url)
-            url_a = "ftp://ftp.winehq.org/welcome.msg";
-        else
-            url_a = ftp_url;
+        url_a = "ftp://ftp.winehq.org/welcome%2emsg";
         break;
     default:
         url_a = "winetest:test";
@@ -4154,9 +4150,6 @@ START_TEST(url)
         bindf |= BINDF_NOWRITECACHE;
 
         trace("ftp test...\n");
-        test_BindToStorage(FTP_TEST, 0, TYMED_ISTREAM);
-
-        ftp_url = "ftp://ftp.winehq.org/welcome%2emsg";
         test_BindToStorage(FTP_TEST, 0, TYMED_ISTREAM);
 
         trace("test failures...\n");
