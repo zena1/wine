@@ -84,6 +84,10 @@ typedef LONG LSTATUS;
 #define RRF_NOEXPAND            (1 << 28)
 #define RRF_ZEROONFAILURE       (1 << 29)
 
+#define REG_PROCESS_APPKEY          0x00000001
+
+#define REG_MUI_STRING_TRUNCATE     0x00000001
+
 WINADVAPI BOOL      WINAPI AbortSystemShutdownA(LPSTR);
 WINADVAPI BOOL      WINAPI AbortSystemShutdownW(LPWSTR);
 #define                    AbortSystemShutdown WINELIB_NAME_AW(AbortSystemShutdown)
