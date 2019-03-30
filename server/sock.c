@@ -157,7 +157,7 @@ static const struct object_ops sock_ops =
     no_link_name,                 /* link_name */
     NULL,                         /* unlink_name */
     no_open_file,                 /* open_file */
-    no_alloc_handle,              /* alloc_handle */
+    no_kernel_obj_list,           /* get_kernel_obj_list */
     sock_close_handle,            /* close_handle */
     sock_destroy                  /* destroy */
 };
@@ -1007,7 +1007,7 @@ static const struct object_ops ifchange_ops =
     no_link_name,            /* link_name */
     NULL,                    /* unlink_name */
     no_open_file,            /* open_file */
-    no_alloc_handle,         /* alloc_handle */
+    no_kernel_obj_list,      /* get_kernel_obj_list */
     no_close_handle,         /* close_handle */
     ifchange_destroy         /* destroy */
 };
@@ -1390,6 +1390,6 @@ DECL_HANDLER(socket_cleanup)
     unsigned int index = 0;
     obj_handle_t sock;
 
-    while ((sock = enumerate_handles(current->process, &sock_ops, &index, NULL)))
+    while ((sock = enumerate_handles(current->process, &sock_ops, &index)))
         close_handle(current->process, sock);
 }
