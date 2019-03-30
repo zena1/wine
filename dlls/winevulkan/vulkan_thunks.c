@@ -2775,12 +2775,6 @@ void WINAPI wine_vkGetImageSubresourceLayout(VkDevice device, VkImage image, con
 #endif
 }
 
-static VkResult WINAPI wine_vkGetPhysicalDeviceCooperativeMatrixPropertiesNV(VkPhysicalDevice physicalDevice, uint32_t *pPropertyCount, VkCooperativeMatrixPropertiesNV *pProperties)
-{
-    TRACE("%p, %p, %p\n", physicalDevice, pPropertyCount, pProperties);
-    return physicalDevice->instance->funcs.p_vkGetPhysicalDeviceCooperativeMatrixPropertiesNV(physicalDevice->phys_dev, pPropertyCount, pProperties);
-}
-
 void WINAPI wine_vkGetPhysicalDeviceFeatures(VkPhysicalDevice physicalDevice, VkPhysicalDeviceFeatures *pFeatures)
 {
     TRACE("%p, %p\n", physicalDevice, pFeatures);
@@ -2834,38 +2828,32 @@ VkResult WINAPI wine_vkGetPhysicalDeviceImageFormatProperties(VkPhysicalDevice p
 #endif
 }
 
-VkResult WINAPI wine_vkGetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice, const VkPhysicalDeviceImageFormatInfo2 *pImageFormatInfo, VkImageFormatProperties2 *pImageFormatProperties)
+VkResult thunk_vkGetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice, const VkPhysicalDeviceImageFormatInfo2 *pImageFormatInfo, VkImageFormatProperties2 *pImageFormatProperties)
 {
 #if defined(USE_STRUCT_CONVERSION)
     VkResult result;
     VkImageFormatProperties2_host pImageFormatProperties_host;
-    TRACE("%p, %p, %p\n", physicalDevice, pImageFormatInfo, pImageFormatProperties);
-
     convert_VkImageFormatProperties2_win_to_host(pImageFormatProperties, &pImageFormatProperties_host);
     result = physicalDevice->instance->funcs.p_vkGetPhysicalDeviceImageFormatProperties2(physicalDevice->phys_dev, pImageFormatInfo, &pImageFormatProperties_host);
 
     convert_VkImageFormatProperties2_host_to_win(&pImageFormatProperties_host, pImageFormatProperties);
     return result;
 #else
-    TRACE("%p, %p, %p\n", physicalDevice, pImageFormatInfo, pImageFormatProperties);
     return physicalDevice->instance->funcs.p_vkGetPhysicalDeviceImageFormatProperties2(physicalDevice->phys_dev, pImageFormatInfo, pImageFormatProperties);
 #endif
 }
 
-static VkResult WINAPI wine_vkGetPhysicalDeviceImageFormatProperties2KHR(VkPhysicalDevice physicalDevice, const VkPhysicalDeviceImageFormatInfo2 *pImageFormatInfo, VkImageFormatProperties2 *pImageFormatProperties)
+VkResult thunk_vkGetPhysicalDeviceImageFormatProperties2KHR(VkPhysicalDevice physicalDevice, const VkPhysicalDeviceImageFormatInfo2 *pImageFormatInfo, VkImageFormatProperties2 *pImageFormatProperties)
 {
 #if defined(USE_STRUCT_CONVERSION)
     VkResult result;
     VkImageFormatProperties2_host pImageFormatProperties_host;
-    TRACE("%p, %p, %p\n", physicalDevice, pImageFormatInfo, pImageFormatProperties);
-
     convert_VkImageFormatProperties2_win_to_host(pImageFormatProperties, &pImageFormatProperties_host);
     result = physicalDevice->instance->funcs.p_vkGetPhysicalDeviceImageFormatProperties2KHR(physicalDevice->phys_dev, pImageFormatInfo, &pImageFormatProperties_host);
 
     convert_VkImageFormatProperties2_host_to_win(&pImageFormatProperties_host, pImageFormatProperties);
     return result;
 #else
-    TRACE("%p, %p, %p\n", physicalDevice, pImageFormatInfo, pImageFormatProperties);
     return physicalDevice->instance->funcs.p_vkGetPhysicalDeviceImageFormatProperties2KHR(physicalDevice->phys_dev, pImageFormatInfo, pImageFormatProperties);
 #endif
 }
@@ -3460,7 +3448,12 @@ static const struct vulkan_func vk_instance_dispatch_table[] =
     {"vkEnumeratePhysicalDeviceGroups", &wine_vkEnumeratePhysicalDeviceGroups},
     {"vkEnumeratePhysicalDeviceGroupsKHR", &wine_vkEnumeratePhysicalDeviceGroupsKHR},
     {"vkEnumeratePhysicalDevices", &wine_vkEnumeratePhysicalDevices},
-    {"vkGetPhysicalDeviceCooperativeMatrixPropertiesNV", &wine_vkGetPhysicalDeviceCooperativeMatrixPropertiesNV},
+    {"vkGetPhysicalDeviceExternalBufferProperties", &wine_vkGetPhysicalDeviceExternalBufferProperties},
+    {"vkGetPhysicalDeviceExternalBufferPropertiesKHR", &wine_vkGetPhysicalDeviceExternalBufferPropertiesKHR},
+    {"vkGetPhysicalDeviceExternalFenceProperties", &wine_vkGetPhysicalDeviceExternalFenceProperties},
+    {"vkGetPhysicalDeviceExternalFencePropertiesKHR", &wine_vkGetPhysicalDeviceExternalFencePropertiesKHR},
+    {"vkGetPhysicalDeviceExternalSemaphoreProperties", &wine_vkGetPhysicalDeviceExternalSemaphoreProperties},
+    {"vkGetPhysicalDeviceExternalSemaphorePropertiesKHR", &wine_vkGetPhysicalDeviceExternalSemaphorePropertiesKHR},
     {"vkGetPhysicalDeviceFeatures", &wine_vkGetPhysicalDeviceFeatures},
     {"vkGetPhysicalDeviceFeatures2", &wine_vkGetPhysicalDeviceFeatures2},
     {"vkGetPhysicalDeviceFeatures2KHR", &wine_vkGetPhysicalDeviceFeatures2KHR},
@@ -3552,9 +3545,9 @@ static const char * const vk_device_extensions[] =
     "VK_EXT_host_query_reset",
     "VK_EXT_inline_uniform_block",
     "VK_EXT_memory_budget",
-    "VK_EXT_memory_priority",
     "VK_EXT_pci_bus_info",
     "VK_EXT_post_depth_coverage",
+    "VK_EXT_queue_family_foreign",
     "VK_EXT_sample_locations",
     "VK_EXT_sampler_filter_minmax",
     "VK_EXT_scalar_block_layout",
@@ -3566,7 +3559,6 @@ static const char * const vk_device_extensions[] =
     "VK_EXT_transform_feedback",
     "VK_EXT_validation_cache",
     "VK_EXT_vertex_attribute_divisor",
-    "VK_EXT_ycbcr_image_arrays",
     "VK_GOOGLE_decorate_string",
     "VK_GOOGLE_hlsl_functionality1",
     "VK_IMG_filter_cubic",
@@ -3581,6 +3573,9 @@ static const char * const vk_device_extensions[] =
     "VK_KHR_device_group",
     "VK_KHR_draw_indirect_count",
     "VK_KHR_driver_properties",
+    "VK_KHR_external_fence",
+    "VK_KHR_external_memory",
+    "VK_KHR_external_semaphore",
     "VK_KHR_get_memory_requirements2",
     "VK_KHR_image_format_list",
     "VK_KHR_incremental_present",
@@ -3594,7 +3589,6 @@ static const char * const vk_device_extensions[] =
     "VK_KHR_sampler_ycbcr_conversion",
     "VK_KHR_shader_atomic_int64",
     "VK_KHR_shader_draw_parameters",
-    "VK_KHR_shader_float16_int8",
     "VK_KHR_shader_float_controls",
     "VK_KHR_storage_buffer_storage_class",
     "VK_KHR_swapchain",
@@ -3603,12 +3597,9 @@ static const char * const vk_device_extensions[] =
     "VK_KHR_vulkan_memory_model",
     "VK_NV_clip_space_w_scaling",
     "VK_NV_compute_shader_derivatives",
-    "VK_NV_cooperative_matrix",
     "VK_NV_corner_sampled_image",
     "VK_NV_dedicated_allocation",
-    "VK_NV_dedicated_allocation_image_aliasing",
     "VK_NV_device_diagnostic_checkpoints",
-    "VK_NV_external_memory",
     "VK_NV_fill_rectangle",
     "VK_NV_fragment_coverage_to_color",
     "VK_NV_fragment_shader_barycentric",
@@ -3629,7 +3620,11 @@ static const char * const vk_device_extensions[] =
 
 static const char * const vk_instance_extensions[] =
 {
+    "VK_EXT_swapchain_colorspace",
     "VK_KHR_device_group_creation",
+    "VK_KHR_external_fence_capabilities",
+    "VK_KHR_external_memory_capabilities",
+    "VK_KHR_external_semaphore_capabilities",
     "VK_KHR_get_physical_device_properties2",
     "VK_KHR_surface",
     "VK_KHR_win32_surface",

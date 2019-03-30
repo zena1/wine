@@ -3523,7 +3523,10 @@ LSTATUS WINAPI RegLoadAppKeyA(const char *file, HKEY *result, REGSAM sam, DWORD 
 {
     FIXME("%s %p %u %u %u: stub\n", wine_dbgstr_a(file), result, sam, options, reserved);
 
-    *result = (HKEY)0xbeefcafe;
+    if (!file || reserved)
+        return ERROR_INVALID_PARAMETER;
+
+    *result = (HKEY)0xdeadbeef;
     return ERROR_SUCCESS;
 }
 
@@ -3535,6 +3538,9 @@ LSTATUS WINAPI RegLoadAppKeyW(const WCHAR *file, HKEY *result, REGSAM sam, DWORD
 {
     FIXME("%s %p %u %u %u: stub\n", wine_dbgstr_w(file), result, sam, options, reserved);
 
-    *result = (HKEY)0xbeefcafe;
+    if (!file || reserved)
+        return ERROR_INVALID_PARAMETER;
+
+    *result = (HKEY)0xdeadbeef;
     return ERROR_SUCCESS;
 }

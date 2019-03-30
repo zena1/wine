@@ -318,4 +318,9 @@ extern void CDECL NTDLL_wine_get_host_version( const char **sysname, const char 
 extern BOOL read_process_time(int unix_pid, int unix_tid, unsigned long clk_tck,
                               LARGE_INTEGER *kernel, LARGE_INTEGER *user) DECLSPEC_HIDDEN;
 extern BOOL read_process_memory_stats(int unix_pid, VM_COUNTERS *pvmi) DECLSPEC_HIDDEN;
+
+/* string functions */
+int __cdecl NTDLL_tolower( int c );
+int __cdecl _stricmp( LPCSTR str1, LPCSTR str2 );
+
 #endif

@@ -40,6 +40,7 @@
 struct event
 {
     struct object  obj;             /* object header */
+    struct list    kernel_object;   /* list of kernel object pointers */
     int            manual_reset;    /* is it a manual reset event? */
     int            signaled;        /* event has been signaled */
     int            esync_fd;        /* esync file descriptor */
@@ -52,6 +53,7 @@ static int event_get_esync_fd( struct object *obj, enum esync_type *type );
 static void event_satisfied( struct object *obj, struct wait_queue_entry *entry );
 static unsigned int event_map_access( struct object *obj, unsigned int access );
 static int event_signal( struct object *obj, unsigned int access);
+static struct list *event_get_kernel_obj_list( struct object *obj );
 static void event_destroy( struct object *obj );
 
 static const struct object_ops event_ops =
@@ -73,7 +75,7 @@ static const struct object_ops event_ops =
     directory_link_name,       /* link_name */
     default_unlink_name,       /* unlink_name */
     no_open_file,              /* open_file */
-    no_alloc_handle,           /* alloc_handle */
+    event_get_kernel_obj_list, /* get_kernel_obj_list */
     no_close_handle,           /* close_handle */
     event_destroy              /* destroy */
 };
@@ -108,7 +110,7 @@ static const struct object_ops keyed_event_ops =
     directory_link_name,         /* link_name */
     default_unlink_name,         /* unlink_name */
     no_open_file,                /* open_file */
-    no_alloc_handle,             /* alloc_handle */
+    no_kernel_obj_list,          /* get_kernel_obj_list */
     no_close_handle,             /* close_handle */
     no_destroy                   /* destroy */
 };
@@ -125,6 +127,7 @@ struct event *create_event( struct object *root, const struct unicode_str *name,
         if (get_error() != STATUS_OBJECT_NAME_EXISTS)
         {
             /* initialize it if it didn't already exist */
+            list_init( &event->kernel_object );
             event->manual_reset = manual_reset;
             event->signaled     = initial_state;
 
@@ -235,6 +238,12 @@ static int event_signal( struct object *obj, unsigned int access )
     }
     set_event( event );
     return 1;
+}
+
+static struct list *event_get_kernel_obj_list( struct object *obj )
+{
+    struct event *event = (struct event *)obj;
+    return &event->kernel_object;
 }
 
 static void event_destroy( struct object *obj )
