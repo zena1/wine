@@ -27,9 +27,9 @@ extern NTSTATUS esync_create_semaphore(HANDLE *handle, ACCESS_MASK access,
 extern NTSTATUS esync_release_semaphore( HANDLE handle, ULONG count, ULONG *prev ) DECLSPEC_HIDDEN;
 extern NTSTATUS esync_create_event( HANDLE *handle, ACCESS_MASK access,
     const OBJECT_ATTRIBUTES *attr, EVENT_TYPE type, BOOLEAN initial ) DECLSPEC_HIDDEN;
-extern NTSTATUS esync_set_event( HANDLE handle ) DECLSPEC_HIDDEN;
-extern NTSTATUS esync_reset_event( HANDLE handle ) DECLSPEC_HIDDEN;
-extern NTSTATUS esync_pulse_event( HANDLE handle ) DECLSPEC_HIDDEN;
+extern NTSTATUS esync_set_event( HANDLE handle, LONG *prev ) DECLSPEC_HIDDEN;
+extern NTSTATUS esync_reset_event( HANDLE handle, LONG *prev ) DECLSPEC_HIDDEN;
+extern NTSTATUS esync_pulse_event( HANDLE handle, LONG *prev ) DECLSPEC_HIDDEN;
 extern NTSTATUS esync_create_mutex( HANDLE *handle, ACCESS_MASK access,
     const OBJECT_ATTRIBUTES *attr, BOOLEAN initial ) DECLSPEC_HIDDEN;
 extern NTSTATUS esync_release_mutex( HANDLE *handle, LONG *prev ) DECLSPEC_HIDDEN;

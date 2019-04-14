@@ -246,11 +246,9 @@ static void init_server_dir( dev_t dev, ino_t ino )
 
 #ifdef __ANDROID__  /* there's no /tmp dir on Android */
     root = build_path( config_dir, ".wineserver" );
-#elif defined(HAVE_GETUID)
+#else
     root = xmalloc( sizeof(server_root_prefix) + 12 );
     sprintf( root, "%s-%u", server_root_prefix, getuid() );
-#else
-    root = xstrdup( server_root_prefix );
 #endif
 
     server_dir = xmalloc( strlen(root) + sizeof(server_dir_prefix) + 2*sizeof(dev) + 2*sizeof(ino) + 2 );
@@ -285,8 +283,6 @@ static void init_paths(void)
     const char *home = getenv( "HOME" );
     const char *user = NULL;
     const char *prefix = getenv( "WINEPREFIX" );
-
-#ifdef HAVE_GETPWUID
     char uid_str[32];
     struct passwd *pwd = getpwuid( getuid() );
 
@@ -300,10 +296,6 @@ static void init_paths(void)
         sprintf( uid_str, "%lu", (unsigned long)getuid() );
         user = uid_str;
     }
-#else  /* HAVE_GETPWUID */
-    if (!(user = getenv( "USER" )))
-        fatal_error( "cannot determine your user name, set the USER environment variable\n" );
-#endif  /* HAVE_GETPWUID */
     user_name = xstrdup( user );
 
     /* build config_dir */
@@ -335,10 +327,7 @@ static void init_paths(void)
         }
     }
     if (!S_ISDIR(st.st_mode)) fatal_error( "%s is not a directory\n", config_dir );
-#ifdef HAVE_GETUID
     if (st.st_uid != getuid()) fatal_error( "%s is not owned by you\n", config_dir );
-#endif
-
     init_server_dir( st.st_dev, st.st_ino );
 }
 
@@ -678,7 +667,7 @@ wine_patch_data[] =
     { "Alistair Leslie-Hughes", "d3dx9: Implement D3DXComputeTangent.", 1 },
     { "Alistair Leslie-Hughes", "d3dx9_36: ID3DXFont_DrawText calc_rect can be null.", 1 },
     { "Alistair Leslie-Hughes", "d3dx9_36: Support NULL terminated strings in ID3DXFont_DrawText.", 1 },
-    { "Alistair Leslie-Hughes", "hid: Implement HidD_FlushQueue.", 1 },
+    { "Alistair Leslie-Hughes", "ddraw: Allow writing to vtable for surface and palette.", 1 },
     { "Alistair Leslie-Hughes", "httpapi: Fake success from HttpCreateServerSession.", 1 },
     { "Alistair Leslie-Hughes", "oleaut32: Implement semi-stub for CreateTypeLib.", 1 },
     { "Alistair Leslie-Hughes", "user32/msgbox: Support WM_COPY Message.", 1 },
@@ -690,6 +679,7 @@ wine_patch_data[] =
     { "Alistair Leslie-Hughes", "winex11: Handle negative orAltitude values.", 1 },
     { "Alistair Leslie-Hughes", "winex11: Specify a default vulkan driver if one not found at build time.", 1 },
     { "Alistair Leslie-Hughes", "winex11: Support WTI_STATUS in WTInfo.", 1 },
+    { "Alistair Leslie-Hughes", "wintab32: Scale NormalPressure before sending to the client.", 1 },
     { "Alistair Leslie-Hughes", "wintab32: Set lcSysExtX/Y for the first index of WTI_DDCTXS.", 1 },
     { "Alistair Leslie-Hughes", "wintrust: Add parameter check in WTHelperGetProvCertFromChain.", 1 },
     { "Andrew Church", "dinput: Allow reconnecting to disconnected joysticks.", 1 },
@@ -705,7 +695,9 @@ wine_patch_data[] =
     { "Andrew Shadura", "comctl32: Fixed rebar behaviour when there's capture and no drag.", 1 },
     { "Andrew Wesie", "Use NtContinue to continue execution after exceptions.", 1 },
     { "Andrew Wesie", "ntdll/tests: Test updating TickCount in user_shared_data.", 1 },
+    { "Andrew Wesie", "ntdll: Add stub for NtQuerySystemInformation(SystemModuleInformationEx).", 1 },
     { "Andrew Wesie", "ntdll: Refactor RtlCreateUserThread into NtCreateThreadEx.", 1 },
+    { "Andrew Wesie", "ntdll: Return ntdll.dll as the first entry for SystemModuleInformation.", 1 },
     { "Andrew Wesie", "ntdll: Stub for MemoryWorkingSetExInformation.", 1 },
     { "Andrew Wesie", "wined3d: Use glReadPixels for RT texture download.", 1 },
     { "Andrey Gusev", "d3dx9_*: Add D3DXSHProjectCubeMap stub.", 1 },
@@ -882,7 +874,11 @@ wine_patch_data[] =
     { "Erich E. Hoover", "ws2_32: Add support for TF_DISCONNECT to TransmitFile.", 1 },
     { "Erich E. Hoover", "ws2_32: Add support for TF_REUSE_SOCKET to TransmitFile.", 1 },
     { "Erich Hoover", "pdh: Support the 'Processor' object string.", 1 },
-    { "Eriks Dobelis", "winex11: Implement PK_CHANGE for wintab.", 1 },
+    { "Esdras Tarsis", "httpapi: Add AddUrlToUrlGroup stub.", 1 },
+    { "Esdras Tarsis", "httpapi: Add CloseUrlGroup stub.", 1 },
+    { "Esdras Tarsis", "httpapi: Add CreateRequestQueue stub.", 1 },
+    { "Esdras Tarsis", "httpapi: Add CreateUrlGroup stub.", 1 },
+    { "Esdras Tarsis", "httpapi: Add SetUrlGroupProperty stub.", 1 },
     { "Felix Yan", "winex11.drv: Update a candidate window's position with over-the-spot style.", 2 },
     { "Firerat", "winecfg: Toggle upstream CSMT implementation.", 1},
     { "Gabriel Ivăncescu", "shell32/iconcache: Generate icons from available icons if some icon sizes failed to load.", 1 },
@@ -989,8 +985,8 @@ wine_patch_data[] =
     { "Mark Jansen", "shlwapi/tests: Add tests for AssocGetPerceivedType.", 1 },
     { "Mark Jansen", "shlwapi: Implement AssocGetPerceivedType.", 2 },
     { "Mark Jansen", "version: Test for VerQueryValueA.", 2 },
-    { "Mark Jansen", "wintrust: Verify image hash in WinVerifyTrust.", 2 },
     { "Marko Friedemann", "wintrust: Use enhanced crypto provider in VerifyImageHash.", 1 },
+    { "Mathieu Comandon", "esync: Add note about file limits not being raised when using systemd.", 1 },
     { "Matt Durgavich", "ws2_32: Proper WSACleanup implementation using wineserver function.", 2 },
     { "Michael Müller", "Add licenses for fonts as separate files.", 1 },
     { "Michael Müller", "aclui: Add basic ACE viewer.", 1 },
@@ -1017,7 +1013,6 @@ wine_patch_data[] =
     { "Michael Müller", "d3d11: Initial implementation for deferred contexts.", 1 },
     { "Michael Müller", "d3d9/tests: Check MaxVertexBlendMatrixIndex capability.", 1 },
     { "Michael Müller", "d3d9/tests: Test normal calculation when indexed vertex blending is enabled.", 1 },
-    { "Michael Müller", "d3dx9_36: Return dummy skininfo interface in D3DXLoadSkinMeshFromXof when skin information is unavailable.", 1 },
     { "Michael Müller", "ddraw/tests: Add more tests for IDirect3DTexture2::Load.", 1 },
     { "Michael Müller", "ddraw/tests: Add more tests for IDirectDraw7::EnumSurfaces.", 1 },
     { "Michael Müller", "ddraw: Allow size and format conversions in IDirect3DTexture2::Load.", 1 },
@@ -1061,7 +1056,6 @@ wine_patch_data[] =
     { "Michael Müller", "kernel32: Strip invalid characters from mask in FindFirstFileExW.", 1 },
     { "Michael Müller", "krnl386.exe16: Emulate GDT and LDT access.", 1 },
     { "Michael Müller", "krnl386.exe16: Really translate all invalid console handles into usable DOS handles.", 1 },
-    { "Michael Müller", "l3codeca.acm: Check input format in MPEG3_StreamOpen.", 1 },
     { "Michael Müller", "libs/wine: Use same file alignment for fake and builtin DLLs.", 1 },
     { "Michael Müller", "libwine: Add process specific debug channels.", 1 },
     { "Michael Müller", "loader: Add commandline option --check-libs.", 1 },
@@ -1137,7 +1131,6 @@ wine_patch_data[] =
     { "Michael Müller", "server: Compatibility with Wine Staging format for high precision registry timestamps.", 1 },
     { "Michael Müller", "server: Correctly assign security labels for tokens.", 1 },
     { "Michael Müller", "server: Correctly treat zero access mask in duplicate_token wineserver call.", 1 },
-    { "Michael Müller", "server: Correctly validate SID length in sd_is_valid.", 1 },
     { "Michael Müller", "server: Fix crash when a device driver segfaults during an open file request.", 1 },
     { "Michael Müller", "server: Implement support for creating processes using a token.", 1 },
     { "Michael Müller", "server: Implement support for global and local shared memory blocks based on memfd.", 1 },
@@ -1174,8 +1167,6 @@ wine_patch_data[] =
     { "Michael Müller", "shell32: Set SFGAO_HASSUBFOLDER correctly for unixfs.", 1 },
     { "Michael Müller", "shell32: Set return value correctly in DoPaste.", 1 },
     { "Michael Müller", "shell32: Show animation during SHFileOperation.", 1 },
-    { "Michael Müller", "taskmgr: Use different units depending on memory usage.", 1 },
-    { "Michael Müller", "taskmgr: Use system font instead of special bitmap font.", 1 },
     { "Michael Müller", "tools/winebuild: Add syscall thunks for 64 bit.", 1 },
     { "Michael Müller", "uiautomationcore: Add dll and stub some functions.", 1 },
     { "Michael Müller", "user32: Allow changing the tablet / media center status via wine registry key.", 1 },
@@ -1231,6 +1222,7 @@ wine_patch_data[] =
     { "Ondrej Kraus", "winex11.drv: Fix main Russian keyboard layout.", 1 },
     { "Paul Gofman", "d3d9/tests: Add test for indexed vertex blending.", 1 },
     { "Paul Gofman", "d3d9: Support SWVP vertex shader float constants limits.", 1 },
+    { "Paul Gofman", "ddraw: Allow setting texture without DDSCAPS_TEXTURE for software device.", 1 },
     { "Paul Gofman", "wined3d: Allow higher world matrix states.", 1 },
     { "Paul Gofman", "wined3d: Report actual vertex shader float constants limit for SWVP device.", 1 },
     { "Paul Gofman", "wined3d: Support SWVP mode vertex shaders.", 1 },
@@ -1253,7 +1245,6 @@ wine_patch_data[] =
     { "Qian Hong", "ntdll: Set EOF on file which has a memory mapping should fail.", 1 },
     { "Qian Hong", "server: Create primary group using DOMAIN_GROUP_RID_USERS.", 1 },
     { "Qian Hong", "server: Do not allow to set disposition on file which has a file mapping.", 1 },
-    { "Robert Walker", "winex11: Use active owner when sending messages.", 1 },
     { "Sebastian Lackner", "advapi32/tests: Add ACL inheritance tests for creating subdirectories with NtCreateFile.", 1 },
     { "Sebastian Lackner", "advapi32/tests: Add tests for ACL inheritance in CreateDirectoryA.", 1 },
     { "Sebastian Lackner", "advapi: Trigger write watches before passing userdata pointer to read syscall.", 1 },
@@ -1269,8 +1260,6 @@ wine_patch_data[] =
     { "Sebastian Lackner", "dbghelp: Always check for debug symbols in BINDIR.", 1 },
     { "Sebastian Lackner", "ddraw/tests: Fix function name in multiple ok() messages.", 1 },
     { "Sebastian Lackner", "ddraw: Avoid implicit cast of interface pointer.", 1 },
-    { "Sebastian Lackner", "dinput: Avoid possible deadlock when CS are acquired in different order.", 1 },
-    { "Sebastian Lackner", "dinput: Do not wait for hook thread startup in IDirectInput8::Initialize.", 1 },
     { "Sebastian Lackner", "dsound: Allow disabling of EAX support in the registry.", 1 },
     { "Sebastian Lackner", "dsound: Apply filters before sound is multiplied to speakers.", 1 },
     { "Sebastian Lackner", "dsound: Various improvements to EAX support.", 1 },
@@ -1359,7 +1348,6 @@ wine_patch_data[] =
     { "Sebastian Lackner", "setupapi: Also create HardwareId registry key for display devices.", 1 },
     { "Sebastian Lackner", "setupapi: Fix CabinetName passed to SPFILENOTIFY_CABINETINFO handler.", 1 },
     { "Sebastian Lackner", "shlwapi/tests: Add additional tests for UrlCombine and UrlCanonicalize.", 1 },
-    { "Sebastian Lackner", "shlwapi: SHMapHandle should not set error when NULL is passed as hShared.", 1 },
     { "Sebastian Lackner", "shlwapi: UrlCombineW workaround for relative paths.", 1 },
     { "Sebastian Lackner", "stdole32.tlb: Compile typelib with --oldtlb.", 1 },
     { "Sebastian Lackner", "user32/tests: Add tests for DC region.", 1 },
@@ -1403,22 +1391,94 @@ wine_patch_data[] =
     { "Steve Melenchuk", "d3d11: Allow NULL pointer for initial count in d3d11_deferred_context_CSSetUnorderedAccessViews.", 1 },
     { "Thomas Crider", "xaudio2: Return S_OK in IXAudio2 in CommitChanges.", 1 },
     { "Thomas Crider", "xaudio2_7: Support FXEcho interface in CreateFX.", 1 },
+    { "Tim Schumacher", "dinput: Map wheel, gas, and brake axes as well.", 1 },
+    { "Tim Schumacher", "winejoystick: Add support for wheel axes.", 1 },
     { "Torsten Kurbad", "fonts: Add Liberation Sans as an Arial replacement.", 2 },
+    { "Zebediah Figura", "=?UTF-8?q?server:=20Try=20to=20remove=20a=20pre?= =?UTF-8?q?=C3=ABxisting=20shm=20file.?=.", 1 },
+    { "Zebediah Figura", "configure: Check for sys/eventfd.h, ppoll(), and shm_open().", 1 },
+    { "Zebediah Figura", "esync: Add a README.", 1 },
+    { "Zebediah Figura", "esync: Update README.", 1 },
+    { "Zebediah Figura", "esync: Update README.", 1 },
+    { "Zebediah Figura", "esync: Update README.", 1 },
+    { "Zebediah Figura", "esync: Update README.", 1 },
+    { "Zebediah Figura", "kernel32/tests: Add some event tests.", 1 },
+    { "Zebediah Figura", "kernel32/tests: Add some mutex tests.", 1 },
+    { "Zebediah Figura", "kernel32/tests: Add some semaphore tests.", 1 },
+    { "Zebediah Figura", "kernel32/tests: Add some tests for wait timeouts.", 1 },
+    { "Zebediah Figura", "kernel32/tests: Mark some existing tests as failing under esync.", 1 },
+    { "Zebediah Figura", "kernel32/tests: Zigzag test.", 1 },
+    { "Zebediah Figura", "ntdll, server: Abort if esync is enabled for the server but not the client, and vice versa.", 1 },
+    { "Zebediah Figura", "ntdll, server: Allow DuplicateHandle() to succeed by implementing esync_get_esync_fd().", 1 },
+    { "Zebediah Figura", "ntdll, server: Check the value of WINEESYNC instead of just the presence.", 1 },
+    { "Zebediah Figura", "ntdll, server: Implement NtOpenSemaphore().", 1 },
+    { "Zebediah Figura", "ntdll, server: Implement waiting on server-bound objects.", 1 },
+    { "Zebediah Figura", "ntdll, server: Initialize the shared memory portion on the server side.", 1 },
+    { "Zebediah Figura", "ntdll, server: Revert to old implementation of hung queue detection.", 1 },
+    { "Zebediah Figura", "ntdll, server: Specify EFD_SEMAPHORE on the server side.", 1 },
+    { "Zebediah Figura", "ntdll, wineandroid.drv, winemac.drv, winex11.drv: Store the thread's queue fd in ntdll.", 1 },
     { "Zebediah Figura", "ntdll: Add a stub implementation of Wow64Transition.", 1 },
+    { "Zebediah Figura", "ntdll: Add stub for NtQuerySystemInformation(SystemExtendedProcessInformation).", 1 },
+    { "Zebediah Figura", "ntdll: Avoid server_select() when waiting for critical sections.", 1 },
+    { "Zebediah Figura", "ntdll: Cache the esync struct itself instead of a pointer to it.", 1 },
+    { "Zebediah Figura", "ntdll: Close esync objects.", 1 },
+    { "Zebediah Figura", "ntdll: Correctly allocate the esync handle cache.", 1 },
+    { "Zebediah Figura", "ntdll: Create esync objects for events.", 1 },
+    { "Zebediah Figura", "ntdll: Create esync objects for mutexes.", 1 },
+    { "Zebediah Figura", "ntdll: Create eventfd-based objects for semaphores.", 1 },
     { "Zebediah Figura", "ntdll: Don't call LdrQueryProcessModuleInformation in NtQuerySystemInformation(SystemModuleInformation).", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe/tests: Add tests for ERESOURCE functions.", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement ExAcquireResourceExclusiveLite().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement ExAcquireResourceSharedLite().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement ExAcquireSharedStarveExclusive().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement ExAcquireSharedWaitForExclusive().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement ExDeleteResourceLite().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement ExGetExclusiveWaiterCount().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement ExGetSharedWaiterCount().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement ExInitializeResourceLite().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement ExIsResourceAcquiredExclusiveLite().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement ExIsResourceAcquiredSharedLite().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement ExReleaseResourceForThreadLite().", 1 },
-    { "Zebediah Figura", "ntoskrnl.exe: Implement ExReleaseResourceLite().", 1 },
+    { "Zebediah Figura", "ntdll: Fix a couple of misplaced global variables.", 1 },
+    { "Zebediah Figura", "ntdll: Fix a missing break statement.", 1 },
+    { "Zebediah Figura", "ntdll: Fix growing the shm_addrs array.", 1 },
+    { "Zebediah Figura", "ntdll: Go through the server if necessary when performing event/semaphore/mutex ops.", 1 },
+    { "Zebediah Figura", "ntdll: Ignore pseudo-handles.", 1 },
+    { "Zebediah Figura", "ntdll: Implement NtOpenEvent().", 1 },
+    { "Zebediah Figura", "ntdll: Implement NtOpenMutant().", 1 },
+    { "Zebediah Figura", "ntdll: Implement NtPulseEvent().", 1 },
+    { "Zebediah Figura", "ntdll: Implement NtQueryEvent().", 1 },
+    { "Zebediah Figura", "ntdll: Implement NtQueryMutant().", 1 },
+    { "Zebediah Figura", "ntdll: Implement NtQuerySemaphore().", 1 },
+    { "Zebediah Figura", "ntdll: Implement NtReleaseMutant().", 1 },
+    { "Zebediah Figura", "ntdll: Implement NtReleaseSemaphore().", 1 },
+    { "Zebediah Figura", "ntdll: Implement NtResetEvent().", 1 },
+    { "Zebediah Figura", "ntdll: Implement NtSetEvent().", 1 },
+    { "Zebediah Figura", "ntdll: Implement NtSignalAndWaitForSingleObject().", 1 },
+    { "Zebediah Figura", "ntdll: Implement wait-all.", 1 },
+    { "Zebediah Figura", "ntdll: Implement waiting on esync objects.", 1 },
+    { "Zebediah Figura", "ntdll: Implement waiting on events.", 1 },
+    { "Zebediah Figura", "ntdll: Implement waiting on mutexes.", 1 },
+    { "Zebediah Figura", "ntdll: Let the server know when we are doing a message wait.", 1 },
+    { "Zebediah Figura", "ntdll: Lock creating and opening objects with volatile state.", 1 },
+    { "Zebediah Figura", "ntdll: Record the current count of a semaphore locally.", 1 },
+    { "Zebediah Figura", "ntdll: Store an event's signaled state internally.", 1 },
+    { "Zebediah Figura", "ntdll: Store esync objects locally.", 1 },
+    { "Zebediah Figura", "ntdll: Try again if poll() returns EINTR.", 1 },
+    { "Zebediah Figura", "ntdll: Try to avoid poll() for uncontended objects.", 1 },
+    { "Zebediah Figura", "ntdll: Use shared memory segments to store semaphore and mutex state.", 1 },
+    { "Zebediah Figura", "ntdll: Yield during PulseEvent().", 1 },
+    { "Zebediah Figura", "rpcrt4: Avoid closing the server thread handle while it is being waited on.", 1 },
+    { "Zebediah Figura", "server, ntdll: Also store the esync type in the server.", 1 },
+    { "Zebediah Figura", "server, ntdll: Also wait on the queue fd when waiting for driver events.", 1 },
+    { "Zebediah Figura", "server, ntdll: Implement alertable waits.", 1 },
+    { "Zebediah Figura", "server, ntdll: Pass the shared memory index back from get_esync_fd.", 1 },
+    { "Zebediah Figura", "server: Add a request to get the eventfd file descriptor associated with a waitable handle.", 1 },
+    { "Zebediah Figura", "server: Add an object operation to grab the esync file descriptor.", 1 },
+    { "Zebediah Figura", "server: Allocate shared memory segments for semaphores and mutexes.", 1 },
+    { "Zebediah Figura", "server: Allow (re)setting esync events on the server side.", 1 },
+    { "Zebediah Figura", "server: Alter conditions in is_queue_hung(), again.", 1 },
+    { "Zebediah Figura", "server: Alter conditions in is_queue_hung().", 1 },
+    { "Zebediah Figura", "server: Create eventfd descriptors for console_input_events objects.", 1 },
+    { "Zebediah Figura", "server: Create eventfd descriptors for device manager objects.", 1 },
+    { "Zebediah Figura", "server: Create eventfd descriptors for pseudo-fd objects and use them for named pipes.", 1 },
+    { "Zebediah Figura", "server: Create eventfd descriptors for timers.", 1 },
+    { "Zebediah Figura", "server: Create eventfd file descriptors for event objects.", 1 },
+    { "Zebediah Figura", "server: Create eventfd file descriptors for message queues.", 1 },
+    { "Zebediah Figura", "server: Create eventfd file descriptors for process objects.", 1 },
+    { "Zebediah Figura", "server: Create eventfd file descriptors for thread objects.", 1 },
+    { "Zebediah Figura", "server: Create server objects for eventfd-based synchronization objects.", 1 },
+    { "Zebediah Figura", "server: Don't check for a hung queue when sending low-level hooks.", 1 },
+    { "Zebediah Figura", "server: Implement esync_map_access().", 1 },
+    { "Zebediah Figura", "server: Update the shared memory state when (re)setting an event.", 1 },
+    { "Zebediah Figura", "user32: Remove hooks that time out.", 1 },
     { "Zebediah Figura", "wow64cpu: Add stub dll.", 1 },
     { "Zhenbo Li", "mshtml: Add IHTMLLocation::hash property's getter implementation.", 1 },
     { "Zhenbo Li", "shell32: Fix SHFileOperation(FO_MOVE) for creating subdirectories.", 1 },

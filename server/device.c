@@ -92,7 +92,7 @@ struct device_manager
     struct list            devices;        /* list of devices */
     struct list            requests;       /* list of pending irps across all devices */
     struct wine_rb_tree    kernel_objects; /* map of objects that have client side pointer associated */
-    int                    esync_fd;      /* esync file descriptor */
+    int                    esync_fd;       /* esync file descriptor */
 };
 
 static void device_manager_dump( struct object *obj, int verbose );
@@ -132,7 +132,7 @@ struct device
     struct object          obj;           /* object header */
     struct device_manager *manager;       /* manager for this device (or NULL if deleted) */
     char                  *unix_path;     /* path to unix device if any */
-    client_ptr_t           user_ptr;      /* opaque ptr for client side */
+    struct list            kernel_object; /* list of kernel object pointers */
     struct list            entry;         /* entry in device manager list */
     struct list            files;         /* list of open files */
 };
@@ -142,6 +142,7 @@ static struct object_type *device_get_type( struct object *obj );
 static void device_destroy( struct object *obj );
 static struct object *device_open_file( struct object *obj, unsigned int access,
                                         unsigned int sharing, unsigned int options );
+static struct list *device_get_kernel_obj_list( struct object *obj );
 
 static const struct object_ops device_ops =
 {
@@ -162,7 +163,7 @@ static const struct object_ops device_ops =
     directory_link_name,              /* link_name */
     default_unlink_name,              /* unlink_name */
     device_open_file,                 /* open_file */
-    no_kernel_obj_list,               /* get_kernel_obj_list */
+    device_get_kernel_obj_list,       /* get_kernel_obj_list */
     no_close_handle,                  /* close_handle */
     device_destroy                    /* destroy */
 };
@@ -467,7 +468,7 @@ static struct object *device_open_file( struct object *obj, unsigned int access,
         params.create.access  = access;
         params.create.sharing = sharing;
         params.create.options = options;
-        params.create.device  = file->device->user_ptr;
+        params.create.device  = get_kernel_object_ptr( device->manager, &device->obj );
 
         if ((irp = create_irp( file, &params, NULL )))
         {
@@ -476,6 +477,12 @@ static struct object *device_open_file( struct object *obj, unsigned int access,
         }
     }
     return &file->obj;
+}
+
+static struct list *device_get_kernel_obj_list( struct object *obj )
+{
+    struct device *device = (struct device *)obj;
+    return &device->kernel_object;
 }
 
 static void device_file_dump( struct object *obj, int verbose )
@@ -621,20 +628,17 @@ static int device_file_ioctl( struct fd *fd, ioctl_code_t code, struct async *as
 }
 
 static struct device *create_device( struct object *root, const struct unicode_str *name,
-                                     struct device_manager *manager, unsigned int attr )
+                                     struct device_manager *manager )
 {
     struct device *device;
 
-    if ((device = create_named_object( root, &device_ops, name, attr, NULL )))
+    if ((device = create_named_object( root, &device_ops, name, 0, NULL )))
     {
-        if (get_error() != STATUS_OBJECT_NAME_EXISTS)
-        {
-            /* initialize it if it didn't already exist */
-            device->unix_path = NULL;
-            device->manager = manager;
-            list_add_tail( &manager->devices, &device->entry );
-            list_init( &device->files );
-        }
+        device->unix_path = NULL;
+        device->manager = manager;
+        list_add_tail( &manager->devices, &device->entry );
+        list_init( &device->kernel_object );
+        list_init( &device->files );
     }
     return device;
 }
@@ -648,6 +652,7 @@ struct object *create_unix_device( struct object *root, const struct unicode_str
     {
         device->unix_path = strdup( unix_path );
         device->manager = NULL;  /* no manager, requests go straight to the Unix device */
+        list_init( &device->kernel_object );
         list_init( &device->files );
     }
     return &device->obj;
@@ -729,9 +734,6 @@ static void device_manager_destroy( struct object *obj )
         grab_object( &device->obj );
         delete_device( device );
         release_object( &device->obj );
-
-        if (do_esync())
-            close( manager->esync_fd );
     }
 
     while ((ptr = list_head( &manager->requests )))
@@ -741,6 +743,9 @@ static void device_manager_destroy( struct object *obj )
         assert( !irp->file && !irp->async );
         release_object( irp );
     }
+
+    if (do_esync())
+        close( manager->esync_fd );
 }
 
 static struct device_manager *create_device_manager(void)
@@ -822,10 +827,13 @@ DECL_HANDLER(create_device)
         return;
     }
 
-    if ((device = create_device( root, &name, manager, req->attributes )))
+    if ((device = create_device( root, &name, manager )))
     {
-        device->user_ptr = req->user_ptr;
-        reply->handle = alloc_handle( current->process, device, req->access, req->attributes );
+        struct kernel_object *ptr = set_kernel_object( manager, &device->obj, req->user_ptr );
+        if (ptr)
+            grab_kernel_object( ptr );
+        else
+            set_error( STATUS_NO_MEMORY );
         release_object( device );
     }
 
@@ -837,13 +845,23 @@ DECL_HANDLER(create_device)
 /* delete a device */
 DECL_HANDLER(delete_device)
 {
+    struct device_manager *manager;
+    struct kernel_object *ref;
     struct device *device;
 
-    if ((device = (struct device *)get_handle_obj( current->process, req->handle, 0, &device_ops )))
+    if (!(manager = (struct device_manager *)get_handle_obj( current->process, req->manager,
+                                                             0, &device_manager_ops )))
+        return;
+
+    if ((ref = kernel_object_from_ptr( manager, req->device )) && ref->object->ops == &device_ops)
     {
+        device = (struct device *)grab_object( ref->object );
         delete_device( device );
         release_object( device );
     }
+    else set_error( STATUS_INVALID_HANDLE );
+
+    release_object( manager );
 }
 
 
@@ -877,8 +895,8 @@ DECL_HANDLER(get_next_device_request)
         irp = LIST_ENTRY( ptr, struct irp_call, mgr_entry );
         if (irp->thread)
         {
-            reply->client_pid = get_process_id( irp->thread->process );
-            reply->client_tid = get_thread_id( irp->thread );
+            reply->client_thread = get_kernel_object_ptr( manager, &irp->thread->obj );
+            reply->client_tid    = get_thread_id( irp->thread );
         }
         reply->params = irp->params;
         iosb = irp->iosb;

@@ -254,7 +254,6 @@ void thread_init(void)
     SIZE_T size, info_size;
     NTSTATUS status;
     struct ntdll_thread_data *thread_data;
-    static struct debug_info debug_info;  /* debug info for initial thread */
 
     virtual_init();
     signal_init_early();
@@ -328,15 +327,11 @@ void thread_init(void)
     thread_data->reply_fd   = -1;
     thread_data->wait_fd[0] = -1;
     thread_data->wait_fd[1] = -1;
-    thread_data->debug_info = &debug_info;
     thread_data->esync_queue_fd = -1;
     thread_data->esync_apc_fd = -1;
 
     signal_init_thread( teb );
     virtual_init_threading();
-
-    debug_info.str_pos = debug_info.strings;
-    debug_info.out_pos = debug_info.output;
     debug_init();
 
     /* setup the server connection */
@@ -549,8 +544,7 @@ static void start_thread( struct startup_info *info )
     struct ntdll_thread_data *thread_data = (struct ntdll_thread_data *)&teb->GdiTebBatch;
     struct debug_info debug_info;
 
-    debug_info.str_pos = debug_info.strings;
-    debug_info.out_pos = debug_info.output;
+    debug_info.str_pos = debug_info.out_pos = 0;
     thread_data->debug_info = &debug_info;
     thread_data->pthread_id = pthread_self();
 

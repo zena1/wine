@@ -49,8 +49,8 @@ struct event
 static void event_dump( struct object *obj, int verbose );
 static struct object_type *event_get_type( struct object *obj );
 static int event_signaled( struct object *obj, struct wait_queue_entry *entry );
-static int event_get_esync_fd( struct object *obj, enum esync_type *type );
 static void event_satisfied( struct object *obj, struct wait_queue_entry *entry );
+static int event_get_esync_fd( struct object *obj, enum esync_type *type );
 static unsigned int event_map_access( struct object *obj, unsigned int access );
 static int event_signal( struct object *obj, unsigned int access);
 static struct list *event_get_kernel_obj_list( struct object *obj );
