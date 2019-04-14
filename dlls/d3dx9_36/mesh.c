@@ -3330,8 +3330,8 @@ static HRESULT parse_mesh(ID3DXFileData *filedata, struct mesh_data *mesh_data, 
 
     if ((provide_flags & PROVIDE_SKININFO) && !mesh_data->skin_info)
     {
-        hr = create_dummy_skin(&mesh_data->skin_info);
-        if (FAILED(hr))
+        if (FAILED(hr = D3DXCreateSkinInfoFVF(mesh_data->num_vertices, mesh_data->fvf,
+                mesh_data->nb_bones, &mesh_data->skin_info)))
             goto end;
     }
 

@@ -54,6 +54,8 @@ struct thread
     struct process        *process;
     thread_id_t            id;            /* thread id */
     struct list            mutex_list;    /* list of currently owned mutexes */
+    int                    esync_fd;      /* esync file descriptor (signalled on exit) */
+    int                    esync_apc_fd;  /* esync apc fd (signalled when APCs are present) */
     struct debug_ctx      *debug_ctx;     /* debugger context if this thread is a debugger */
     struct debug_event    *debug_event;   /* debug event being sent to debugger */
     int                    debug_break;   /* debug breakpoint pending? */
@@ -89,11 +91,10 @@ struct thread
     timeout_t              creation_time; /* Thread creation time */
     timeout_t              exit_time;     /* Thread exit time */
     struct token          *token;         /* security token associated with this thread */
+    struct list            kernel_object; /* list of kernel object pointers */
     struct timeout_user   *exit_poll;     /* poll if the thread/process has exited already */
     int                    shm_fd;        /* file descriptor for thread local shared memory */
     shmlocal_t            *shm;           /* thread local shared memory pointer */
-    int                    esync_fd;      /* esync file descriptor (signalled on exit) */
-    int                    esync_apc_fd;  /* esync apc fd (signalled when APCs are present) */
 };
 
 struct thread_snapshot
