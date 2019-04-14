@@ -221,6 +221,32 @@ static struct _OBJECT_TYPE event_type = {
 POBJECT_TYPE ExEventObjectType = &event_type;
 
 /***********************************************************************
+ *           IoCreateSynchronizationEvent (NTOSKRNL.EXE.@)
+ */
+PKEVENT WINAPI IoCreateSynchronizationEvent( UNICODE_STRING *name, HANDLE *ret_handle )
+{
+    OBJECT_ATTRIBUTES attr;
+    HANDLE handle;
+    KEVENT *event;
+    NTSTATUS ret;
+
+    TRACE( "(%p %p)\n", name, ret_handle );
+
+    InitializeObjectAttributes( &attr, name, 0, 0, NULL );
+    ret = NtCreateEvent( &handle, EVENT_ALL_ACCESS, &attr, SynchronizationEvent, TRUE );
+    if (ret) return NULL;
+
+    if (kernel_object_from_handle( handle, ExEventObjectType, (void**)&event ))
+    {
+        NtClose( handle);
+        return NULL;
+    }
+
+    *ret_handle = handle;
+    return event;
+}
+
+/***********************************************************************
  *           KeSetEvent   (NTOSKRNL.EXE.@)
  */
 LONG WINAPI KeSetEvent( PRKEVENT event, KPRIORITY increment, BOOLEAN wait )
@@ -697,9 +723,10 @@ void WINAPI ExReleaseFastMutexUnsafe( FAST_MUTEX *mutex )
 /* Use of the fields of an ERESOURCE structure seems to vary wildly between
  * Windows versions. The below implementation uses them as follows:
  *
- * OwnerTable - contains a list of shared owners (TID and recursion count),
- *              including threads which do not currently own the resource
- *              (recursion count == 0)
+ * OwnerTable - contains a list of shared owners, including threads which do
+ *              not currently own the resource
+ * OwnerTable[i].OwnerThread - shared owner TID
+ * OwnerTable[i].OwnerCount - recursion count of this shared owner (may be 0)
  * OwnerEntry.OwnerThread - the owner TID if exclusively owned
  * OwnerEntry.TableSize - the number of entries in OwnerTable, including threads
  *                        which do not currently own the resource
@@ -758,20 +785,17 @@ BOOLEAN WINAPI ExAcquireResourceExclusiveLite( ERESOURCE *resource, BOOLEAN wait
 
     KeAcquireSpinLock( &resource->SpinLock, &irql );
 
-    FIXME("%#lx/%d/%d/%d\n", resource->OwnerEntry.OwnerThread, resource->ActiveEntries,
-            resource->NumberOfExclusiveWaiters, resource->NumberOfSharedWaiters);
-
     if (resource->OwnerEntry.OwnerThread == (ERESOURCE_THREAD)KeGetCurrentThread())
     {
         resource->ActiveEntries++;
         KeReleaseSpinLock( &resource->SpinLock, irql );
         return TRUE;
     }
+    /* In order to avoid a race between waiting for the ExclusiveWaiters event
+     * and grabbing the lock, do not grab the resource if it is unclaimed but
+     * has waiters; instead queue ourselves. */
     else if (!resource->ActiveEntries && !resource->NumberOfExclusiveWaiters && !resource->NumberOfSharedWaiters)
     {
-        /* In order to avoid a race between waiting for the ExclusiveWaiters
-         * event and grabbing the lock, do not grab the resource if it is
-         * unclaimed but has waiters; instead queue ourselves. */
         resource->Flag |= ResourceOwnedExclusive;
         resource->OwnerEntry.OwnerThread = (ERESOURCE_THREAD)KeGetCurrentThread();
         resource->ActiveEntries++;
@@ -825,6 +849,7 @@ BOOLEAN WINAPI ExAcquireResourceSharedLite( ERESOURCE *resource, BOOLEAN wait )
     {
         if (resource->OwnerEntry.OwnerThread == (ERESOURCE_THREAD)KeGetCurrentThread())
         {
+            /* We own the resource exclusively, so increase recursion. */
             resource->ActiveEntries++;
             KeReleaseSpinLock( &resource->SpinLock, irql );
             return TRUE;
@@ -832,6 +857,8 @@ BOOLEAN WINAPI ExAcquireResourceSharedLite( ERESOURCE *resource, BOOLEAN wait )
     }
     else if (entry->OwnerCount || !resource->NumberOfExclusiveWaiters)
     {
+        /* Either we already own the resource shared, or there are no exclusive
+         * owners or waiters, so we can grab it shared. */
         entry->OwnerCount++;
         resource->ActiveEntries++;
         KeReleaseSpinLock( &resource->SpinLock, irql );
@@ -889,10 +916,13 @@ BOOLEAN WINAPI ExAcquireSharedStarveExclusive( ERESOURCE *resource, BOOLEAN wait
             return TRUE;
         }
     }
-    else if (resource->ActiveEntries || !resource->NumberOfExclusiveWaiters)
+    /* We are starving exclusive waiters, but we cannot steal the resource out
+     * from under an exclusive waiter who is about to acquire it. (Because of
+     * locking, and because exclusive waiters are always waked first, this is
+     * guaranteed to be the case if the resource is unowned and there are
+     * exclusive waiters.) */
+    else if (!(!resource->ActiveEntries && resource->NumberOfExclusiveWaiters))
     {
-        /* We are starving exclusive waiters, but we cannot steal the resource
-         * out from under an exclusive waiter who is about to acquire it. */
         entry->OwnerCount++;
         resource->ActiveEntries++;
         KeReleaseSpinLock( &resource->SpinLock, irql );
@@ -945,11 +975,14 @@ BOOLEAN WINAPI ExAcquireSharedWaitForExclusive( ERESOURCE *resource, BOOLEAN wai
     {
         if (resource->OwnerEntry.OwnerThread == (ERESOURCE_THREAD)KeGetCurrentThread())
         {
+            /* We own the resource exclusively, so increase recursion. */
             resource->ActiveEntries++;
             KeReleaseSpinLock( &resource->SpinLock, irql );
             return TRUE;
         }
     }
+    /* We may only grab the resource if there are no exclusive waiters, even if
+     * we already own it shared. */
     else if (!resource->NumberOfExclusiveWaiters)
     {
         entry->OwnerCount++;
@@ -1010,7 +1043,7 @@ void WINAPI ExReleaseResourceForThreadLite( ERESOURCE *resource, ERESOURCE_THREA
         }
         else
         {
-            ERR("Attempt to release %p for thread %#lx, but resource is exclusively owned by %#lx.\n",
+            ERR("Trying to release %p for thread %#lx, but resource is exclusively owned by %#lx.\n",
                     resource, thread, resource->OwnerEntry.OwnerThread);
             return;
         }
@@ -1025,8 +1058,7 @@ void WINAPI ExReleaseResourceForThreadLite( ERESOURCE *resource, ERESOURCE_THREA
         }
         else
         {
-            ERR("Attempt to release %p for thread %#lx, but resource is not owned by that thread.\n",
-                    resource, thread);
+            ERR("Trying to release %p for thread %#lx, but resource is not owned by that thread.\n", resource, thread);
             return;
         }
     }

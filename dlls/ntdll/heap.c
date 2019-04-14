@@ -357,43 +357,43 @@ static void HEAP_Dump( HEAP *heap )
     SUBHEAP *subheap;
     char *ptr;
 
-    DPRINTF( "Heap: %p\n", heap );
-    DPRINTF( "Next: %p  Sub-heaps:", LIST_ENTRY( heap->entry.next, HEAP, entry ) );
-    LIST_FOR_EACH_ENTRY( subheap, &heap->subheap_list, SUBHEAP, entry ) DPRINTF( " %p", subheap );
+    TRACE( "Heap: %p\n", heap );
+    TRACE( "Next: %p  Sub-heaps:", LIST_ENTRY( heap->entry.next, HEAP, entry ) );
+    LIST_FOR_EACH_ENTRY( subheap, &heap->subheap_list, SUBHEAP, entry ) TRACE( " %p", subheap );
 
-    DPRINTF( "\nFree lists:\n" );
+    TRACE( "\nFree lists:\n" );
     for (i = 0; i < HEAP_NB_FREE_LISTS; i++)
     {
         BOOL empty = !(heap->freeMask[ HEAP_FREEMASK_INDEX( i ) ] & HEAP_FREEMASK_BIT( i ));
 
-        DPRINTF( "free %08x: ", HEAP_FREELIST_SIZE( i ) );
+        TRACE( "free %08x: ", HEAP_FREELIST_SIZE( i ) );
         if (!empty && !list_empty( &heap->freeList[i] ))
         {
-            DPRINTF( "head=%p tail=%p\n",
+            TRACE( "head=%p tail=%p\n",
                      LIST_ENTRY( heap->freeList[i].next, ARENA_FREE, entry.list ),
                      LIST_ENTRY( heap->freeList[i].prev, ARENA_FREE, entry.list ));
         }
         else if (empty && list_empty( &heap->freeList[i] ))
         {
-            DPRINTF( "(empty)\n" );
+            TRACE( "(empty)\n" );
         }
         else
         {
-            DPRINTF( "(corrupted)\n" );
+            TRACE( "(corrupted)\n" );
         }
     }
 
-    DPRINTF( "free %08x: root=%p\n",
+    TRACE( "free %08x: root=%p\n",
              HEAP_FREELIST_SIZE( HEAP_NB_FREE_LISTS ),
              heap->freeTree.root ? LIST_ENTRY( heap->freeTree.root, ARENA_FREE, entry.tree ) : NULL);
 
     LIST_FOR_EACH_ENTRY( subheap, &heap->subheap_list, SUBHEAP, entry )
     {
         SIZE_T freeSize = 0, usedSize = 0, arenaSize = subheap->headerSize;
-        DPRINTF( "\n\nSub-heap %p: base=%p size=%08lx committed=%08lx\n",
+        TRACE( "\n\nSub-heap %p: base=%p size=%08lx committed=%08lx\n",
                  subheap, subheap->base, subheap->size, subheap->commitSize );
 
-        DPRINTF( "\n Block    Arena   Stat   Size    Id\n" );
+        TRACE( "\n Block    Arena   Stat   Size    Id\n" );
         ptr = (char *)subheap->base + subheap->headerSize;
         while (ptr < (char *)subheap->base + subheap->size)
         {
@@ -402,7 +402,7 @@ static void HEAP_Dump( HEAP *heap )
                 ARENA_FREE *pArena = (ARENA_FREE *)ptr;
                 if ((pArena->size & ARENA_FLAG_FREE) == ARENA_FLAG_FREE_LIST)
                 {
-                    DPRINTF( "%p %08x free %08x prev=%p next=%p\n",
+                    TRACE( "%p %08x free %08x prev=%p next=%p\n",
                               pArena, pArena->magic, pArena->size & ARENA_SIZE_MASK,
                               LIST_ENTRY( pArena->entry.list.prev, ARENA_FREE, entry.list ),
                               LIST_ENTRY( pArena->entry.list.next, ARENA_FREE, entry.list ) );
@@ -418,12 +418,12 @@ static void HEAP_Dump( HEAP *heap )
                     if (pArena->entry.tree.right)
                         right = WINE_RB_ENTRY_VALUE( pArena->entry.tree.right, ARENA_FREE, entry.tree );
 
-                    DPRINTF( "%p %08x free %08x parent=%p left=%p right=%p\n",
+                    TRACE( "%p %08x free %08x parent=%p left=%p right=%p\n",
                              pArena, pArena->magic, pArena->size & ARENA_SIZE_MASK, parent, left, right );
                 }
                 else
                 {
-                    DPRINTF( "%p %08x free %08x corrupted\n",
+                    TRACE( "%p %08x free %08x corrupted\n",
                              pArena, pArena->magic, pArena->size & ARENA_SIZE_MASK );
                 }
                 ptr += sizeof(*pArena) + (pArena->size & ARENA_SIZE_MASK);
@@ -433,7 +433,7 @@ static void HEAP_Dump( HEAP *heap )
             else if (*(DWORD *)ptr & ARENA_FLAG_PREV_FREE)
             {
                 ARENA_INUSE *pArena = (ARENA_INUSE *)ptr;
-                DPRINTF( "%p %08x Used %08x back=%p\n",
+                TRACE( "%p %08x Used %08x back=%p\n",
                         pArena, pArena->magic, pArena->size & ARENA_SIZE_MASK, *((ARENA_FREE **)pArena - 1) );
                 ptr += sizeof(*pArena) + (pArena->size & ARENA_SIZE_MASK);
                 arenaSize += sizeof(ARENA_INUSE);
@@ -442,7 +442,7 @@ static void HEAP_Dump( HEAP *heap )
             else
             {
                 ARENA_INUSE *pArena = (ARENA_INUSE *)ptr;
-                DPRINTF( "%p %08x %s %08x\n",
+                TRACE( "%p %08x %s %08x\n",
                          pArena, pArena->magic, pArena->magic == ARENA_INUSE_MAGIC ? "used" : "pend",
                          pArena->size & ARENA_SIZE_MASK );
                 ptr += sizeof(*pArena) + (pArena->size & ARENA_SIZE_MASK);
@@ -450,7 +450,7 @@ static void HEAP_Dump( HEAP *heap )
                 usedSize += pArena->size & ARENA_SIZE_MASK;
             }
         }
-        DPRINTF( "\nTotal: Size=%08lx Committed=%08lx Free=%08lx Used=%08lx Arenas=%08lx (%ld%%)\n\n",
+        TRACE( "\nTotal: Size=%08lx Committed=%08lx Free=%08lx Used=%08lx Arenas=%08lx (%ld%%)\n\n",
 	      subheap->size, subheap->commitSize, freeSize, usedSize,
 	      arenaSize, (arenaSize * 100) / subheap->size );
     }

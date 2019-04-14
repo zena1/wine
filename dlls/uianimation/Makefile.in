@@ -3,5 +3,7 @@ IMPORTS   = uuid ole32
 
 C_SRCS = \
 	main.c
+
 IDL_SRCS = \
 	uianimation_typelib.idl
+
