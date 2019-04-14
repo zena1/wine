@@ -2352,6 +2352,33 @@ BOOLEAN WINAPI RtlIsProcessorFeaturePresent( UINT feature )
     return feature < PROCESSOR_FEATURE_MAX && user_shared_data->ProcessorFeatures[feature];
 }
 
+static void get_ntdll_system_module(SYSTEM_MODULE *sm)
+{
+    char *ptr;
+    ANSI_STRING str;
+    PLIST_ENTRY entry;
+    PLDR_MODULE mod;
+
+    /* The first entry must be ntdll. */
+    entry = NtCurrentTeb()->Peb->LdrData->InLoadOrderModuleList.Flink;
+    mod = CONTAINING_RECORD(entry, LDR_MODULE, InLoadOrderModuleList);
+
+    sm->Reserved1 = 0;
+    sm->Reserved2 = 0;
+    sm->ImageBaseAddress = mod->BaseAddress;
+    sm->ImageSize = mod->SizeOfImage;
+    sm->Flags = mod->Flags;
+    sm->Id = 0;
+    sm->Rank = 0;
+    sm->Unknown = 0;
+    str.Length = 0;
+    str.MaximumLength = MAXIMUM_FILENAME_LENGTH;
+    str.Buffer = (char*)sm->Name;
+    RtlUnicodeStringToAnsiString(&str, &mod->FullDllName, FALSE);
+    ptr = strrchr(str.Buffer, '\\');
+    sm->NameOffset = (ptr != NULL) ? (ptr - str.Buffer + 1) : 0;
+}
+
 /******************************************************************************
  * NtQuerySystemInformation [NTDLL.@]
  * ZwQuerySystemInformation [NTDLL.@]
@@ -2780,7 +2807,28 @@ NTSTATUS WINAPI NtQuerySystemInformation(
 
             FIXME("returning fake driver list\n");
             smi->ModulesCount = 1;
-            memset(&smi->Modules[0], 0, sizeof(smi->Modules[0]));
+            get_ntdll_system_module(&smi->Modules[0]);
+            ret = STATUS_SUCCESS;
+        }
+        break;
+    case SystemModuleInformationEx:
+        if (!SystemInformation)
+            ret = STATUS_ACCESS_VIOLATION;
+        else if (Length < sizeof(SYSTEM_MODULE_INFORMATION_EX))
+        {
+            len = sizeof(SYSTEM_MODULE_INFORMATION_EX);
+            ret = STATUS_INFO_LENGTH_MISMATCH;
+        }
+        else
+        {
+            SYSTEM_MODULE_INFORMATION_EX *info = SystemInformation;
+
+            FIXME("info_class SystemModuleInformationEx stub!\n");
+            get_ntdll_system_module(&info->BaseInfo);
+            info->NextOffset = 0;
+            info->ImageCheckSum = 0;
+            info->TimeDateStamp = 0;
+            info->DefaultBase = info->BaseInfo.ImageBaseAddress;
             ret = STATUS_SUCCESS;
         }
         break;
@@ -3033,6 +3081,11 @@ NTSTATUS WINAPI NtQuerySystemInformation(
                 FIXME("info_class SYSTEM_FIRMWARE_TABLE_INFORMATION action %d\n", sfti->Action);
             }
         }
+        break;
+    case SystemExtendedProcessInformation:
+        FIXME("SystemExtendedProcessInformation, len %u, buffer %p, stub!\n", Length, SystemInformation);
+        memset(SystemInformation, 0, Length);
+        ret = STATUS_SUCCESS;
         break;
     default:
 	FIXME("(0x%08x,%p,0x%08x,%p) stub\n",

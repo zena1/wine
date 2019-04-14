@@ -347,6 +347,8 @@ struct d3d_device
     D3DMATRIXHANDLE          world, proj, view;
 
     struct wined3d_vec4 user_clip_planes[D3DMAXUSERCLIPPLANES];
+
+    BOOL recording;
 };
 
 HRESULT d3d_device_create(struct ddraw *ddraw, const GUID *guid, struct ddraw_surface *target, IUnknown *rt_iface,
@@ -520,6 +522,7 @@ struct d3d_viewport *unsafe_impl_from_IDirect3DViewport(IDirect3DViewport *iface
 
 /* Helper functions */
 void viewport_activate(struct d3d_viewport *viewport, BOOL ignore_lights) DECLSPEC_HIDDEN;
+void viewport_deactivate(struct d3d_viewport *viewport) DECLSPEC_HIDDEN;
 void d3d_viewport_init(struct d3d_viewport *viewport, struct ddraw *ddraw) DECLSPEC_HIDDEN;
 
 /*****************************************************************************
