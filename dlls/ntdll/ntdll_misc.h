@@ -270,16 +270,18 @@ extern enum loadorder get_load_order( const WCHAR *app_name, const UNICODE_STRIN
 
 struct debug_info
 {
-    char *str_pos;       /* current position in strings buffer */
-    char *out_pos;       /* current position in output buffer */
-    char  strings[1024]; /* buffer for temporary strings */
-    char  output[1024];  /* current output line */
+    unsigned int str_pos;       /* current position in strings buffer */
+    unsigned int out_pos;       /* current position in output buffer */
+    char         strings[1024]; /* buffer for temporary strings */
+    char         output[1024];  /* current output line */
 };
 
 /* thread private data, stored in NtCurrentTeb()->GdiTebBatch */
 struct ntdll_thread_data
 {
     struct debug_info *debug_info;    /* info for debugstr functions */
+    int                esync_queue_fd;/* fd to wait on for driver events */
+    int                esync_apc_fd;  /* fd to wait on for user APCs */
     void              *start_stack;   /* stack for thread startup */
     int                request_fd;    /* fd for sending server requests */
     int                reply_fd;      /* fd for receiving server replies */
@@ -287,8 +289,6 @@ struct ntdll_thread_data
     BOOL               wow64_redir;   /* Wow64 filesystem redirection flag */
     pthread_t          pthread_id;    /* pthread thread id */
     void              *pthread_stack; /* pthread stack */
-    int                esync_queue_fd;/* fd to wait on for driver events */
-    int                esync_apc_fd;  /* fd to wait on for user APCs */
 };
 
 C_ASSERT( sizeof(struct ntdll_thread_data) <= sizeof(((TEB *)0)->GdiTebBatch) );

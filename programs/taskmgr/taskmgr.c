@@ -28,7 +28,6 @@
 #include <commctrl.h>
 #include <winnt.h>
 
-#include "wine/unicode.h"
 #include "resource.h"
 #include "taskmgr.h"
 #include "perfdata.h"
@@ -698,8 +697,8 @@ LPWSTR GetLastErrorText(LPWSTR lpwszBuf, DWORD dwSize)
     if (!dwRet || ( dwSize < dwRet+14)) {
         lpwszBuf[0] = '\0';
     } else {
-        lpwszTemp[strlenW(lpwszTemp)-2] = '\0';  /* remove cr and newline character */
-        sprintfW(lpwszBuf, wszFormat, lpwszTemp, GetLastError());
+        lpwszTemp[lstrlenW(lpwszTemp)-2] = '\0';  /* remove cr and newline character */
+        swprintf(lpwszBuf, dwSize, wszFormat, lpwszTemp, GetLastError());
     }
     if (lpwszTemp) {
         LocalFree(lpwszTemp);
