@@ -1,0 +1,23 @@
+# Last wine-tkg-git-lutris-legacy configuration :
+
+Wine (plain) version: 3.18.r0.g3f4455c0f0
+Using wine-staging patchset (version 3.18.r0.g30dca36a)
+Using esync patchset (version b4478b7)
+
+Using gcc compiler
+With predefined optimizations
+
+Applied clock_monotonic patch
+Applied Fullscreen compositor bypass patch
+Applied steam crossover hack
+server-send_hardware_message staging patchset disabled (mouse jittering fix)
+Applied CSMT toggle logic patch
+Staging overrides, if any: -W kernelbase-PathCchCombineEx -W server-send_hardware_message
+Using esync staging 3.17+ compat fixes
+Using esync 3.17+ compat fixes
+Using esync-no_alloc_handle patch to fix server-Desktop_Refcount ws2_32-WSACleanup ws2_32-TransmitFile server-Pipe_ObjectName with Esync enabled
+Applied Python/The Sims 4 fix
+Applied high core count fix
+Using pba (317+) patchset
+Applied GLSL toggle patch
+Applied Proton fullscreen hack patch (for <=4.4)
