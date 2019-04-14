@@ -3841,7 +3841,6 @@ void __wine_process_init(void)
     NTSTATUS status;
     ANSI_STRING func_name;
     UNICODE_STRING nt_name;
-    BOOL force_large_address_aware = FALSE;
     void * (CDECL *init_func)(void);
     DWORD i;
 
@@ -3896,11 +3895,7 @@ void __wine_process_init(void)
     version_init( wm->ldr.FullDllName.Buffer );
     user_shared_data_init();
     hidden_exports_init( wm->ldr.FullDllName.Buffer );
-
-    if (needs_override_large_address_aware(NtCurrentTeb()->Peb->ProcessParameters->ImagePathName.Buffer) > 0)
-        force_large_address_aware = TRUE;
-
-    virtual_set_large_address_space(force_large_address_aware);
+    virtual_set_large_address_space(needs_override_large_address_aware(NtCurrentTeb()->Peb->ProcessParameters->ImagePathName.Buffer));
 
     LdrQueryImageFileExecutionOptions( &wm->ldr.FullDllName, globalflagW, REG_DWORD,
                                        &NtCurrentTeb()->Peb->NtGlobalFlag, sizeof(DWORD), NULL );

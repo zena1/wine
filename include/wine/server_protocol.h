@@ -5330,19 +5330,15 @@ struct create_device_manager_reply
 struct create_device_request
 {
     struct request_header __header;
-    unsigned int access;
-    unsigned int attributes;
     obj_handle_t rootdir;
     client_ptr_t user_ptr;
     obj_handle_t manager;
     /* VARARG(name,unicode_str); */
-    char __pad_36[4];
+    char __pad_28[4];
 };
 struct create_device_reply
 {
     struct reply_header __header;
-    obj_handle_t handle;
-    char __pad_12[4];
 };
 
 
@@ -5350,7 +5346,8 @@ struct create_device_reply
 struct delete_device_request
 {
     struct request_header __header;
-    obj_handle_t handle;
+    obj_handle_t manager;
+    client_ptr_t device;
 };
 struct delete_device_reply
 {
@@ -5371,12 +5368,11 @@ struct get_next_device_request_reply
     struct reply_header __header;
     irp_params_t params;
     obj_handle_t next;
-    process_id_t client_pid;
     thread_id_t  client_tid;
+    client_ptr_t client_thread;
     data_size_t  in_size;
     data_size_t  out_size;
     /* VARARG(next_data,bytes); */
-    char __pad_52[4];
 };
 
 
@@ -7017,6 +7013,6 @@ union generic_reply
     struct esync_msgwait_reply esync_msgwait_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 577
+#define SERVER_PROTOCOL_VERSION 579
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */
