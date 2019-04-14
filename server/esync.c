@@ -22,6 +22,7 @@
 #include "wine/port.h"
 
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdarg.h>
 #ifdef HAVE_SYS_EVENTFD_H

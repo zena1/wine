@@ -554,14 +554,15 @@ static inline void small_pause(void)
  * problem at all.
  */
 
-NTSTATUS esync_set_event( HANDLE handle )
+NTSTATUS esync_set_event( HANDLE handle, LONG *prev )
 {
     static const uint64_t value = 1;
     struct esync *obj;
     struct event *event;
+    LONG current;
     NTSTATUS ret;
 
-    TRACE("%p.\n", handle);
+    TRACE("handle %p, prev %p.\n", handle, prev);
 
     if ((ret = get_object( handle, &obj ))) return ret;
     event = obj->shm;
@@ -571,23 +572,58 @@ NTSTATUS esync_set_event( HANDLE handle )
         small_pause();
 
     /* Only bother signaling the fd if we weren't already signaled. */
-    if (!interlocked_xchg( &event->signaled, 1 ))
+    if (!(current = interlocked_xchg( &event->signaled, 1 )))
     {
         if (write( obj->fd, &value, sizeof(value) ) == -1)
             return FILE_GetNtStatus();
     }
 
+    if (prev) *prev = current;
+
     /* Release the spinlock. */
     event->locked = 0;
 
     return STATUS_SUCCESS;
 }
 
-NTSTATUS esync_reset_event( HANDLE handle )
+NTSTATUS esync_reset_event( HANDLE handle, LONG *prev )
 {
     uint64_t value;
     struct esync *obj;
     struct event *event;
+    LONG current;
+    NTSTATUS ret;
+
+    TRACE("handle %p, prev %p.\n", handle, prev);
+
+    if ((ret = get_object( handle, &obj ))) return ret;
+    event = obj->shm;
+
+    /* Acquire the spinlock. */
+    while (interlocked_cmpxchg( &event->locked, 1, 0 ))
+        small_pause();
+
+    /* Only bother signaling the fd if we weren't already signaled. */
+    if ((current = interlocked_xchg( &event->signaled, 0 )))
+    {
+        /* we don't care about the return value */
+        read( obj->fd, &value, sizeof(value) );
+    }
+
+    if (prev) *prev = current;
+
+    /* Release the spinlock. */
+    event->locked = 0;
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS esync_pulse_event( HANDLE handle, LONG *prev )
+{
+    uint64_t value = 1;
+    struct esync *obj;
+    struct event *event;
+    LONG current;
     NTSTATUS ret;
 
     TRACE("%p.\n", handle);
@@ -598,29 +634,6 @@ NTSTATUS esync_reset_event( HANDLE handle )
     /* Acquire the spinlock. */
     while (interlocked_cmpxchg( &event->locked, 1, 0 ))
         small_pause();
-
-    /* Only bother signaling the fd if we weren't already signaled. */
-    if (interlocked_xchg( &event->signaled, 0 ))
-    {
-        /* we don't care about the return value */
-        read( obj->fd, &value, sizeof(value) );
-    }
-
-    /* Release the spinlock. */
-    event->locked = 0;
-
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS esync_pulse_event( HANDLE handle )
-{
-    uint64_t value = 1;
-    struct esync *obj;
-    NTSTATUS ret;
-
-    TRACE("%p.\n", handle);
-
-    if ((ret = get_object( handle, &obj ))) return ret;
 
     /* This isn't really correct; an application could miss the write.
      * Unfortunately we can't really do much better. Fortunately this is rarely
@@ -633,6 +646,12 @@ NTSTATUS esync_pulse_event( HANDLE handle )
     NtYieldExecution();
 
     read( obj->fd, &value, sizeof(value) );
+
+    current = interlocked_xchg( &event->signaled, 0 );
+    if (prev) *prev = current;
+
+    /* Release the spinlock. */
+    event->locked = 0;
 
     return STATUS_SUCCESS;
 }
@@ -903,19 +922,20 @@ static NTSTATUS __esync_wait_objects( DWORD count, const HANDLE *handles,
     {
         TRACE("Waiting for %s of %d handles:", wait_any ? "any" : "all", count);
         for (i = 0; i < count; i++)
-            DPRINTF(" %p", handles[i]);
+            TRACE(" %p", handles[i]);
 
         if (msgwait)
-            DPRINTF(" or driver events (fd %d)", ntdll_get_thread_data()->esync_queue_fd);
+            TRACE(" or driver events (fd %d)", ntdll_get_thread_data()->esync_queue_fd);
+
         if (alertable)
-            DPRINTF(", alertable");
+            TRACE(", alertable");
 
         if (!timeout)
-            DPRINTF(", timeout = INFINITE.\n");
+            TRACE(", timeout = INFINITE.\n");
         else
         {
             timeleft = update_timeout( end );
-            DPRINTF(", timeout = %ld.%07ld sec.\n",
+            TRACE(", timeout = %ld.%07ld sec.\n",
                 (long) timeleft / TICKSPERSEC, (long) timeleft % TICKSPERSEC);
         }
     }
@@ -1310,7 +1330,7 @@ NTSTATUS esync_signal_and_wait( HANDLE signal, HANDLE wait, BOOLEAN alertable,
         break;
     case ESYNC_AUTO_EVENT:
     case ESYNC_MANUAL_EVENT:
-        ret = esync_set_event( signal );
+        ret = esync_set_event( signal, NULL );
         break;
     case ESYNC_MUTEX:
         ret = esync_release_mutex( signal, NULL );

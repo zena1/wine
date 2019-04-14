@@ -3674,20 +3674,17 @@ struct handle_info
 
 /* Create a device */
 @REQ(create_device)
-    unsigned int access;          /* wanted access rights */
-    unsigned int attributes;      /* object attributes */
     obj_handle_t rootdir;         /* root directory */
     client_ptr_t user_ptr;        /* opaque ptr for use by client */
     obj_handle_t manager;         /* device manager */
     VARARG(name,unicode_str);     /* object name */
-@REPLY
-    obj_handle_t handle;          /* handle to the device */
 @END
 
 
 /* Delete a device */
 @REQ(delete_device)
-    obj_handle_t handle;          /* handle to the device */
+    obj_handle_t manager;         /* handle to the device manager */
+    client_ptr_t device;          /* pointer to the device */
 @END
 
 
@@ -3699,8 +3696,8 @@ struct handle_info
 @REPLY
     irp_params_t params;          /* irp parameters */
     obj_handle_t next;            /* handle to the next irp */
-    process_id_t client_pid;      /* pid of process calling irp */
     thread_id_t  client_tid;      /* tid of thread calling irp */
+    client_ptr_t client_thread;   /* pointer to thread object of calling irp */
     data_size_t  in_size;         /* total needed input size */
     data_size_t  out_size;        /* needed output size */
     VARARG(next_data,bytes);      /* input data of the next irp */
@@ -4021,6 +4018,27 @@ struct handle_info
     int          status;          /* process exit code */
 @END
 
+
+/* Return system information values */
+@REQ(get_system_info)
+@REPLY
+    unsigned int processes;   /* number of processes */
+    unsigned int threads;     /* number of threads */
+    unsigned int handles;     /* number of handles */
+@END
+
+
+/* Suspend a process */
+@REQ(suspend_process)
+    obj_handle_t handle;       /* process handle */
+@END
+
+
+/* Resume a process */
+@REQ(resume_process)
+    obj_handle_t handle;       /* process handle */
+@END
+
 /* Create a new eventfd-based synchronization object */
 @REQ(create_esync)
     unsigned int access;        /* wanted access rights */
@@ -4074,24 +4092,3 @@ enum esync_type
     ESYNC_MANUAL_SERVER,
     ESYNC_QUEUE,
 };
-
-
-/* Return system information values */
-@REQ(get_system_info)
-@REPLY
-    unsigned int processes;   /* number of processes */
-    unsigned int threads;     /* number of threads */
-    unsigned int handles;     /* number of handles */
-@END
-
-
-/* Suspend a process */
-@REQ(suspend_process)
-    obj_handle_t handle;       /* process handle */
-@END
-
-
-/* Resume a process */
-@REQ(resume_process)
-    obj_handle_t handle;       /* process handle */
-@END

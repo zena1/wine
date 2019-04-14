@@ -722,7 +722,7 @@
 # @ stub RtlInitializeStackTraceDataBase
 @ stub RtlInsertElementGenericTable
 @ stdcall RtlInsertElementGenericTableAvl(ptr ptr long ptr)
-@ cdecl -arch=x86_64 RtlInstallFunctionTableCallback(long long long ptr ptr wstr)
+@ cdecl -arch=arm,arm64,x86_64 RtlInstallFunctionTableCallback(long long long ptr ptr wstr)
 @ stdcall RtlInt64ToUnicodeString(int64 long ptr)
 @ stdcall RtlIntegerToChar(long long long ptr)
 @ stdcall RtlIntegerToUnicodeString(long long ptr)
@@ -1498,6 +1498,8 @@
 # All functions must be prefixed with '__wine_' (for internal functions)
 # or 'wine_' (for user-visible functions) to avoid namespace conflicts.
 
+@ cdecl __wine_esync_set_queue_fd(long)
+
 # Server interface
 @ cdecl -norelay wine_server_call(ptr)
 @ cdecl wine_server_close_fds_by_type(long)
@@ -1506,6 +1508,12 @@
 @ cdecl wine_server_release_fd(long long)
 @ cdecl wine_server_send_fd(long)
 @ cdecl __wine_make_process_system()
+
+# Debugging
+@ cdecl -norelay __wine_dbg_get_channel_flags(ptr)
+@ cdecl -norelay __wine_dbg_header(long long str)
+@ cdecl -norelay __wine_dbg_output(str)
+@ cdecl -norelay __wine_dbg_strdup(str)
 
 # Virtual memory
 @ cdecl __wine_locked_recvmsg(long ptr long)
@@ -1529,8 +1537,6 @@
 # Filesystem
 @ cdecl wine_nt_to_unix_file_name(ptr ptr long long)
 @ cdecl wine_unix_to_nt_file_name(ptr ptr)
-
-@ cdecl __wine_esync_set_queue_fd(long)
 
 # User shared data
 @ cdecl __wine_user_shared_data()
