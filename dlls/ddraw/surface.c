@@ -5399,7 +5399,7 @@ static HRESULT WINAPI d3d_texture1_Load(IDirect3DTexture *iface, IDirect3DTextur
  * The VTable
  *****************************************************************************/
 
-static const struct IDirectDrawSurface7Vtbl ddraw_surface7_vtbl =
+static struct IDirectDrawSurface7Vtbl ddraw_surface7_vtbl =
 {
     /* IUnknown */
     ddraw_surface7_QueryInterface,
@@ -5458,7 +5458,7 @@ static const struct IDirectDrawSurface7Vtbl ddraw_surface7_vtbl =
     ddraw_surface7_GetLOD,
 };
 
-static const struct IDirectDrawSurface4Vtbl ddraw_surface4_vtbl =
+static struct IDirectDrawSurface4Vtbl ddraw_surface4_vtbl =
 {
     /* IUnknown */
     ddraw_surface4_QueryInterface,
@@ -5512,7 +5512,7 @@ static const struct IDirectDrawSurface4Vtbl ddraw_surface4_vtbl =
     ddraw_surface4_ChangeUniquenessValue,
 };
 
-static const struct IDirectDrawSurface3Vtbl ddraw_surface3_vtbl =
+static struct IDirectDrawSurface3Vtbl ddraw_surface3_vtbl =
 {
     /* IUnknown */
     ddraw_surface3_QueryInterface,
@@ -5560,7 +5560,7 @@ static const struct IDirectDrawSurface3Vtbl ddraw_surface3_vtbl =
     ddraw_surface3_SetSurfaceDesc,
 };
 
-static const struct IDirectDrawSurface2Vtbl ddraw_surface2_vtbl =
+static struct IDirectDrawSurface2Vtbl ddraw_surface2_vtbl =
 {
     /* IUnknown */
     ddraw_surface2_QueryInterface,
