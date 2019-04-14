@@ -1,4 +1,4 @@
-# Last wine-tkg-git-lutris-protonified configuration :
+# Last wine-tkg-git-lutris-osu configuration :
 
 Wine (plain) version: 4.6.r0.gfabde842ed
 Using wine-staging patchset (version 4.6.r0.g3f8edce5)
@@ -13,6 +13,7 @@ Applied steam crossover hack
 server-send_hardware_message staging patchset wasn't found, so _server_send_hwmsg_disable setting was ignored
 Applied CSMT toggle logic patch
 Staging overrides, if any: 
+Applied low latency alsa audio patch
 PBA disabled due to known issues with selected Wine version
 Applied GLSL toggle patch
 Applied Proton fullscreen hack patch
