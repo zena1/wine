@@ -1296,12 +1296,3 @@ NTSTATUS WINAPI D3DKMTCloseAdapter( const D3DKMT_CLOSEADAPTER *desc )
     FIXME("(%p): stub\n", desc);
     return STATUS_SUCCESS;
 }
-
-/******************************************************************************
- *		D3DKMTCloseAdapter [GDI32.@]
- */
-NTSTATUS WINAPI D3DKMTQueryStatistics(D3DKMT_QUERYSTATISTICS *stats)
-{
-    FIXME("(%p): stub\n", stats);
-    return STATUS_SUCCESS;
-}
