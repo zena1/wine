@@ -382,7 +382,6 @@ static void fixup_resources( IMAGE_RESOURCE_DIRECTORY *dir, BYTE *root, int delt
 /* map a builtin dll in memory and fixup RVAs */
 static void *map_dll( const IMAGE_NT_HEADERS *nt_descr )
 {
-#ifdef HAVE_MMAP
     IMAGE_DATA_DIRECTORY *dir;
     IMAGE_DOS_HEADER *dos;
     IMAGE_NT_HEADERS *nt;
@@ -517,9 +516,6 @@ static void *map_dll( const IMAGE_NT_HEADERS *nt_descr )
         fixup_exports( exports, addr, delta );
     }
     return addr;
-#else  /* HAVE_MMAP */
-    return NULL;
-#endif  /* HAVE_MMAP */
 }
 
 
@@ -686,7 +682,6 @@ int wine_dll_get_owner( const char *name, char *buffer, int size, int *exists )
  */
 static void set_max_limit( int limit )
 {
-#ifdef HAVE_SETRLIMIT
     struct rlimit rlimit;
 
     if (!getrlimit( limit, &rlimit ))
@@ -705,7 +700,6 @@ static void set_max_limit( int limit )
 #endif
         }
     }
-#endif
 }
 
 
@@ -1030,7 +1024,6 @@ void wine_init( int argc, char *argv[], char *error, int error_size )
  */
 void *wine_dlopen( const char *filename, int flag, char *error, size_t errorsize )
 {
-#ifdef HAVE_DLOPEN
     void *ret;
     const char *s;
 
@@ -1081,16 +1074,6 @@ void *wine_dlopen( const char *filename, int flag, char *error, size_t errorsize
     }
     dlerror();
     return ret;
-#else
-    if (error)
-    {
-        static const char msg[] = "dlopen interface not detected by configure";
-        size_t len = min( errorsize, sizeof(msg) );
-        memcpy( error, msg, len );
-        error[len - 1] = 0;
-    }
-    return NULL;
-#endif
 }
 
 /***********************************************************************
@@ -1134,7 +1117,6 @@ int wine_dladdr( void *addr, void *info, char *error, size_t errorsize )
  */
 void *wine_dlsym( void *handle, const char *symbol, char *error, size_t errorsize )
 {
-#ifdef HAVE_DLOPEN
     void *ret;
     const char *s;
     dlerror(); dlerror();
@@ -1153,16 +1135,6 @@ void *wine_dlsym( void *handle, const char *symbol, char *error, size_t errorsiz
     }
     dlerror();
     return ret;
-#else
-    if (error)
-    {
-        static const char msg[] = "dlopen interface not detected by configure";
-        size_t len = min( errorsize, sizeof(msg) );
-        memcpy( error, msg, len );
-        error[len - 1] = 0;
-    }
-    return NULL;
-#endif
 }
 
 /***********************************************************************
@@ -1170,7 +1142,6 @@ void *wine_dlsym( void *handle, const char *symbol, char *error, size_t errorsiz
  */
 int wine_dlclose( void *handle, char *error, size_t errorsize )
 {
-#ifdef HAVE_DLOPEN
     int ret;
     const char *s;
     dlerror(); dlerror();
@@ -1189,14 +1160,4 @@ int wine_dlclose( void *handle, char *error, size_t errorsize )
     }
     dlerror();
     return ret;
-#else
-    if (error)
-    {
-        static const char msg[] = "dlopen interface not detected by configure";
-        size_t len = min( errorsize, sizeof(msg) );
-        memcpy( error, msg, len );
-        error[len - 1] = 0;
-    }
-    return 1;
-#endif
 }

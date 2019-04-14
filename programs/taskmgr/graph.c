@@ -26,9 +26,9 @@
 
 #include <windows.h>
 #include <commctrl.h>
+#include <shlwapi.h>
 #include <winnt.h>
 
-#include "wine/unicode.h"
 #include "taskmgr.h"
 #include "perfdata.h"
 
@@ -83,15 +83,15 @@ static void Graph_DrawCpuUsageGraph(HDC hDC, HWND hWnd)
      */
     if (CpuUsage == 100)
     {
-        sprintfW(Text, wszFormatI, (int)CpuUsage);
+        swprintf(Text, ARRAY_SIZE(Text), wszFormatI, (int)CpuUsage);
     }
     else if (CpuUsage < 10)
     {
-        sprintfW(Text, wszFormatII, (int)CpuUsage);
+        swprintf(Text, ARRAY_SIZE(Text), wszFormatII, (int)CpuUsage);
     }
     else
     {
-        sprintfW(Text, wszFormatIII, (int)CpuUsage);
+        swprintf(Text, ARRAY_SIZE(Text), wszFormatIII, (int)CpuUsage);
     }
     
     /*
@@ -240,10 +240,6 @@ static void Graph_DrawMemUsageGraph(HDC hDC, HWND hWnd)
 /* Top bars that are "unused", i.e. are dark green, representing free memory */
     int                i;
 
-    static const WCHAR    wszFormatKB[] = {'%','u',' ','K','B',0};
-    static const WCHAR    wszFormatMB[] = {'%','u',' ','M','B',0};
-    static const WCHAR    wszFormatGB[] = {'%','.','1','f',' ','G','B',0};
-
     /*
      * Get the client area rectangle
      */
@@ -260,13 +256,11 @@ static void Graph_DrawMemUsageGraph(HDC hDC, HWND hWnd)
     CommitChargeTotal = (ULONGLONG)PerfDataGetCommitChargeTotalK();
     CommitChargeLimit = (ULONGLONG)PerfDataGetCommitChargeLimitK();
 
-    if (CommitChargeTotal > 1048576)
-        sprintfW(Text, wszFormatGB, (float)CommitChargeTotal / 1048576);
-    else if (CommitChargeTotal > 1024)
-        sprintfW(Text, wszFormatMB, (DWORD)CommitChargeTotal / 1024);
+    if (CommitChargeTotal < 1024)
+        StrFormatKBSizeW(CommitChargeTotal, Text, ARRAY_SIZE(Text));
     else
-        sprintfW(Text, wszFormatKB, (DWORD)CommitChargeTotal);
-
+        StrFormatByteSizeW(CommitChargeTotal, Text, ARRAY_SIZE(Text));
+    
     /*
      * Draw the font text onto the graph
      * The bottom 20 pixels are reserved for the text

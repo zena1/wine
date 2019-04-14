@@ -61,9 +61,8 @@ static void kvprintf(const char *format, __ms_va_list ap)
 {
     static char buffer[512];
     IO_STATUS_BLOCK io;
-
-    _vsnprintf(buffer, sizeof(buffer), format, ap);
-    ZwWriteFile(okfile, NULL, NULL, NULL, &io, buffer, strlen(buffer), NULL, NULL);
+    int len = _vsnprintf(buffer, sizeof(buffer), format, ap);
+    ZwWriteFile(okfile, NULL, NULL, NULL, &io, buffer, len, NULL, NULL);
 }
 
 static void WINAPIV kprintf(const char *format, ...)
@@ -195,6 +194,13 @@ static void *kmemcpy(void *dest, const void *src, SIZE_T n)
     return dest;
 }
 
+static void *kmemset(void *dest, int c, SIZE_T n)
+{
+    unsigned char *d = dest;
+    while (n--) *d++ = (unsigned char)c;
+    return dest;
+}
+
 static void *get_proc_address(const char *name)
 {
     UNICODE_STRING name_u;
@@ -210,15 +216,6 @@ static void *get_proc_address(const char *name)
     ret = MmGetSystemRoutineAddress(&name_u);
     RtlFreeUnicodeString(&name_u);
     return ret;
-}
-
-static void test_currentprocess(void)
-{
-    PEPROCESS current;
-
-    current = IoGetCurrentProcess();
-todo_wine
-    ok(current != NULL, "Expected current process to be non-NULL\n");
 }
 
 static FILE_OBJECT *last_created_file;
@@ -318,10 +315,25 @@ static NTSTATUS wait_single_handle(HANDLE handle, ULONGLONG timeout)
     return ZwWaitForSingleObject(handle, FALSE, &integer);
 }
 
+static void test_currentprocess(void)
+{
+    PEPROCESS current;
+    PETHREAD thread;
+    NTSTATUS ret;
+
+    current = IoGetCurrentProcess();
+todo_wine
+    ok(current != NULL, "Expected current process to be non-NULL\n");
+
+    thread = PsGetCurrentThread();
+    ret = wait_single( thread, 0 );
+    ok(ret == STATUS_TIMEOUT, "got %#x\n", ret);
+}
+
 static void sleep(void)
 {
     LARGE_INTEGER timeout;
-    timeout.QuadPart = -2000;
+    timeout.QuadPart = -20 * 10000;
     KeDelayExecutionThread( KernelMode, FALSE, &timeout );
 }
 
@@ -495,6 +507,33 @@ static void test_sync(void)
 
     ZwClose(handle);
     ObDereferenceObject(event);
+
+    event = IoCreateSynchronizationEvent(NULL, &handle);
+    ok(event != NULL, "IoCreateSynchronizationEvent failed\n");
+
+    ret = wait_single(event, 0);
+    ok(ret == 0, "got %#x\n", ret);
+    KeResetEvent(event);
+    ret = wait_single(event, 0);
+    ok(ret == STATUS_TIMEOUT, "got %#x\n", ret);
+    ret = wait_single_handle(handle, 0);
+    ok(ret == STATUS_TIMEOUT, "got %#x\n", ret);
+
+    ret = ZwSetEvent(handle, NULL);
+    ok(!ret, "NtSetEvent returned %#x\n", ret);
+    ret = wait_single(event, 0);
+    ok(ret == 0, "got %#x\n", ret);
+    ret = wait_single_handle(handle, 0);
+    ok(ret == STATUS_TIMEOUT, "got %#x\n", ret);
+
+    KeSetEvent(event, 0, FALSE);
+    ret = wait_single_handle(handle, 0);
+    ok(!ret, "got %#x\n", ret);
+    ret = wait_single(event, 0);
+    ok(ret == STATUS_TIMEOUT, "got %#x\n", ret);
+
+    ret = ZwClose(handle);
+    ok(!ret, "ZwClose returned %#x\n", ret);
 
     /* test semaphores */
     KeInitializeSemaphore(&semaphore, 0, 5);
@@ -721,6 +760,7 @@ static void test_ob_reference(const WCHAR *test_path)
     POBJECT_TYPE (WINAPI *pObGetObjectType)(void*);
     OBJECT_ATTRIBUTES attr = { sizeof(attr) };
     HANDLE event_handle, file_handle, file_handle2, thread_handle;
+    DISPATCHER_HEADER *header;
     FILE_OBJECT *file;
     void *obj1, *obj2;
     POBJECT_TYPE obj1_type;
@@ -817,8 +857,13 @@ static void test_ob_reference(const WCHAR *test_path)
 
     status = ObReferenceObjectByHandle(thread_handle, SYNCHRONIZE, *pPsThreadType, KernelMode, &obj2, NULL);
     ok(!status, "ObReferenceObjectByHandle failed: %#x\n", status);
-    todo_wine
     ok(obj1 == obj2, "obj1 != obj2\n");
+
+    header = obj1;
+    ok(header->Type == 6, "Type = %u\n", header->Type);
+
+    status = wait_single(header, 0);
+    ok(status == 0 || status == STATUS_TIMEOUT, "got %#x\n", status);
 
     ObDereferenceObject(obj1);
     ObDereferenceObject(obj2);
@@ -906,7 +951,7 @@ static void test_resource(void)
     BOOLEAN ret;
     HANDLE thread, thread2;
 
-    memset(&resource, 0xcc, sizeof(resource));
+    kmemset(&resource, 0xcc, sizeof(resource));
 
     status = ExInitializeResourceLite(&resource);
     ok(status == STATUS_SUCCESS, "got status %#x\n", status);
@@ -1240,7 +1285,7 @@ static NTSTATUS test_basic_ioctl(IRP *irp, IO_STACK_LOCATION *stack, ULONG_PTR *
     if (length < sizeof(teststr))
         return STATUS_BUFFER_TOO_SMALL;
 
-    strcpy(buffer, teststr);
+    kmemcpy(buffer, teststr, sizeof(teststr));
     *info = sizeof(teststr);
 
     return STATUS_SUCCESS;

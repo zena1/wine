@@ -34,6 +34,7 @@
 #include "uianimation.h"
 
 #include "wine/heap.h"
+
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(uianimation);
@@ -1332,8 +1333,12 @@ HRESULT WINAPI DllGetClassObject( REFCLSID clsid, REFIID iid, void **obj )
 
 BOOL WINAPI DllMain( HINSTANCE dll, DWORD reason, LPVOID reserved )
 {
+    TRACE("(%p %d %p)\n", dll, reason, reserved);
+
     switch (reason)
     {
+    case DLL_WINE_PREATTACH:
+        return FALSE;  /* prefer native version */
     case DLL_PROCESS_ATTACH:
         hinstance = dll;
         DisableThreadLibraryCalls( dll );
@@ -1350,7 +1355,6 @@ HRESULT WINAPI DllCanUnloadNow( void )
     TRACE( "()\n" );
     return S_FALSE;
 }
-
 
 /***********************************************************************
  *          DllRegisterServer
