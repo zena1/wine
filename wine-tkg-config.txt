@@ -18,3 +18,4 @@ Applied GLSL toggle patch
 Applied Proton fullscreen hack patch
 Applied large address aware override support
 Applied your own patch /home/tk/Dev/Dev/PKGBUILDS/wine-tkg-git/amdags.mypatch
+Applied your own patch /home/tk/Dev/Dev/PKGBUILDS/wine-tkg-git/faudio-FFMPEG.mypatch
