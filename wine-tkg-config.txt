@@ -1,4 +1,4 @@
-# Last wine-tkg-git-lutris-protonified configuration :
+# Last wine-tkg-git-lutris-ffxiv configuration :
 
 Wine (plain) version: 4.6.r0.gfabde842ed
 Using wine-staging patchset (version 4.6.r0.g3f8edce5)
@@ -13,8 +13,9 @@ Applied steam crossover hack
 server-send_hardware_message staging patchset wasn't found, so _server_send_hwmsg_disable setting was ignored
 Applied CSMT toggle logic patch
 Staging overrides, if any: 
+Applied Final Fantasy XIV Launcher fix
 PBA disabled due to known issues with selected Wine version
 Applied GLSL toggle patch
-Applied Proton fullscreen hack patch
+Applied Proton fullscreen hack patch (for <=4.6)
 Applied large address aware override support
 Applied your own patch /home/tk/Dev/Dev/PKGBUILDS/wine-tkg-git/amdags.mypatch

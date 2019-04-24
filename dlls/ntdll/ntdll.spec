@@ -1540,3 +1540,5 @@
 
 # User shared data
 @ cdecl __wine_user_shared_data()
+
+@ cdecl IsTransgaming()
