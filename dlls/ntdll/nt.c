@@ -30,9 +30,6 @@
 #ifdef HAVE_SYS_SYSCTL_H
 # include <sys/sysctl.h>
 #endif
-#ifdef HAVE_SYS_SYSINFO_H
-# include <sys/sysinfo.h>
-#endif
 #ifdef HAVE_MACHINE_CPU_H
 # include <machine/cpu.h>
 #endif
@@ -2440,9 +2437,6 @@ NTSTATUS WINAPI NtQuerySystemInformation(
             SYSTEM_PERFORMANCE_INFORMATION spi;
             static BOOL fixme_written = FALSE;
             FILE *fp;
-        #ifdef HAVE_SYSINFO
-            struct sysinfo sinfo;
-        #endif
 
             memset(&spi, 0 , sizeof(spi));
             len = sizeof(spi);
@@ -2464,61 +2458,35 @@ NTSTATUS WINAPI NtQuerySystemInformation(
                 spi.IdleTime.QuadPart = ++idle;
             }
 
-        #ifdef HAVE_SYSINFO
-            if (!sysinfo(&sinfo))
+            if ((fp = fopen("/proc/meminfo", "r")))
             {
-                ULONG64 freeram   = (ULONG64)sinfo.freeram * sinfo.mem_unit;
-                ULONG64 totalram  = (ULONG64)sinfo.totalram * sinfo.mem_unit;
-                ULONG64 totalswap = (ULONG64)sinfo.totalswap * sinfo.mem_unit;
-                ULONG64 freeswap  = (ULONG64)sinfo.freeswap * sinfo.mem_unit;
-
-                if ((fp = fopen("/proc/meminfo", "r")))
+                unsigned long long totalram, freeram, totalswap, freeswap;
+                char line[64];
+                while (fgets(line, sizeof(line), fp))
                 {
-                    unsigned long long available;
-                    char line[64];
-                    while (fgets(line, sizeof(line), fp))
-                    {
-                        if (sscanf(line, "MemAvailable: %llu kB", &available) == 1)
-                        {
-                            freeram = min(available * 1024, totalram);
-                            break;
-                        }
-                    }
-                    fclose(fp);
+                   if(sscanf(line, "MemTotal: %llu kB", &totalram) == 1)
+                   {
+                       totalram *= 1024;
+                   }
+                   else if(sscanf(line, "MemFree: %llu kB", &freeram) == 1)
+                   {
+                       freeram *= 1024;
+                   }
+                   else if(sscanf(line, "SwapTotal: %llu kB", &totalswap) == 1)
+                   {
+                       totalswap *= 1024;
+                   }
+                   else if(sscanf(line, "SwapFree: %llu kB", &freeswap) == 1)
+                   {
+                       freeswap *= 1024;
+                       break;
+                   }
                 }
+                fclose(fp);
 
                 spi.AvailablePages      = freeram / page_size;
                 spi.TotalCommittedPages = (totalram + totalswap - freeram - freeswap) / page_size;
                 spi.TotalCommitLimit    = (totalram + totalswap) / page_size;
-            }
-        #endif
-
-            if ((fp = fopen("/proc/diskstats", "r")))
-            {
-                unsigned long long reads, reads_merged, sectors_read, read_time;
-                unsigned long long writes, writes_merged, sectors_written, write_time;
-                unsigned long long io_time, weighted_io_time, current_io;
-                unsigned int major, minor;
-                char dev[30], buffer[256];
-
-                /* the exact size (32 or 64 bits) depends on the kernel */
-                while (fscanf(fp, "%u %u %s %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu",
-                    &major, &minor, dev, &reads, &reads_merged, &sectors_read, &read_time,
-                    &writes, &writes_merged, &sectors_written, &write_time,
-                    &current_io, &io_time, &weighted_io_time) == 14)
-                {
-                    /* we have to ignore partitions as their I/O is also included in the block device */
-                    sprintf(buffer, "/sys/dev/block/%u:%u/device", major, minor);
-                    if (access(buffer, F_OK) != 0)
-                        continue;
-
-                    spi.ReadTransferCount.QuadPart += sectors_read * 512;
-                    spi.WriteTransferCount.QuadPart += sectors_written * 512;
-                    spi.ReadOperationCount += reads;
-                    spi.WriteOperationCount += writes;
-                }
-
-                fclose(fp);
             }
 
             if (Length >= len)
