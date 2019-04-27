@@ -21,6 +21,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <libgen.h>
 #include <stdio.h>
 #include <errno.h>
 #include <assert.h>
@@ -108,14 +109,13 @@
 #include "winioctl.h"
 #include "ddk/ntddk.h"
 #include "ddk/ntddser.h"
-#include "ddk/ntifs.h"
+#include "ntifs.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(ntdll);
 WINE_DECLARE_DEBUG_CHANNEL(winediag);
 
 mode_t FILE_umask = 0;
 
-#define WINE_TEMPLINK      P_tmpdir"/winelink.XXXXXX"
 #define SECSPERDAY         86400
 #define SECS_1601_TO_1970  ((369 * 365 + 89) * (ULONGLONG)SECSPERDAY)
 
@@ -123,6 +123,9 @@ mode_t FILE_umask = 0;
 #define FILE_USE_FILE_POINTER_POSITION ((LONGLONG)-2)
 
 static const WCHAR ntfsW[] = {'N','T','F','S'};
+
+NTSTATUS FILE_DecodeSymlink(const char *unix_src, char *unix_dest, USHORT *unix_dest_len,
+                            DWORD *tag, ULONG *flags, BOOL *is_dir);
 
 /* Match the Samba conventions for storing DOS file attributes */
 #define SAMBA_XATTR_DOS_ATTRIB XATTR_USER_PREFIX "DOSATTRIB"
@@ -214,10 +217,14 @@ int get_file_info( const char *path, struct stat *st, ULONG *attr )
     if (ret == -1) return ret;
     if (S_ISLNK( st->st_mode ))
     {
+        BOOL is_dir;
+
         ret = stat( path, st );
         if (ret == -1) return ret;
         /* is a symbolic link and a directory, consider these "reparse points" */
         if (S_ISDIR( st->st_mode )) *attr |= FILE_ATTRIBUTE_REPARSE_POINT;
+        if (FILE_DecodeSymlink( path, NULL, NULL, NULL, NULL, &is_dir) == STATUS_SUCCESS)
+            st->st_mode = (st->st_mode & ~S_IFMT) | (is_dir ? S_IFDIR : S_IFREG);
     }
     *attr |= get_file_attributes( st );
     /* retrieve any stored DOS attributes */
@@ -1754,83 +1761,270 @@ NTSTATUS WINAPI NtDeviceIoControlFile(HANDLE handle, HANDLE event,
  */
 NTSTATUS FILE_CreateSymlink(HANDLE handle, REPARSE_DATA_BUFFER *buffer)
 {
-    int dest_len = buffer->MountPointReparseBuffer.SubstituteNameLength;
-    int offset = buffer->MountPointReparseBuffer.SubstituteNameOffset;
-    WCHAR *dest = &buffer->MountPointReparseBuffer.PathBuffer[offset];
-    char tmplink[] = WINE_TEMPLINK;
-    ANSI_STRING unix_src, unix_dest;
-    BOOL dest_allocated = FALSE;
+    BOOL src_allocated = FALSE, path_allocated = FALSE, dest_allocated = FALSE;
+    BOOL nt_dest_allocated = FALSE, tempdir_created = FALSE;
+    ANSI_STRING unix_src, unix_dest, unix_path;
+    char tmpdir[PATH_MAX], tmplink[PATH_MAX];
+    char magic_dest[PATH_MAX];
     int dest_fd, needs_close;
+    int relative_offset = 0;
     UNICODE_STRING nt_dest;
+    int dest_len, offset;
+    BOOL is_dir = TRUE;
     NTSTATUS status;
+    struct stat st;
+    WCHAR *dest;
+    ULONG flags;
+    int i;
+
+    switch(buffer->ReparseTag)
+    {
+    case IO_REPARSE_TAG_MOUNT_POINT:
+        dest_len = buffer->MountPointReparseBuffer.SubstituteNameLength;
+        offset = buffer->MountPointReparseBuffer.SubstituteNameOffset;
+        dest = &buffer->MountPointReparseBuffer.PathBuffer[offset];
+        flags = 0;
+        break;
+    case IO_REPARSE_TAG_SYMLINK:
+        dest_len = buffer->SymbolicLinkReparseBuffer.SubstituteNameLength;
+        offset = buffer->SymbolicLinkReparseBuffer.SubstituteNameOffset;
+        dest = &buffer->SymbolicLinkReparseBuffer.PathBuffer[offset];
+        flags = buffer->SymbolicLinkReparseBuffer.Flags;
+        break;
+    default:
+        return STATUS_NOT_IMPLEMENTED;
+    }
 
     if ((status = server_get_unix_fd( handle, FILE_SPECIAL_ACCESS, &dest_fd, &needs_close, NULL, NULL )))
         return status;
 
     if ((status = server_get_unix_name( handle, &unix_src )))
         goto cleanup;
+    src_allocated = TRUE;
+    if (flags == SYMLINK_FLAG_RELATIVE)
+    {
+        UNICODE_STRING nt_path;
 
-    nt_dest.Buffer = dest;
-    nt_dest.Length = dest_len;
+        unix_path.MaximumLength = strlen(unix_src.Buffer) + 2;
+        unix_path.Buffer = RtlAllocateHeap( GetProcessHeap(), 0, unix_path.MaximumLength );
+        path_allocated = TRUE;
+        strcpy( unix_path.Buffer, unix_src.Buffer );
+        dirname( unix_path.Buffer );
+        strcat( unix_path.Buffer, "/");
+        unix_path.Length = strlen( unix_path.Buffer );
+        if ((status = wine_unix_to_nt_file_name( &unix_path, &nt_path )))
+            goto cleanup;
+        nt_dest.MaximumLength = dest_len + (strlenW( nt_path.Buffer ) + 1) * sizeof(WCHAR);
+        nt_dest.Buffer = RtlAllocateHeap( GetProcessHeap(), 0, nt_dest.MaximumLength );
+        strcpyW( nt_dest.Buffer, nt_path.Buffer );
+        RtlFreeUnicodeString( &nt_path );
+        memcpy( &nt_dest.Buffer[strlenW(nt_dest.Buffer)], dest, dest_len + sizeof(WCHAR));
+        nt_dest.Length = strlenW( nt_dest.Buffer ) * sizeof(WCHAR);
+    }
+    else
+    {
+        RtlCreateUnicodeString( &nt_dest, dest );
+        nt_dest.Length = dest_len;
+    }
+    nt_dest_allocated = TRUE;
     if ((status = wine_nt_to_unix_file_name( &nt_dest, &unix_dest, FILE_OPEN, FALSE )))
         goto cleanup;
     dest_allocated = TRUE;
-
-    TRACE("Linking %s to %s\n", unix_src.Buffer, unix_dest.Buffer);
-
-    /* Produce the link in a temporary location */
-    while(1)
+    if (flags == SYMLINK_FLAG_RELATIVE)
     {
-        int fd;
-
-        memcpy( tmplink, WINE_TEMPLINK, sizeof(tmplink) );
-        fd = mkstemps( tmplink, 0 );
-        if (fd == -1) break;
-        if (!unlink( tmplink ))
+        relative_offset = strlen(unix_path.Buffer);
+        if (strncmp( unix_path.Buffer, unix_dest.Buffer, relative_offset ) != 0)
         {
-            if (!symlink( unix_dest.Buffer, tmplink ))
-                break;
+            status = STATUS_IO_REPARSE_DATA_INVALID;
+            goto cleanup;
         }
-        close(fd);
+    }
+
+    TRACE("Linking %s to %s\n", unix_src.Buffer, &unix_dest.Buffer[relative_offset]);
+
+    /* Encode the reparse tag into the symlink */
+    strcpy( magic_dest, "" );
+    if (flags == SYMLINK_FLAG_RELATIVE)
+        strcat( magic_dest, "." );
+    strcat( magic_dest, "/" );
+    for (i = 0; i < sizeof(ULONG)*8; i++)
+    {
+        if ((buffer->ReparseTag >> i) & 1)
+            strcat( magic_dest, "." );
+        strcat( magic_dest, "/" );
+    }
+    /* Encode the type (file or directory) if NT symlink */
+    if (buffer->ReparseTag == IO_REPARSE_TAG_SYMLINK)
+    {
+        if (fstat( dest_fd, &st ) == -1)
+        {
+            status = FILE_GetNtStatus();
+            goto cleanup;
+        }
+        is_dir = S_ISDIR(st.st_mode);
+        if (is_dir)
+            strcat( magic_dest, "." );
+        strcat( magic_dest, "/" );
+    }
+    strcat( magic_dest, &unix_dest.Buffer[relative_offset] );
+
+    /* Produce the link in a temporary location in the same folder */
+    strcpy( tmpdir, unix_src.Buffer );
+    dirname( tmpdir) ;
+    strcat( tmpdir, "/.winelink.XXXXXX" );
+    if (mkdtemp( tmpdir ) == NULL)
+    {
+        status = FILE_GetNtStatus();
+        goto cleanup;
+    }
+    tempdir_created = TRUE;
+    strcpy( tmplink, tmpdir );
+    strcat( tmplink, "/tmplink" );
+    if (symlink( magic_dest, tmplink ))
+    {
+        status = FILE_GetNtStatus();
+        goto cleanup;
     }
     /* Atomically move the link into position */
-    if (rename( tmplink, unix_src.Buffer ))
+    if (!renameat2( -1, tmplink, -1, unix_src.Buffer, RENAME_EXCHANGE ))
     {
-        unlink( tmplink );
-        FIXME("Atomic replace of directory with symbolic link unsupported on this system, may result in race condition.\n");
-        if (rmdir( unix_src.Buffer ) < 0)
+        /* success: link and folder/file have switched locations */
+        if (is_dir)
+            rmdir( tmplink ); /* remove the folder (at link location) */
+        else
+            unlink( tmplink ); /* remove the file (at link location) */
+    }
+    else if (errno == ENOSYS)
+    {
+        FIXME( "Atomic exchange of directory with symbolic link unsupported on this system, "
+               "using unsafe exchange instead.\n" );
+        if (rmdir( unix_src.Buffer ))
         {
             status = FILE_GetNtStatus();
             goto cleanup;
         }
-        if (symlink( unix_dest.Buffer, unix_src.Buffer ) < 0)
+        if (rename( tmplink, unix_src.Buffer ))
         {
             status = FILE_GetNtStatus();
-            goto cleanup;
+            goto cleanup; /* not moved, orignal file/folder at destination is orphaned */
         }
+    }
+    else
+    {
+        status = FILE_GetNtStatus();
+        goto cleanup;
     }
     status = STATUS_SUCCESS;
 
 cleanup:
+    if (tempdir_created) rmdir( tmpdir );
+    if (path_allocated) RtlFreeAnsiString( &unix_path );
     if (dest_allocated) RtlFreeAnsiString( &unix_dest );
+    if (nt_dest_allocated) RtlFreeUnicodeString( &nt_dest );
+    if (src_allocated) RtlFreeAnsiString( &unix_src );
     if (needs_close) close( dest_fd );
     return status;
 }
 
 
+NTSTATUS FILE_DecodeSymlink(const char *unix_src, char *unix_dest, USHORT *unix_dest_len,
+                            DWORD *tag, ULONG *flags, BOOL *is_dir)
+{
+    USHORT len = MAX_PATH;
+    DWORD reparse_tag;
+    NTSTATUS status;
+    BOOL dir_flag;
+    char *p, *tmp;
+    ssize_t ret;
+    int i;
+
+    if (unix_dest_len) len = *unix_dest_len;
+    if (!unix_dest)
+        tmp = RtlAllocateHeap( GetProcessHeap(), 0, len );
+    else
+        tmp = unix_dest;
+    ret = readlink( unix_src, tmp, len );
+    if (ret < 0)
+    {
+        status = FILE_GetNtStatus();
+        goto cleanup;
+    }
+    len = ret;
+    /* Decode the reparse tag from the symlink */
+    p = tmp;
+    if (*p == '.')
+    {
+        if (flags) *flags = SYMLINK_FLAG_RELATIVE;
+        p++;
+    }
+    if (*p++ != '/')
+    {
+        status = STATUS_NOT_IMPLEMENTED;
+        goto cleanup;
+    }
+    reparse_tag = 0;
+    for (i = 0; i < sizeof(ULONG)*8; i++)
+    {
+        char c = *p++;
+        int val;
+
+        if (c == '/')
+            val = 0;
+        else if (c == '.' && *p++ == '/')
+            val = 1;
+        else
+        {
+            status = STATUS_NOT_IMPLEMENTED;
+            goto cleanup;
+        }
+        reparse_tag |= (val << i);
+    }
+    /* skip past the directory/file flag */
+    if (reparse_tag == IO_REPARSE_TAG_SYMLINK)
+    {
+        char c = *p++;
+
+        if (c == '/')
+            dir_flag = FALSE;
+        else if (c == '.' && *p++ == '/')
+            dir_flag = TRUE;
+        else
+        {
+            status = STATUS_NOT_IMPLEMENTED;
+            goto cleanup;
+        }
+    }
+    else
+        dir_flag = TRUE;
+    len -= (p - tmp);
+    if (tag) *tag = reparse_tag;
+    if (is_dir) *is_dir = dir_flag;
+    if (unix_dest) memmove(unix_dest, p, len);
+    if (unix_dest_len) *unix_dest_len = len;
+    status = STATUS_SUCCESS;
+
+cleanup:
+    if (!unix_dest) RtlFreeHeap( GetProcessHeap(), 0, tmp );
+    return status;
+}
+
+
 /*
- * Retrieve the unix name corresponding to a file handle and use that to find the destination of the symlink
- * corresponding to that file handle.
+ * Retrieve the unix name corresponding to a file handle and use that to find the destination of the
+ * symlink corresponding to that file handle.
  */
-NTSTATUS FILE_GetSymlink(HANDLE handle, REPARSE_DATA_BUFFER *buffer)
+NTSTATUS FILE_GetSymlink(HANDLE handle, REPARSE_DATA_BUFFER *buffer, ULONG out_size)
 {
     ANSI_STRING unix_src, unix_dest;
+    VOID *subst_name, *print_name;
     BOOL dest_allocated = FALSE;
     int dest_fd, needs_close;
     UNICODE_STRING nt_dest;
+    int path_len = 0;
+    DWORD max_length;
     NTSTATUS status;
-    VOID *dest_name;
-    ssize_t ret;
+    ULONG flags = 0;
+    INT prefix_len;
 
     if ((status = server_get_unix_fd( handle, FILE_ANY_ACCESS, &dest_fd, &needs_close, NULL, NULL )))
         return status;
@@ -1838,31 +2032,87 @@ NTSTATUS FILE_GetSymlink(HANDLE handle, REPARSE_DATA_BUFFER *buffer)
     if ((status = server_get_unix_name( handle, &unix_src )))
         goto cleanup;
 
-    unix_dest.Buffer = RtlAllocateHeap( GetProcessHeap(), 0, PATH_MAX );
     unix_dest.MaximumLength = PATH_MAX;
+    unix_dest.Buffer = RtlAllocateHeap( GetProcessHeap(), 0, unix_dest.MaximumLength );
+    unix_dest.Length = unix_dest.MaximumLength;
     dest_allocated = TRUE;
-    ret = readlink( unix_src.Buffer, unix_dest.Buffer, unix_dest.MaximumLength );
-    if (ret < 0)
-    {
-        status = FILE_GetNtStatus();
+    if ((status = FILE_DecodeSymlink( unix_src.Buffer, unix_dest.Buffer, &unix_dest.Length,
+                                      &buffer->ReparseTag, &flags, NULL )))
         goto cleanup;
-    }
-    unix_dest.Length = ret;
 
+    /* convert the relative path into an absolute path */
+    if (flags == SYMLINK_FLAG_RELATIVE)
+    {
+        int offset = unix_src.Length + 2;
+        memcpy( &unix_dest.Buffer[offset], unix_dest.Buffer, unix_dest.Length );
+        unix_dest.Buffer[offset+unix_dest.Length] = 0;
+        memcpy( unix_dest.Buffer, unix_src.Buffer, unix_src.Length );
+        unix_dest.Buffer[unix_src.Length] = 0;
+        dirname( unix_dest.Buffer );
+        strcat( unix_dest.Buffer, "/" );
+        path_len = strlen( unix_dest.Buffer );
+        memmove( &unix_dest.Buffer[path_len], &unix_dest.Buffer[offset], unix_dest.Length + 1 );
+        unix_dest.Length = strlen( unix_dest.Buffer );
+    }
     if ((status = wine_unix_to_nt_file_name( &unix_dest, &nt_dest )))
         goto cleanup;
+    /* remove the relative path from the NT path */
+    if (flags == SYMLINK_FLAG_RELATIVE)
+    {
+        UNICODE_STRING nt_path;
+        int relative_offset;
 
-    if (nt_dest.Length > buffer->MountPointReparseBuffer.SubstituteNameLength)
+        unix_dest.Length = path_len;
+        if ((status = wine_unix_to_nt_file_name( &unix_dest, &nt_path )))
+            goto cleanup;
+        relative_offset = strlenW( nt_path.Buffer );
+        if (strncmpW( nt_path.Buffer, nt_dest.Buffer, relative_offset ) != 0)
+        {
+            RtlFreeUnicodeString( &nt_path );
+            status = STATUS_IO_REPARSE_DATA_INVALID;
+            goto cleanup;
+        }
+        RtlFreeUnicodeString( &nt_path );
+        nt_dest.Length = strlenW( &nt_dest.Buffer[relative_offset] ) * sizeof(WCHAR);
+        memmove( nt_dest.Buffer, &nt_dest.Buffer[relative_offset], nt_dest.Length + sizeof(WCHAR) );
+    }
+
+    prefix_len = (flags == SYMLINK_FLAG_RELATIVE) ? 0 : strlen("\\??\\");
+    switch(buffer->ReparseTag)
+    {
+    case IO_REPARSE_TAG_MOUNT_POINT:
+        max_length = out_size-FIELD_OFFSET(typeof(*buffer), MountPointReparseBuffer.PathBuffer[1]);
+        buffer->MountPointReparseBuffer.SubstituteNameOffset = 0;
+        buffer->MountPointReparseBuffer.SubstituteNameLength = nt_dest.Length;
+        subst_name = &buffer->MountPointReparseBuffer.PathBuffer[buffer->MountPointReparseBuffer.SubstituteNameOffset/sizeof(WCHAR)];
+        buffer->MountPointReparseBuffer.PrintNameOffset = nt_dest.Length + sizeof(WCHAR);
+        buffer->MountPointReparseBuffer.PrintNameLength = nt_dest.Length - prefix_len*sizeof(WCHAR);
+        print_name = &buffer->MountPointReparseBuffer.PathBuffer[buffer->MountPointReparseBuffer.PrintNameOffset/sizeof(WCHAR)];
+        break;
+    case IO_REPARSE_TAG_SYMLINK:
+        max_length = out_size-FIELD_OFFSET(typeof(*buffer), SymbolicLinkReparseBuffer.PathBuffer[1]);
+        buffer->SymbolicLinkReparseBuffer.SubstituteNameOffset = 0;
+        buffer->SymbolicLinkReparseBuffer.SubstituteNameLength = nt_dest.Length;
+        subst_name = &buffer->SymbolicLinkReparseBuffer.PathBuffer[buffer->SymbolicLinkReparseBuffer.SubstituteNameOffset/sizeof(WCHAR)];
+        buffer->SymbolicLinkReparseBuffer.PrintNameOffset = nt_dest.Length + sizeof(WCHAR);
+        buffer->SymbolicLinkReparseBuffer.PrintNameLength = nt_dest.Length - prefix_len*sizeof(WCHAR);
+        print_name = &buffer->SymbolicLinkReparseBuffer.PathBuffer[buffer->SymbolicLinkReparseBuffer.PrintNameOffset/sizeof(WCHAR)];
+        buffer->SymbolicLinkReparseBuffer.Flags = flags;
+        break;
+    default:
+        /* unrecognized (regular) files should probably be treated as symlinks */
+        WARN("unrecognized symbolic link\n");
+        status = STATUS_NOT_IMPLEMENTED;
+        goto cleanup;
+    }
+    if (nt_dest.Length > max_length)
     {
         status = STATUS_BUFFER_TOO_SMALL;
         goto cleanup;
     }
 
-    buffer->ReparseTag = IO_REPARSE_TAG_MOUNT_POINT;
-    buffer->MountPointReparseBuffer.SubstituteNameLength = nt_dest.Length;
-    buffer->MountPointReparseBuffer.SubstituteNameOffset = 0;
-    dest_name = &buffer->MountPointReparseBuffer.PathBuffer[buffer->MountPointReparseBuffer.SubstituteNameOffset];
-    memcpy( dest_name, nt_dest.Buffer, nt_dest.Length );
+    memcpy( subst_name, nt_dest.Buffer, nt_dest.Length );
+    memcpy( print_name, &nt_dest.Buffer[prefix_len], nt_dest.Length - prefix_len*sizeof(WCHAR) );
     status = STATUS_SUCCESS;
 
 cleanup:
@@ -1878,9 +2128,13 @@ cleanup:
  */
 NTSTATUS FILE_RemoveSymlink(HANDLE handle, REPARSE_GUID_DATA_BUFFER *buffer)
 {
+    char tmpdir[PATH_MAX], tmpfile[PATH_MAX];
+    BOOL tempdir_created = FALSE;
     int dest_fd, needs_close;
     ANSI_STRING unix_name;
+    BOOL is_dir = TRUE;
     NTSTATUS status;
+    struct stat st;
 
     if ((status = server_get_unix_fd( handle, FILE_SPECIAL_ACCESS, &dest_fd, &needs_close, NULL, NULL )))
         return status;
@@ -1889,12 +2143,64 @@ NTSTATUS FILE_RemoveSymlink(HANDLE handle, REPARSE_GUID_DATA_BUFFER *buffer)
         goto cleanup;
 
     TRACE("Deleting symlink %s\n", unix_name.Buffer);
-    if (unlink( unix_name.Buffer ) < 0)
+
+    /* Produce the file/directory in a temporary location in the same folder */
+    if (fstat( dest_fd, &st ) == -1)
     {
         status = FILE_GetNtStatus();
         goto cleanup;
     }
-    if (mkdir( unix_name.Buffer, 0775 ) < 0)
+    is_dir = S_ISDIR(st.st_mode);
+    strcpy( tmpdir, unix_name.Buffer );
+    dirname( tmpdir) ;
+    strcat( tmpdir, "/.winelink.XXXXXX" );
+    if (mkdtemp( tmpdir ) == NULL)
+    {
+        status = FILE_GetNtStatus();
+        goto cleanup;
+    }
+    tempdir_created = TRUE;
+    strcpy( tmpfile, tmpdir );
+    strcat( tmpfile, "/tmpfile" );
+    if (is_dir && mkdir( tmpfile, st.st_mode ))
+    {
+        status = FILE_GetNtStatus();
+        goto cleanup;
+    }
+    else if (!is_dir)
+    {
+        int fd = open( tmpfile, O_CREAT|O_WRONLY|O_TRUNC, st.st_mode );
+        if (fd < 0)
+            {
+            status = FILE_GetNtStatus();
+            goto cleanup;
+        }
+        close( fd );
+    }
+    /* attemp to retain the ownership (if possible) */
+    lchown( tmpfile, st.st_uid, st.st_gid );
+    /* Atomically move the directory into position */
+    if (!renameat2( -1, tmpfile, -1, unix_name.Buffer, RENAME_EXCHANGE ))
+    {
+        /* success: link and folder have switched locations */
+        unlink( tmpfile ); /* remove the link (at folder location) */
+    }
+    else if (errno == ENOSYS)
+    {
+        FIXME( "Atomic exchange of directory with symbolic link unsupported on this system, "
+               "using unsafe exchange instead.\n" );
+        if (unlink( unix_name.Buffer ))
+        {
+            status = FILE_GetNtStatus();
+            goto cleanup;
+        }
+        if (rename( tmpfile, unix_name.Buffer ))
+        {
+            status = FILE_GetNtStatus();
+            goto cleanup; /* not moved, orignal file/folder at destination is orphaned */
+        }
+    }
+    else
     {
         status = FILE_GetNtStatus();
         goto cleanup;
@@ -1902,6 +2208,7 @@ NTSTATUS FILE_RemoveSymlink(HANDLE handle, REPARSE_GUID_DATA_BUFFER *buffer)
     status = STATUS_SUCCESS;
 
 cleanup:
+    if (tempdir_created) rmdir( tmpdir );
     if (needs_close) close( dest_fd );
     return status;
 }
@@ -1986,7 +2293,6 @@ NTSTATUS WINAPI NtFsControlFile(HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc
         }
         break;
     }
-
     case FSCTL_SET_SPARSE:
         TRACE("FSCTL_SET_SPARSE: Ignoring request\n");
         io->Information = 0;
@@ -2000,6 +2306,7 @@ NTSTATUS WINAPI NtFsControlFile(HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc
         switch(buffer->ReparseTag)
         {
         case IO_REPARSE_TAG_MOUNT_POINT:
+        case IO_REPARSE_TAG_SYMLINK:
             status = FILE_RemoveSymlink( handle, buffer );
             break;
         default:
@@ -2012,10 +2319,7 @@ NTSTATUS WINAPI NtFsControlFile(HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc
     case FSCTL_GET_REPARSE_POINT:
     {
         REPARSE_DATA_BUFFER *buffer = (REPARSE_DATA_BUFFER *)out_buffer;
-        DWORD max_length = out_size-FIELD_OFFSET(REPARSE_DATA_BUFFER, MountPointReparseBuffer.PathBuffer[1]);
-
-        buffer->MountPointReparseBuffer.SubstituteNameLength = max_length;
-        status = FILE_GetSymlink( handle, buffer );
+        status = FILE_GetSymlink( handle, buffer, out_size );
         break;
     }
     case FSCTL_SET_REPARSE_POINT:
@@ -2025,6 +2329,7 @@ NTSTATUS WINAPI NtFsControlFile(HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc
         switch(buffer->ReparseTag)
         {
         case IO_REPARSE_TAG_MOUNT_POINT:
+        case IO_REPARSE_TAG_SYMLINK:
             status = FILE_CreateSymlink( handle, buffer );
             break;
         default:

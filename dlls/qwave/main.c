@@ -1,5 +1,6 @@
 /*
  * Copyright 2018 Louis Lenders
+ * Copyright 2019 Vijay Kiran Kamuju
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -41,9 +42,12 @@ BOOL WINAPI DllMain(HINSTANCE hInstDLL, DWORD reason, LPVOID lpv)
     return TRUE;
 }
 
-BOOL WINAPI QOSCreateHandle(QOS_VERSION *version, HANDLE *handle)
+BOOL WINAPI QOSCreateHandle(PQOS_VERSION version, PHANDLE handle)
 {
     FIXME("%p %p stub!\n", version, handle);
-    SetLastError(ERROR_SERVICE_DEPENDENCY_FAIL);
+    if (!version || !((version->MajorVersion == 1) && (version->MinorVersion == 0)) || !handle)
+        SetLastError(ERROR_INVALID_PARAMETER);
+    else
+        SetLastError(ERROR_SERVICE_ALREADY_RUNNING);
     return FALSE;
 }

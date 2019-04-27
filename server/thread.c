@@ -123,6 +123,7 @@ static const struct object_ops thread_apc_ops =
     NULL,                       /* unlink_name */
     no_open_file,               /* open_file */
     no_kernel_obj_list,         /* get_kernel_obj_list */
+    no_alloc_handle,            /* alloc_handle */
     no_close_handle,            /* close_handle */
     thread_apc_destroy          /* destroy */
 };
@@ -159,6 +160,7 @@ static const struct object_ops thread_ops =
     NULL,                       /* unlink_name */
     no_open_file,               /* open_file */
     thread_get_kernel_obj_list, /* get_kernel_obj_list */
+    no_alloc_handle,            /* alloc_handle */
     no_close_handle,            /* close_handle */
     destroy_thread              /* destroy */
 };
@@ -603,7 +605,7 @@ void stop_thread_if_suspended( struct thread *thread )
 }
 
 /* suspend a thread */
-static int suspend_thread( struct thread *thread )
+int suspend_thread( struct thread *thread )
 {
     int old_count = thread->suspend;
     if (thread->suspend < MAXIMUM_SUSPEND_COUNT)
@@ -615,7 +617,7 @@ static int suspend_thread( struct thread *thread )
 }
 
 /* resume a thread */
-static int resume_thread( struct thread *thread )
+int resume_thread( struct thread *thread )
 {
     int old_count = thread->suspend;
     if (thread->suspend > 0)
@@ -1911,54 +1913,5 @@ DECL_HANDLER(get_selector_entry)
     {
         get_selector_entry( thread, req->entry, &reply->base, &reply->limit, &reply->flags );
         release_object( thread );
-    }
-}
-
-/* Suspend a process */
-DECL_HANDLER(suspend_process)
-{
-    struct process *process;
-
-    if ((process = get_process_from_handle( req->handle, PROCESS_SUSPEND_RESUME )))
-    {
-        struct list *ptr, *next;
-
-        LIST_FOR_EACH( ptr, &process->thread_list )
-        {
-            struct thread *thread = LIST_ENTRY( ptr, struct thread, proc_entry );
-            if (thread->suspend >= MAXIMUM_SUSPEND_COUNT)
-            {
-                set_error( STATUS_SUSPEND_COUNT_EXCEEDED );
-                release_object( process );
-                return;
-            }
-        }
-
-        LIST_FOR_EACH_SAFE( ptr, next, &process->thread_list )
-        {
-            struct thread *thread = LIST_ENTRY( ptr, struct thread, proc_entry );
-            suspend_thread( thread );
-        }
-
-        release_object( process );
-    }
-}
-
-/* Resume a process */
-DECL_HANDLER(resume_process)
-{
-    struct process *process;
-
-    if ((process = get_process_from_handle( req->handle, PROCESS_SUSPEND_RESUME )))
-    {
-        struct list *ptr, *next;
-
-        LIST_FOR_EACH_SAFE( ptr, next, &process->thread_list )
-        {
-            struct thread *thread = LIST_ENTRY( ptr, struct thread, proc_entry );
-            resume_thread( thread );
-        }
-
-        release_object( process );
     }
 }
