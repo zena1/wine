@@ -1482,6 +1482,7 @@ wine_patch_data[] =
     { "Zebediah Figura", "server: Don't check for a hung queue when sending low-level hooks.", 1 },
     { "Zebediah Figura", "server: Implement esync_map_access().", 1 },
     { "Zebediah Figura", "server: Update the shared memory state when (re)setting an event.", 1 },
+    { "Zebediah Figura", "server: Use default_fd_get_esync_fd() for directory change notification objects.", 1 },
     { "Zebediah Figura", "user32: Remove hooks that time out.", 1 },
     { "Zebediah Figura", "wow64cpu: Add stub dll.", 1 },
     { "Zhenbo Li", "mshtml: Add IHTMLLocation::hash property's getter implementation.", 1 },
