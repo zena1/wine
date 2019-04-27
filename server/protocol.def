@@ -748,6 +748,7 @@ typedef struct
 #define IMAGE_FLAGS_ImageDynamicallyRelocated 0x04
 #define IMAGE_FLAGS_ImageMappedFlat           0x08
 #define IMAGE_FLAGS_BaseBelow4gb              0x10
+#define IMAGE_FLAGS_WineBuiltin               0x40
 #define IMAGE_FLAGS_WineFakeDll               0x80
 
 struct rawinput_device
@@ -4019,15 +4020,6 @@ struct handle_info
 @END
 
 
-/* Return system information values */
-@REQ(get_system_info)
-@REPLY
-    unsigned int processes;   /* number of processes */
-    unsigned int threads;     /* number of threads */
-    unsigned int handles;     /* number of handles */
-@END
-
-
 /* Suspend a process */
 @REQ(suspend_process)
     obj_handle_t handle;       /* process handle */
@@ -4092,3 +4084,11 @@ enum esync_type
     ESYNC_MANUAL_SERVER,
     ESYNC_QUEUE,
 };
+
+/* Return system information values */
+@REQ(get_system_info)
+@REPLY
+    unsigned int processes;   /* number of processes */
+    unsigned int threads;     /* number of threads */
+    unsigned int handles;     /* number of handles */
+@END

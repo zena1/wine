@@ -34,6 +34,8 @@
 #include "windef.h"
 #include "winbase.h"
 #include "winternl.h"
+#include "winioctl.h"
+#include "ntifs.h"
 
 #include "kernel_private.h"
 #include "wine/unicode.h"
@@ -1788,24 +1790,24 @@ BOOL WINAPI RemoveDirectoryW( LPCWSTR path )
     }
 
     status = wine_nt_to_unix_file_name( &nt_name, &unix_name, FILE_OPEN, FALSE );
-    if (status != STATUS_SUCCESS)
+    if (status == STATUS_SUCCESS)
     {
-        SetLastError( RtlNtStatusToDosError(status) );
-        RtlFreeUnicodeString( &nt_name );
-        NtClose( handle );
-        return FALSE;
+        status = NtQueryAttributesFile( &attr, &info );
+        if (status == STATUS_SUCCESS && (info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+                                        (info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            ret = (unlink( unix_name.Buffer ) != -1);
+        else
+            ret = (rmdir( unix_name.Buffer ) != -1);
+        if (status == STATUS_SUCCESS && (info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+                                        !(info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            SetLastError( ERROR_DIRECTORY );
+        else if (!ret) FILE_SetDosError();
+        RtlFreeAnsiString( &unix_name );
     }
-
-    status = NtQueryAttributesFile( &attr, &info );
-    if (status == STATUS_SUCCESS && (info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
-                                    (info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-        ret = (unlink( unix_name.Buffer ) != -1);
     else
-        ret = (rmdir( unix_name.Buffer ) != -1);
-    if (!ret) FILE_SetDosError();
-
+        SetLastError( RtlNtStatusToDosError(status) );
     RtlFreeUnicodeString( &nt_name );
-    RtlFreeAnsiString( &unix_name );
+
     NtClose( handle );
     return ret;
 }
@@ -2145,55 +2147,106 @@ WCHAR * CDECL wine_get_dos_file_name( LPCSTR str )
  */
 BOOLEAN WINAPI CreateSymbolicLinkW(LPCWSTR link, LPCWSTR target, DWORD flags)
 {
-    NTSTATUS status, temp;
-    UNICODE_STRING nt_dest, nt_source;
-    ANSI_STRING unix_dest, unix_source;
-    BOOL ret = FALSE;
+    static INT struct_size = offsetof(REPARSE_DATA_BUFFER, SymbolicLinkReparseBuffer.PathBuffer[0]);
+    static INT header_size = offsetof(REPARSE_DATA_BUFFER, GenericReparseBuffer);
+    INT buffer_size, data_size, string_len, prefix_len;
+    WCHAR *subst_dest, *print_dest, *string;
+    REPARSE_DATA_BUFFER *buffer;
+    LPWSTR target_path = NULL;
+    BOOL is_relative, is_dir;
+    int target_path_len = 0;
+    UNICODE_STRING nt_name;
+    BOOLEAN bret = FALSE;
+    NTSTATUS status;
+    HANDLE hlink;
+    DWORD dwret;
 
-    TRACE("(%s, %s, %d)\n", debugstr_w(link), debugstr_w(target), flags);
+    TRACE("(%s %s %d)\n", debugstr_w(link), debugstr_w(target), flags);
 
-    nt_dest.Buffer = nt_source.Buffer = NULL;
-    if (!RtlDosPathNameToNtPathName_U( link, &nt_dest, NULL, NULL ) ||
-        !RtlDosPathNameToNtPathName_U( target, &nt_source, NULL, NULL ))
+    is_relative = (RtlDetermineDosPathNameType_U( target ) == RELATIVE_PATH);
+    is_dir = (flags & SYMBOLIC_LINK_FLAG_DIRECTORY);
+    if (is_dir && !CreateDirectoryW( link, NULL ))
+        return FALSE;
+    hlink = CreateFileW( link, GENERIC_READ | GENERIC_WRITE, 0, 0,
+                         is_dir ? OPEN_EXISTING : CREATE_NEW,
+                         FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, 0 );
+    if (hlink == INVALID_HANDLE_VALUE)
+        goto cleanup;
+    if (is_relative)
     {
-        SetLastError( ERROR_PATH_NOT_FOUND );
-        goto err;
+        UNICODE_STRING nt_path;
+        int len;
+
+        status = RtlDosPathNameToNtPathName_U_WithStatus( link, &nt_path, NULL, NULL );
+        if (status != STATUS_SUCCESS)
+        {
+            SetLastError( RtlNtStatusToDosError(status) );
+            goto cleanup;
+        }
+        /* obtain the path of the link */
+        for (; nt_path.Length > 0; nt_path.Length -= sizeof(WCHAR))
+        {
+            WCHAR c = nt_path.Buffer[nt_path.Length/sizeof(WCHAR)];
+            if (c == '/' || c == '\\')
+            {
+                nt_path.Length += sizeof(WCHAR);
+                break;
+            }
+        }
+        /* append the target to the link path */
+        target_path_len = nt_path.Length / sizeof(WCHAR);
+        len = target_path_len + (strlenW( target ) + 1);
+        target_path = HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY, len*sizeof(WCHAR) );
+        lstrcpynW( target_path, nt_path.Buffer, nt_path.Length );
+        target_path[nt_path.Length/sizeof(WCHAR)] = 0;
+        lstrcatW( target_path, target );
+        RtlFreeUnicodeString( &nt_path );
     }
-
-    unix_source.Buffer = unix_dest.Buffer = NULL;
-    temp = wine_nt_to_unix_file_name( &nt_source, &unix_source, FILE_OPEN_IF, FALSE );
-    status = wine_nt_to_unix_file_name( &nt_dest, &unix_dest, FILE_CREATE, FALSE );
-    if (!status) /* destination must not exist */
-        status = STATUS_OBJECT_NAME_EXISTS;
-    else if (status == STATUS_NO_SUCH_FILE)
-        status = STATUS_SUCCESS;
-
-    if (status)
-        SetLastError( RtlNtStatusToDosError(status) );
     else
+        target_path = (LPWSTR)target;
+    status = RtlDosPathNameToNtPathName_U_WithStatus( target_path, &nt_name, NULL, NULL );
+    if (status != STATUS_SUCCESS)
     {
-        if(temp != STATUS_NO_SUCH_FILE && GetFileAttributesW(target) & FILE_ATTRIBUTE_DIRECTORY && strstr(unix_dest.Buffer, unix_source.Buffer))
-        {
-            FIXME("Symlinking a directory inside that directory is not supported.\n");
-            ret = TRUE;
-        }
-        else if (!symlink( unix_source.Buffer, unix_dest.Buffer ))
-        {
-            TRACE("Symlinked '%s' to '%s'\n", debugstr_a( unix_dest.Buffer ),
-                debugstr_a( unix_source.Buffer ));
-            ret = TRUE;
-        }
-        else
-            FILE_SetDosError();
+        SetLastError( RtlNtStatusToDosError(status) );
+        goto cleanup;
     }
+    if (is_relative && strncmpW( target_path, nt_name.Buffer, target_path_len ) != 0)
+    {
+        SetLastError( RtlNtStatusToDosError(status) );
+        goto cleanup;
+    }
+    prefix_len = is_relative ? 0 : strlen("\\??\\");
+    string = &nt_name.Buffer[target_path_len];
+    string_len = lstrlenW( &string[prefix_len] );
+    data_size = (prefix_len + 2 * string_len + 2) * sizeof(WCHAR);
+    buffer_size = struct_size + data_size;
+    buffer = HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY, buffer_size );
+    buffer->ReparseTag = IO_REPARSE_TAG_SYMLINK;
+    buffer->ReparseDataLength = struct_size - header_size + data_size;
+    buffer->SymbolicLinkReparseBuffer.SubstituteNameLength = (prefix_len + string_len) * sizeof(WCHAR);
+    buffer->SymbolicLinkReparseBuffer.PrintNameOffset = (prefix_len + string_len + 1) * sizeof(WCHAR);
+    buffer->SymbolicLinkReparseBuffer.PrintNameLength = string_len * sizeof(WCHAR);
+    buffer->SymbolicLinkReparseBuffer.Flags = is_relative ? SYMLINK_FLAG_RELATIVE : 0;
+    subst_dest = &buffer->SymbolicLinkReparseBuffer.PathBuffer[0];
+    print_dest = &buffer->SymbolicLinkReparseBuffer.PathBuffer[prefix_len + string_len + 1];
+    lstrcpyW( subst_dest, string );
+    lstrcpyW( print_dest, &string[prefix_len] );
+    RtlFreeUnicodeString( &nt_name );
+    bret = DeviceIoControl( hlink, FSCTL_SET_REPARSE_POINT, (LPVOID)buffer, buffer_size, NULL, 0,
+                            &dwret, 0 );
+    CloseHandle( hlink );
+    HeapFree( GetProcessHeap(), 0, buffer );
 
-    RtlFreeAnsiString( &unix_source );
-    RtlFreeAnsiString( &unix_dest );
-
-err:
-    RtlFreeUnicodeString( &nt_source );
-    RtlFreeUnicodeString( &nt_dest );
-    return ret;
+cleanup:
+    if (!bret)
+    {
+        if (is_dir)
+            RemoveDirectoryW( link );
+        else
+            DeleteFileW( link );
+    }
+    if (is_relative) HeapFree( GetProcessHeap(), 0, target_path );
+    return bret;
 }
 
 /*************************************************************************
@@ -2201,25 +2254,24 @@ err:
  */
 BOOLEAN WINAPI CreateSymbolicLinkA(LPCSTR link, LPCSTR target, DWORD flags)
 {
-    WCHAR *sourceW, *destW;
-    BOOL res;
+    WCHAR *targetW, *linkW;
+    BOOL ret;
 
-    if (!(sourceW = FILE_name_AtoW( target, TRUE )))
+    TRACE("(%s %s %d)\n", debugstr_a(link), debugstr_a(target), flags);
+
+    if (!(linkW = FILE_name_AtoW( link, TRUE )))
     {
         return FALSE;
     }
-    if (!(destW = FILE_name_AtoW( link, TRUE )))
+    if (!(targetW = FILE_name_AtoW( target, TRUE )))
     {
-        HeapFree( GetProcessHeap(), 0, sourceW );
+        HeapFree( GetProcessHeap(), 0, linkW );
         return FALSE;
     }
-
-    res = CreateSymbolicLinkW( destW, sourceW, flags );
-
-    HeapFree( GetProcessHeap(), 0, sourceW );
-    HeapFree( GetProcessHeap(), 0, destW );
-
-    return res;
+    ret = CreateSymbolicLinkW( linkW, targetW, flags );
+    HeapFree( GetProcessHeap(), 0, linkW );
+    HeapFree( GetProcessHeap(), 0, targetW );
+    return ret;
 }
 
 /*************************************************************************
