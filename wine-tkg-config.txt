@@ -1,7 +1,7 @@
 # Last wine-tkg-git-lutris-unity configuration :
 
 Wine (plain) version: 4.7.r0.g6e3f39a4c5
-Using wine-staging patchset (version 4.7.r0.g547e7c81)
+Using wine-staging patchset (version 4.7.r1.gc4881140)
 Disabled the local Esync patchset to use Staging impl instead.
 
 Using gcc compiler
@@ -13,7 +13,6 @@ Applied MTGA crashfix
 Applied steam crossover hack
 server-send_hardware_message staging patchset wasn't found, so _server_send_hwmsg_disable setting was ignored
 Applied CSMT toggle logic patch
-Reverted your own patch /home/tk/Dev/Dev/PKGBUILDS/wine-tkg-git/esync4.7-fix-d8568c.mystagingrevert
 Staging overrides, if any: 
 PBA disabled due to known issues with selected Wine version
 Applied GLSL toggle patch
