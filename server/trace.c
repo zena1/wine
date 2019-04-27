@@ -4688,17 +4688,6 @@ static void dump_terminate_job_request( const struct terminate_job_request *req 
     fprintf( stderr, ", status=%d", req->status );
 }
 
-static void dump_get_system_info_request( const struct get_system_info_request *req )
-{
-}
-
-static void dump_get_system_info_reply( const struct get_system_info_reply *req )
-{
-    fprintf( stderr, " processes=%08x", req->processes );
-    fprintf( stderr, ", threads=%08x", req->threads );
-    fprintf( stderr, ", handles=%08x", req->handles );
-}
-
 static void dump_suspend_process_request( const struct suspend_process_request *req )
 {
     fprintf( stderr, " handle=%04x", req->handle );
@@ -4759,6 +4748,17 @@ static void dump_get_esync_apc_fd_request( const struct get_esync_apc_fd_request
 static void dump_esync_msgwait_request( const struct esync_msgwait_request *req )
 {
     fprintf( stderr, " in_msgwait=%d", req->in_msgwait );
+}
+
+static void dump_get_system_info_request( const struct get_system_info_request *req )
+{
+}
+
+static void dump_get_system_info_reply( const struct get_system_info_reply *req )
+{
+    fprintf( stderr, " processes=%08x", req->processes );
+    fprintf( stderr, ", threads=%08x", req->threads );
+    fprintf( stderr, ", handles=%08x", req->handles );
 }
 
 static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
@@ -5070,7 +5070,6 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_set_job_limits_request,
     (dump_func)dump_set_job_completion_port_request,
     (dump_func)dump_terminate_job_request,
-    (dump_func)dump_get_system_info_request,
     (dump_func)dump_suspend_process_request,
     (dump_func)dump_resume_process_request,
     (dump_func)dump_create_esync_request,
@@ -5078,6 +5077,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_get_esync_fd_request,
     (dump_func)dump_get_esync_apc_fd_request,
     (dump_func)dump_esync_msgwait_request,
+    (dump_func)dump_get_system_info_request,
 };
 
 static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
@@ -5389,7 +5389,6 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     NULL,
     NULL,
     NULL,
-    (dump_func)dump_get_system_info_reply,
     NULL,
     NULL,
     (dump_func)dump_create_esync_reply,
@@ -5397,6 +5396,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_get_esync_fd_reply,
     NULL,
     NULL,
+    (dump_func)dump_get_system_info_reply,
 };
 
 static const char * const req_names[REQ_NB_REQUESTS] = {
@@ -5708,7 +5708,6 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "set_job_limits",
     "set_job_completion_port",
     "terminate_job",
-    "get_system_info",
     "suspend_process",
     "resume_process",
     "create_esync",
@@ -5716,6 +5715,7 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "get_esync_fd",
     "get_esync_apc_fd",
     "esync_msgwait",
+    "get_system_info",
 };
 
 static const struct

@@ -2290,6 +2290,7 @@ typedef struct _LDR_MODULE
     ULONG               Flags;
     SHORT               LoadCount;
     SHORT               TlsIndex;
+    ULONG               CheckSum;
     LIST_ENTRY          HashLinks;
     ULONG               TimeDateStamp;
     HANDLE              ActivationContext;
