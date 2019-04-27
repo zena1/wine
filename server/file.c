@@ -63,11 +63,12 @@
 
 struct file
 {
-    struct object       obj;        /* object header */
-    struct fd          *fd;         /* file descriptor for this file */
-    unsigned int        access;     /* file access (FILE_READ_DATA etc.) */
-    mode_t              mode;       /* file stat.st_mode */
-    uid_t               uid;        /* file stat.st_uid */
+    struct object       obj;            /* object header */
+    struct fd          *fd;             /* file descriptor for this file */
+    unsigned int        access;         /* file access (FILE_READ_DATA etc.) */
+    mode_t              mode;           /* file stat.st_mode */
+    uid_t               uid;            /* file stat.st_uid */
+    struct list         kernel_object;  /* list of kernel object pointers */
 };
 
 static unsigned int generic_file_map_access( unsigned int access );
@@ -80,6 +81,7 @@ static int file_set_sd( struct object *obj, const struct security_descriptor *sd
 static struct object *file_lookup_name( struct object *obj, struct unicode_str *name, unsigned int attr );
 static struct object *file_open_file( struct object *obj, unsigned int access,
                                       unsigned int sharing, unsigned int options );
+static struct list *file_get_kernel_obj_list( struct object *obj );
 static void file_destroy( struct object *obj );
 
 static int file_get_poll_events( struct fd *fd );
@@ -105,7 +107,8 @@ static const struct object_ops file_ops =
     no_link_name,                 /* link_name */
     NULL,                         /* unlink_name */
     file_open_file,               /* open_file */
-    no_kernel_obj_list,           /* get_kernel_obj_list */
+    file_get_kernel_obj_list,     /* get_kernel_obj_list */
+    no_alloc_handle,              /* alloc_handle */
     fd_close_handle,              /* close_handle */
     file_destroy                  /* destroy */
 };
@@ -147,6 +150,7 @@ struct file *create_file_for_fd( int fd, unsigned int access, unsigned int shari
 
     file->mode = st.st_mode;
     file->access = default_fd_map_access( &file->obj, access );
+    list_init( &file->kernel_object );
     if (!(file->fd = create_anonymous_fd( &file_fd_ops, fd, &file->obj,
                                           FILE_SYNCHRONOUS_IO_NONALERT )))
     {
@@ -173,6 +177,7 @@ struct file *create_file_for_fd_obj( struct fd *fd, unsigned int access, unsigne
     {
         file->mode = st.st_mode;
         file->access = default_fd_map_access( &file->obj, access );
+        list_init( &file->kernel_object );
         if (!(file->fd = dup_fd_object( fd, access, sharing, FILE_SYNCHRONOUS_IO_NONALERT )))
         {
             release_object( file );
@@ -193,6 +198,7 @@ static struct object *create_file_obj( struct fd *fd, unsigned int access, mode_
     file->mode    = mode;
     file->uid     = ~(uid_t)0;
     file->fd      = fd;
+    list_init( &file->kernel_object );
     grab_object( fd );
     set_fd_user( fd, &file_fd_ops, &file->obj );
 
@@ -875,6 +881,12 @@ static struct object *file_open_file( struct object *obj, unsigned int access,
     }
     else set_error( STATUS_OBJECT_TYPE_MISMATCH );
     return new_file;
+}
+
+static struct list *file_get_kernel_obj_list( struct object *obj )
+{
+    struct file *file = (struct file *)obj;
+    return &file->kernel_object;
 }
 
 static int file_set_sd( struct object *obj, const struct security_descriptor *sd,

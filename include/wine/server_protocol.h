@@ -732,6 +732,7 @@ typedef struct
 #define IMAGE_FLAGS_ImageDynamicallyRelocated 0x04
 #define IMAGE_FLAGS_ImageMappedFlat           0x08
 #define IMAGE_FLAGS_BaseBelow4gb              0x10
+#define IMAGE_FLAGS_WineBuiltin               0x40
 #define IMAGE_FLAGS_WineFakeDll               0x80
 
 struct rawinput_device
@@ -5924,22 +5925,6 @@ struct terminate_job_reply
 
 
 
-struct get_system_info_request
-{
-    struct request_header __header;
-    char __pad_12[4];
-};
-struct get_system_info_reply
-{
-    struct reply_header __header;
-    unsigned int processes;
-    unsigned int threads;
-    unsigned int handles;
-    char __pad_20[4];
-};
-
-
-
 struct suspend_process_request
 {
     struct request_header __header;
@@ -6046,6 +6031,21 @@ enum esync_type
     ESYNC_AUTO_SERVER,
     ESYNC_MANUAL_SERVER,
     ESYNC_QUEUE,
+};
+
+
+struct get_system_info_request
+{
+    struct request_header __header;
+    char __pad_12[4];
+};
+struct get_system_info_reply
+{
+    struct reply_header __header;
+    unsigned int processes;
+    unsigned int threads;
+    unsigned int handles;
+    char __pad_20[4];
 };
 
 
@@ -6359,7 +6359,6 @@ enum request
     REQ_set_job_limits,
     REQ_set_job_completion_port,
     REQ_terminate_job,
-    REQ_get_system_info,
     REQ_suspend_process,
     REQ_resume_process,
     REQ_create_esync,
@@ -6367,6 +6366,7 @@ enum request
     REQ_get_esync_fd,
     REQ_get_esync_apc_fd,
     REQ_esync_msgwait,
+    REQ_get_system_info,
     REQ_NB_REQUESTS
 };
 
@@ -6682,7 +6682,6 @@ union generic_request
     struct set_job_limits_request set_job_limits_request;
     struct set_job_completion_port_request set_job_completion_port_request;
     struct terminate_job_request terminate_job_request;
-    struct get_system_info_request get_system_info_request;
     struct suspend_process_request suspend_process_request;
     struct resume_process_request resume_process_request;
     struct create_esync_request create_esync_request;
@@ -6690,6 +6689,7 @@ union generic_request
     struct get_esync_fd_request get_esync_fd_request;
     struct get_esync_apc_fd_request get_esync_apc_fd_request;
     struct esync_msgwait_request esync_msgwait_request;
+    struct get_system_info_request get_system_info_request;
 };
 union generic_reply
 {
@@ -7003,7 +7003,6 @@ union generic_reply
     struct set_job_limits_reply set_job_limits_reply;
     struct set_job_completion_port_reply set_job_completion_port_reply;
     struct terminate_job_reply terminate_job_reply;
-    struct get_system_info_reply get_system_info_reply;
     struct suspend_process_reply suspend_process_reply;
     struct resume_process_reply resume_process_reply;
     struct create_esync_reply create_esync_reply;
@@ -7011,8 +7010,9 @@ union generic_reply
     struct get_esync_fd_reply get_esync_fd_reply;
     struct get_esync_apc_fd_reply get_esync_apc_fd_reply;
     struct esync_msgwait_reply esync_msgwait_reply;
+    struct get_system_info_reply get_system_info_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 579
+#define SERVER_PROTOCOL_VERSION 581
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */
