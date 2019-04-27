@@ -1574,13 +1574,17 @@ void sync_gl_drawable( HWND hwnd, BOOL known_child )
         release_gl_drawable( new );
         break;
     default:
+        break;
+    }
+
+    if (DC_GL_PIXMAP_WIN != old->type) {
         data = get_win_data( hwnd );
         old->fs_hack = data->fs_hack;
         if (old->fs_hack)
             TRACE( "Window %p has the fullscreen hack enabled\n", hwnd );
         release_win_data( data );
-        break;
     }
+
     release_gl_drawable( old );
 }
 

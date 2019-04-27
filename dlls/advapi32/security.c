@@ -6053,10 +6053,7 @@ static NTSTATUS combine_dacls(ACL *parent, ACL *child, ACL **result)
         ACE_HEADER *ace;
 
         if (!GetAce(child, i, (void*)&ace))
-        {
-            WARN("error obtaining new ACE\n");
             continue;
-        }
         if (!AddAce(combined, ACL_REVISION, MAXDWORD, ace, ace->AceSize))
             WARN("error adding new ACE\n");
     }
