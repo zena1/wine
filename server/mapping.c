@@ -103,6 +103,7 @@ static const struct object_ops ranges_ops =
     NULL,                      /* unlink_name */
     no_open_file,              /* open_file */
     no_kernel_obj_list,        /* get_kernel_obj_list */
+    no_alloc_handle,           /* alloc_handle */
     no_close_handle,           /* close_handle */
     ranges_destroy             /* destroy */
 };
@@ -139,6 +140,7 @@ static const struct object_ops shared_map_ops =
     NULL,                      /* unlink_name */
     no_open_file,              /* open_file */
     no_kernel_obj_list,        /* get_kernel_obj_list */
+    no_alloc_handle,           /* alloc_handle */
     no_close_handle,           /* close_handle */
     shared_map_destroy         /* destroy */
 };
@@ -196,6 +198,7 @@ static const struct object_ops mapping_ops =
     default_unlink_name,         /* unlink_name */
     no_open_file,                /* open_file */
     no_kernel_obj_list,          /* get_kernel_obj_list */
+    no_alloc_handle,             /* alloc_handle */
     fd_close_handle,             /* close_handle */
     mapping_destroy              /* destroy */
 };
@@ -635,6 +638,7 @@ static int load_clr_header( IMAGE_COR20_HEADER *hdr, size_t va, size_t size, int
 /* retrieve the mapping parameters for an executable (PE) image */
 static unsigned int get_image_params( struct mapping *mapping, file_pos_t file_size, int unix_fd )
 {
+    static const char builtin_signature[] = "Wine builtin DLL";
     static const char fakedll_signature[] = "Wine placeholder DLL";
 
     IMAGE_COR20_HEADER clr;
@@ -642,7 +646,7 @@ static unsigned int get_image_params( struct mapping *mapping, file_pos_t file_s
     struct
     {
         IMAGE_DOS_HEADER dos;
-        char buffer[sizeof(fakedll_signature)];
+        char buffer[32];
     } mz;
     struct
     {
@@ -786,7 +790,9 @@ static unsigned int get_image_params( struct mapping *mapping, file_pos_t file_s
     mapping->image.gp            = 0; /* FIXME */
     mapping->image.file_size     = file_size;
     mapping->image.loader_flags  = clr_va && clr_size;
-    if (mz_size == sizeof(mz) && !memcmp( mz.buffer, fakedll_signature, sizeof(fakedll_signature) ))
+    if (mz_size == sizeof(mz) && !memcmp( mz.buffer, builtin_signature, sizeof(builtin_signature) ))
+        mapping->image.image_flags |= IMAGE_FLAGS_WineBuiltin;
+    else if (mz_size == sizeof(mz) && !memcmp( mz.buffer, fakedll_signature, sizeof(fakedll_signature) ))
         mapping->image.image_flags |= IMAGE_FLAGS_WineFakeDll;
 
     /* load the section headers */
