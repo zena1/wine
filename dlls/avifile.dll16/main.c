@@ -183,7 +183,7 @@ HRESULT WINAPI AVIFileCreateStream16(PAVIFILE pfile, PAVISTREAM *ppavi, LPAVISTR
     asi.rcFrame.bottom        = asi16->rcFrame.bottom;
     asi.dwEditCount           = asi16->dwEditCount;
     asi.dwFormatChangeCount   = asi16->dwFormatChangeCount;
-    memcpy(&asi.szName, &asi16->szName, sizeof(asi.szName));
+    strcpy( asi.szName, asi16->szName );
 
     return AVIFileCreateStreamA(pfile, ppavi, &asi);
 }
@@ -226,7 +226,7 @@ HRESULT WINAPI AVIStreamInfo16(PAVISTREAM pstream, LPAVISTREAMINFO16 asi16, LONG
         asi16->rcFrame.bottom         = asi.rcFrame.bottom;
         asi16->dwEditCount            = asi.dwEditCount;
         asi16->dwFormatChangeCount    = asi.dwFormatChangeCount;
-        memcpy(&asi16->szName, &asi.szName, sizeof(asi.szName));
+        strcpy( asi16->szName, asi.szName );
     }
 
     return hr;
