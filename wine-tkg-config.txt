@@ -1,7 +1,7 @@
 # Last wine-tkg-git-lutris-ffxiv configuration :
 
-Wine (plain) version: 4.7.r0.g6e3f39a4c5
-Using wine-staging patchset (version 4.7.r1.gc4881140)
+Wine (plain) version: 4.8.r0.gaaf9c833ee
+Using wine-staging patchset (version 4.8.r0.g3134cc0b)
 Disabled the local Esync patchset to use Staging impl instead.
 
 Using gcc compiler
@@ -15,8 +15,7 @@ Applied CSMT toggle logic patch
 Staging overrides, if any: -W winex11.drv-mouse-coorrds
 Applied Final Fantasy XIV Launcher fix
 PBA disabled due to known issues with selected Wine version
-Applied GLSL toggle patch
 Applied Proton fullscreen hack patch
 Applied large address aware override support
+Applied your own patch /home/tk/Dev/Dev/PKGBUILDS/wine-tkg-git/GNUTLShack.mypatch
 Applied your own patch /home/tk/Dev/Dev/PKGBUILDS/wine-tkg-git/amdags.mypatch
-Applied your own patch /home/tk/Dev/Dev/PKGBUILDS/wine-tkg-git/origin-fix-hack.mypatch
