@@ -559,26 +559,40 @@ static BOOL is_old_motion_event( unsigned long serial )
 
 
 /***********************************************************************
- *		map_to_root_coords
+ *		map_event_coords
  *
- * Map the window-relative coordinates so they're relative to the root.
+ * Map the input event coordinates so they're relative to the desktop.
  */
-static POINT map_to_root_coords(HWND hwnd, Window window, int x, int y)
+static POINT map_event_coords(const XButtonEvent *event, HWND hwnd)
 {
+    POINT pt = { event->x, event->y };
     struct x11drv_win_data *data;
-    POINT pt = { x, y };
 
-    if (!(data = get_win_data(hwnd))) return pt;
-    if (window == data->whole_window)
+    if (event->window == root_window)
+        pt = root_to_virtual_screen(event->x, event->y);
+
+    if ((data = get_win_data(hwnd)))
     {
-        pt.x += data->whole_rect.left - data->client_rect.left;
-        pt.y += data->whole_rect.top - data->client_rect.top;
-    }
+        if (event->window == data->whole_window)
+        {
+            pt.x += data->whole_rect.left - data->client_rect.left;
+            pt.y += data->whole_rect.top  - data->client_rect.top;
+        }
 
-    if (GetWindowLongW(hwnd, GWL_EXSTYLE) & WS_EX_LAYOUTRTL)
-        pt.x = data->client_rect.right - data->client_rect.left - 1 - pt.x;
-    release_win_data(data);
-    MapWindowPoints(hwnd, 0, &pt, 1);
+        if (GetWindowLongW(hwnd, GWL_EXSTYLE) & WS_EX_LAYOUTRTL)
+            pt.x = data->client_rect.right - data->client_rect.left - 1 - pt.x;
+        MapWindowPoints(hwnd, 0, &pt, 1);
+
+        if (event->root == root_window && event->same_screen && data->managed)
+        {
+            /* Try to use root coordinates, unless the window is at the (0,0)
+               position on the desktop to workaround full-screen or apps like
+               vst-bridge which reparent the window, so they don't break. */
+            if (pt.x != event->x || pt.y != event->y)
+                pt = root_to_virtual_screen(event->x_root, event->y_root);
+        }
+        release_win_data(data);
+    }
 
     return pt;
 }
@@ -1610,9 +1624,7 @@ BOOL X11DRV_ButtonPress( HWND hwnd, XEvent *xev )
 
     if (buttonNum >= NB_BUTTONS) return FALSE;
 
-    pt = root_to_virtual_screen(event->x_root, event->y_root);
-    if (event->root != root_window || !event->same_screen)
-        pt = map_to_root_coords(hwnd, event->window, event->x, event->y);
+    pt = map_event_coords(event, hwnd);
 
     TRACE( "hwnd %p/%lx button %u pos %d,%d\n", hwnd, event->window, buttonNum, pt.x, pt.y );
 
@@ -1641,9 +1653,7 @@ BOOL X11DRV_ButtonRelease( HWND hwnd, XEvent *xev )
 
     if (buttonNum >= NB_BUTTONS || !button_up_flags[buttonNum]) return FALSE;
 
-    pt = root_to_virtual_screen(event->x_root, event->y_root);
-    if (event->root != root_window || !event->same_screen)
-        pt = map_to_root_coords(hwnd, event->window, event->x, event->y);
+    pt = map_event_coords(event, hwnd);
 
     TRACE( "hwnd %p/%lx button %u pos %d,%d\n", hwnd, event->window, buttonNum, pt.x, pt.y );
 
@@ -1668,9 +1678,7 @@ BOOL X11DRV_MotionNotify( HWND hwnd, XEvent *xev )
     INPUT input;
     POINT pt;
 
-    pt = root_to_virtual_screen(event->x_root, event->y_root);
-    if (event->root != root_window || !event->same_screen)
-        pt = map_to_root_coords(hwnd, event->window, event->x, event->y);
+    pt = map_event_coords((XButtonEvent*)event, hwnd);
 
     TRACE( "hwnd %p/%lx pos %d,%d is_hint %d serial %lu\n",
            hwnd, event->window, pt.x, pt.y, event->is_hint, event->serial );
@@ -1707,9 +1715,7 @@ BOOL X11DRV_EnterNotify( HWND hwnd, XEvent *xev )
     if (hwnd == x11drv_thread_data()->grab_hwnd) return FALSE;
 
     /* simulate a mouse motion event */
-    pt = root_to_virtual_screen(event->x_root, event->y_root);
-    if (event->root != root_window || !event->same_screen)
-        pt = map_to_root_coords(hwnd, event->window, event->x, event->y);
+    pt = map_event_coords((XButtonEvent*)event, hwnd);
 
     input.u.mi.dx          = pt.x;
     input.u.mi.dy          = pt.y;

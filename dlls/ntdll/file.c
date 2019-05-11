@@ -157,22 +157,6 @@ static inline ULONG get_file_attributes( const struct stat *st )
     return attr;
 }
 
-/* get the stat info and file attributes for a file (by file descriptor) */
-int fd_get_file_info( int fd, struct stat *st, ULONG *attr )
-{
-    char hexattr[11];
-    int len, ret;
-
-    *attr = 0;
-    ret = fstat( fd, st );
-    if (ret == -1) return ret;
-    *attr |= get_file_attributes( st );
-    len = xattr_fget( fd, SAMBA_XATTR_DOS_ATTRIB, hexattr, sizeof(hexattr)-1 );
-    if (len == -1) return ret;
-    *attr |= get_file_xattr( hexattr, len );
-    return ret;
-}
-
 /* set the stat info and file attributes for a file (by file descriptor) */
 NTSTATUS fd_set_file_info( int fd, ULONG attr )
 {
@@ -219,11 +203,12 @@ int get_file_info( const char *path, struct stat *st, ULONG *attr )
     {
         BOOL is_dir;
 
-        ret = stat( path, st );
-        if (ret == -1) return ret;
-        /* is a symbolic link and a directory, consider these "reparse points" */
-        if (S_ISDIR( st->st_mode )) *attr |= FILE_ATTRIBUTE_REPARSE_POINT;
-        if (FILE_DecodeSymlink( path, NULL, NULL, NULL, NULL, &is_dir) == STATUS_SUCCESS)
+        /* symbolic links always report size 0 */
+        st->st_size = 0;
+        /* symbolic links (either junction points or NT symlinks) are "reparse points" */
+        *attr |= FILE_ATTRIBUTE_REPARSE_POINT;
+        /* whether a reparse point is a file or a directory is stored inside the link target */
+        if (FILE_DecodeSymlink( path, NULL, NULL, NULL, NULL, &is_dir ) == STATUS_SUCCESS)
             st->st_mode = (st->st_mode & ~S_IFMT) | (is_dir ? S_IFDIR : S_IFREG);
     }
     *attr |= get_file_attributes( st );
@@ -237,6 +222,46 @@ int get_file_info( const char *path, struct stat *st, ULONG *attr )
         return ret;
     }
     *attr |= get_file_xattr( hexattr, len );
+    return ret;
+}
+
+/* get the stat info and file attributes for a file (by file descriptor) */
+int fd_get_file_info( HANDLE h, int fd, struct stat *st, ULONG *attr )
+{
+    ANSI_STRING unix_src;
+    struct stat tmp;
+    int ret = -1;
+
+    /* if this handle is to a symlink then we need to return information about the symlink */
+    if (server_get_unix_name( h, &unix_src ) != STATUS_SUCCESS)
+        return ret;
+    ret = get_file_info( unix_src.Buffer, st, attr);
+    RtlFreeAnsiString( &unix_src );
+    if (ret == -1) return ret;
+    /* but return the times from the file itself */
+    ret = fstat( fd, &tmp );
+    if (ret == -1) return ret;
+#if defined(HAVE_STRUCT_STAT_ST_ATIM)
+    st->st_atim = tmp.st_atim;
+#elif defined(HAVE_STRUCT_STAT_ST_ATIMESPEC)
+    st->st_atimespec = tmp.st_atimespec;
+#else
+    st->st_atime = tmp.st_atime;
+#endif
+#if defined(HAVE_STRUCT_STAT_ST_MTIM)
+    st->st_mtim = tmp.st_mtim;
+#elif defined(HAVE_STRUCT_STAT_ST_MTIMESPEC)
+    st->st_mtimespec = tmp.st_mtimespec;
+#else
+    st->st_mtime = tmp.st_mtime;
+#endif
+#if defined(HAVE_STRUCT_STAT_ST_CTIM)
+    st->st_ctim = tmp.st_ctim;
+#elif defined(HAVE_STRUCT_STAT_ST_CTIMESPEC)
+    st->st_ctimespec = tmp.st_ctimespec;
+#else
+    st->st_ctime = tmp.st_ctime;
+#endif
     return ret;
 }
 
@@ -1763,8 +1788,8 @@ NTSTATUS FILE_CreateSymlink(HANDLE handle, REPARSE_DATA_BUFFER *buffer)
 {
     BOOL src_allocated = FALSE, path_allocated = FALSE, dest_allocated = FALSE;
     BOOL nt_dest_allocated = FALSE, tempdir_created = FALSE;
+    char tmpdir[PATH_MAX], tmplink[PATH_MAX], *d;
     ANSI_STRING unix_src, unix_dest, unix_path;
-    char tmpdir[PATH_MAX], tmplink[PATH_MAX];
     char magic_dest[PATH_MAX];
     int dest_fd, needs_close;
     int relative_offset = 0;
@@ -1809,7 +1834,8 @@ NTSTATUS FILE_CreateSymlink(HANDLE handle, REPARSE_DATA_BUFFER *buffer)
         unix_path.Buffer = RtlAllocateHeap( GetProcessHeap(), 0, unix_path.MaximumLength );
         path_allocated = TRUE;
         strcpy( unix_path.Buffer, unix_src.Buffer );
-        dirname( unix_path.Buffer );
+        d = dirname( unix_path.Buffer );
+        if (d != unix_path.Buffer) strcpy( unix_path.Buffer, d );
         strcat( unix_path.Buffer, "/");
         unix_path.Length = strlen( unix_path.Buffer );
         if ((status = wine_unix_to_nt_file_name( &unix_path, &nt_path )))
@@ -1826,8 +1852,10 @@ NTSTATUS FILE_CreateSymlink(HANDLE handle, REPARSE_DATA_BUFFER *buffer)
         RtlCreateUnicodeString( &nt_dest, dest );
         nt_dest.Length = dest_len;
     }
+
     nt_dest_allocated = TRUE;
-    if ((status = wine_nt_to_unix_file_name( &nt_dest, &unix_dest, FILE_OPEN, FALSE )))
+    status = wine_nt_to_unix_file_name( &nt_dest, &unix_dest, FILE_WINE_PATH, FALSE );
+    if (status != STATUS_SUCCESS && status != STATUS_NO_SUCH_FILE)
         goto cleanup;
     dest_allocated = TRUE;
     if (flags == SYMLINK_FLAG_RELATIVE)
@@ -1870,7 +1898,8 @@ NTSTATUS FILE_CreateSymlink(HANDLE handle, REPARSE_DATA_BUFFER *buffer)
 
     /* Produce the link in a temporary location in the same folder */
     strcpy( tmpdir, unix_src.Buffer );
-    dirname( tmpdir) ;
+    d = dirname( tmpdir);
+    if (d != tmpdir) strcpy( tmpdir, d );
     strcat( tmpdir, "/.winelink.XXXXXX" );
     if (mkdtemp( tmpdir ) == NULL)
     {
@@ -1943,8 +1972,7 @@ NTSTATUS FILE_DecodeSymlink(const char *unix_src, char *unix_dest, USHORT *unix_
         tmp = RtlAllocateHeap( GetProcessHeap(), 0, len );
     else
         tmp = unix_dest;
-    ret = readlink( unix_src, tmp, len );
-    if (ret < 0)
+    if ((ret = readlink( unix_src, tmp, len )) < 0)
     {
         status = FILE_GetNtStatus();
         goto cleanup;
@@ -2044,11 +2072,13 @@ NTSTATUS FILE_GetSymlink(HANDLE handle, REPARSE_DATA_BUFFER *buffer, ULONG out_s
     if (flags == SYMLINK_FLAG_RELATIVE)
     {
         int offset = unix_src.Length + 2;
+        char *d;
         memcpy( &unix_dest.Buffer[offset], unix_dest.Buffer, unix_dest.Length );
         unix_dest.Buffer[offset+unix_dest.Length] = 0;
         memcpy( unix_dest.Buffer, unix_src.Buffer, unix_src.Length );
         unix_dest.Buffer[unix_src.Length] = 0;
-        dirname( unix_dest.Buffer );
+        d = dirname( unix_dest.Buffer );
+        if (d != unix_dest.Buffer) strcpy( unix_dest.Buffer, d );
         strcat( unix_dest.Buffer, "/" );
         path_len = strlen( unix_dest.Buffer );
         memmove( &unix_dest.Buffer[path_len], &unix_dest.Buffer[offset], unix_dest.Length + 1 );
@@ -2128,7 +2158,7 @@ cleanup:
  */
 NTSTATUS FILE_RemoveSymlink(HANDLE handle, REPARSE_GUID_DATA_BUFFER *buffer)
 {
-    char tmpdir[PATH_MAX], tmpfile[PATH_MAX];
+    char tmpdir[PATH_MAX], tmpfile[PATH_MAX], *d;
     BOOL tempdir_created = FALSE;
     int dest_fd, needs_close;
     ANSI_STRING unix_name;
@@ -2152,7 +2182,8 @@ NTSTATUS FILE_RemoveSymlink(HANDLE handle, REPARSE_GUID_DATA_BUFFER *buffer)
     }
     is_dir = S_ISDIR(st.st_mode);
     strcpy( tmpdir, unix_name.Buffer );
-    dirname( tmpdir) ;
+    d = dirname( tmpdir);
+    if (d != tmpdir) strcpy( tmpdir, d );
     strcat( tmpdir, "/.winelink.XXXXXX" );
     if (mkdtemp( tmpdir ) == NULL)
     {
@@ -2925,7 +2956,7 @@ NTSTATUS WINAPI NtQueryInformationFile( HANDLE hFile, PIO_STATUS_BLOCK io,
     switch (class)
     {
     case FileBasicInformation:
-        if (fd_get_file_info( fd, &st, &attr ) == -1)
+        if (fd_get_file_info( hFile, fd, &st, &attr ) == -1)
             io->u.Status = FILE_GetNtStatus();
         else if (!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode))
             io->u.Status = STATUS_INVALID_INFO_CLASS;
@@ -2936,7 +2967,7 @@ NTSTATUS WINAPI NtQueryInformationFile( HANDLE hFile, PIO_STATUS_BLOCK io,
         {
             FILE_STANDARD_INFORMATION *info = ptr;
 
-            if (fd_get_file_info( fd, &st, &attr ) == -1) io->u.Status = FILE_GetNtStatus();
+            if (fd_get_file_info( hFile, fd, &st, &attr ) == -1) io->u.Status = FILE_GetNtStatus();
             else
             {
                 fill_file_info( &st, attr, info, class );
@@ -2953,7 +2984,7 @@ NTSTATUS WINAPI NtQueryInformationFile( HANDLE hFile, PIO_STATUS_BLOCK io,
         }
         break;
     case FileInternalInformation:
-        if (fd_get_file_info( fd, &st, &attr ) == -1) io->u.Status = FILE_GetNtStatus();
+        if (fd_get_file_info( hFile, fd, &st, &attr ) == -1) io->u.Status = FILE_GetNtStatus();
         else fill_file_info( &st, attr, ptr, class );
         break;
     case FileEaInformation:
@@ -2963,7 +2994,7 @@ NTSTATUS WINAPI NtQueryInformationFile( HANDLE hFile, PIO_STATUS_BLOCK io,
         }
         break;
     case FileEndOfFileInformation:
-        if (fd_get_file_info( fd, &st, &attr ) == -1) io->u.Status = FILE_GetNtStatus();
+        if (fd_get_file_info( hFile, fd, &st, &attr ) == -1) io->u.Status = FILE_GetNtStatus();
         else fill_file_info( &st, attr, ptr, class );
         break;
     case FileAllInformation:
@@ -2971,7 +3002,7 @@ NTSTATUS WINAPI NtQueryInformationFile( HANDLE hFile, PIO_STATUS_BLOCK io,
             FILE_ALL_INFORMATION *info = ptr;
             ANSI_STRING unix_name;
 
-            if (fd_get_file_info( fd, &st, &attr ) == -1) io->u.Status = FILE_GetNtStatus();
+            if (fd_get_file_info( hFile, fd, &st, &attr ) == -1) io->u.Status = FILE_GetNtStatus();
             else if (!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode))
                 io->u.Status = STATUS_INVALID_INFO_CLASS;
             else if (!(io->u.Status = server_get_unix_name( hFile, &unix_name )))
@@ -3079,7 +3110,7 @@ NTSTATUS WINAPI NtQueryInformationFile( HANDLE hFile, PIO_STATUS_BLOCK io,
         }
         break;
     case FileIdInformation:
-        if (fd_get_file_info( fd, &st, &attr ) == -1) io->u.Status = FILE_GetNtStatus();
+        if (fd_get_file_info( hFile, fd, &st, &attr ) == -1) io->u.Status = FILE_GetNtStatus();
         else
         {
             FILE_ID_INFORMATION *info = ptr;

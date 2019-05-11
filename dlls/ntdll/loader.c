@@ -183,7 +183,7 @@ static unsigned int unload_trace_seq;
 static void module_push_unload_trace( const LDR_MODULE *ldr )
 {
     RTL_UNLOAD_EVENT_TRACE *ptr = &unload_traces[unload_trace_seq];
-    unsigned int len = min(sizeof(ptr->ImageName), ldr->BaseDllName.Length);
+    unsigned int len = min(sizeof(ptr->ImageName) - sizeof(WCHAR), ldr->BaseDllName.Length);
 
     ptr->BaseAddress = ldr->BaseAddress;
     ptr->SizeOfImage = ldr->SizeOfImage;
@@ -1977,7 +1977,13 @@ static void load_builtin_callback( void *module, const char *filename )
     SERVER_END_REQ;
 
     /* setup relay debugging entry points */
-    if (TRACE_ON(relay)) RELAY_SetupDLL( module );
+#ifdef __aarch64__
+    /* Always enable relay entry points on aarch64, to allow restoring
+     * the TEB to x18. */
+#else
+    if (TRACE_ON(relay))
+#endif
+        RELAY_SetupDLL( module );
 }
 
 
