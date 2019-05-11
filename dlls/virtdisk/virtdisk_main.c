@@ -70,5 +70,12 @@ DWORD WINAPI OpenVirtualDisk(VIRTUAL_STORAGE_TYPE *type, const WCHAR *path, VIRT
                              OPEN_VIRTUAL_DISK_PARAMETERS *param, HANDLE *handle)
 {
     FIXME("(%p, %s, %d, 0x%x, %p, %p): stub\n", type, wine_dbgstr_w(path), mask, flags, param, handle);
+
+    if (!type || !path || (mask & ~VIRTUAL_DISK_ACCESS_ALL) || (flags & ~(OPEN_VIRTUAL_DISK_FLAG_NO_PARENTS | OPEN_VIRTUAL_DISK_FLAG_BLANK_FILE)) || !param)
+        return ERROR_INVALID_PARAMETER;
+
+    if (param->Version != OPEN_VIRTUAL_DISK_VERSION_1)
+        return ERROR_INVALID_PARAMETER;
+
     return ERROR_CALL_NOT_IMPLEMENTED;
 }

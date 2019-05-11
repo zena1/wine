@@ -747,8 +747,12 @@ BOOL WINAPI RegisterTouchHitTestingWindow(HWND hwnd, ULONG value)
 BOOL WINAPI GetPointerType(UINT32 id, POINTER_INPUT_TYPE *type)
 {
     FIXME("(%d %p): stub\n", id, type);
-    if(!type)
+
+    if(!id || !type)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
         return FALSE;
+    }
 
     *type = PT_MOUSE;
     return TRUE;

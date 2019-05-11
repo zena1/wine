@@ -1298,7 +1298,7 @@ NTSTATUS WINAPI D3DKMTCloseAdapter( const D3DKMT_CLOSEADAPTER *desc )
 }
 
 /******************************************************************************
- *		D3DKMTCloseAdapter [GDI32.@]
+ *		D3DKMTQueryStatistics [GDI32.@]
  */
 NTSTATUS WINAPI D3DKMTQueryStatistics(D3DKMT_QUERYSTATISTICS *stats)
 {
