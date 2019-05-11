@@ -106,6 +106,10 @@
 #include "winternl.h"
 #include "winioctl.h"
 
+#if !defined(O_SYMLINK) && defined(O_PATH)
+# define O_SYMLINK (O_NOFOLLOW | O_PATH)
+#endif
+
 #if defined(HAVE_SYS_EPOLL_H) && defined(HAVE_EPOLL_CREATE)
 # include <sys/epoll.h>
 # define USE_EPOLL
@@ -1899,6 +1903,13 @@ struct fd *open_fd( struct fd *root, const char *name, int flags, mode_t *mode, 
             if ((access & FILE_UNIX_WRITE_ACCESS) || (flags & O_CREAT))
                 fd->unix_fd = open( name, O_RDONLY | (flags & ~(O_TRUNC | O_CREAT | O_EXCL)), *mode );
         }
+#if defined(O_SYMLINK)
+        /* if we tried to open a dangling symlink then try again with O_SYMLINK */
+        else if (errno == ENOENT)
+        {
+            fd->unix_fd = open( name, rw_mode | O_SYMLINK | (flags & ~O_TRUNC), *mode );
+        }
+#endif
         else if (errno == EACCES)
         {
             /* try to change permissions temporarily to open a file descriptor */

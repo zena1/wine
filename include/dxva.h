@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 Michael Müller for Pipelight
+ * Copyright 2015 Michael Müller
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -97,9 +97,9 @@ typedef struct
         {
             UCHAR Index7Bits     : 7;
             UCHAR AssociatedFlag : 1;
-        };
+        } DUMMYSTRUCTNAME;
         UCHAR bPicEntry;
-    };
+    } DUMMYUNIONNAME;
 } DXVA_PicEntry_H264;
 
 typedef struct
@@ -126,9 +126,9 @@ typedef struct
             USHORT transform_8x8_mode_flag          : 1;
             USHORT MinLumaBipredSize8x8Flag         : 1;
             USHORT IntraPicFlag                     : 1;
-        };
+        } DUMMYSTRUCTNAME;
         USHORT wBitFields;
-    };
+    } DUMMYUNIONNAME;
     UCHAR bit_depth_luma_minus8;
     UCHAR bit_depth_chroma_minus8;
     USHORT Reserved16Bits;
