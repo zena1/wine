@@ -645,7 +645,7 @@ static HRESULT WINAPI PngDecoder_Initialize(IWICBitmapDecoder *iface, IStream *p
     bit_depth = ppng_get_bit_depth(This->png_ptr, This->info_ptr);
 
     /* PNGs with bit-depth greater than 8 are network byte order. Windows does not expect this. */
-    if (bit_depth > 8) 
+    if (bit_depth > 8)
         ppng_set_swap(This->png_ptr);
 
     /* check for color-keyed alpha */

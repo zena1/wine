@@ -2344,8 +2344,8 @@ DWORD WINAPI AllocateAndGetTcpExTableFromStack( VOID **ppTcpTable, BOOL bOrder,
     TRACE("table %p, bOrder %d, heap %p, flags 0x%08x, family %u\n",
           ppTcpTable, bOrder, heap, flags, family);
 
-    if (!ppTcpTable) return ERROR_INVALID_PARAMETER;
-    if (!family) return ERROR_INVALID_PARAMETER;
+    if (!ppTcpTable || !family)
+        return ERROR_INVALID_PARAMETER;
 
     if (family != WS_AF_INET)
     {
