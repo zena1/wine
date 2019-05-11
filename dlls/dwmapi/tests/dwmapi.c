@@ -66,7 +66,7 @@ static void test_isdwmenabled(void)
         if (winetest_debug > 1)
             trace("returning %x\n", res);
 
-        ret = -1;       
+        ret = -1;
         res = pDwmIsCompositionEnabled(&ret);
         ok(res == S_OK && ret == FALSE, "got %x  and %d\n", res, ret);
     }

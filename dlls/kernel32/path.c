@@ -2197,8 +2197,8 @@ BOOLEAN WINAPI CreateSymbolicLinkW(LPCWSTR link, LPCWSTR target, DWORD flags)
         target_path_len = nt_path.Length / sizeof(WCHAR);
         len = target_path_len + (strlenW( target ) + 1);
         target_path = HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY, len*sizeof(WCHAR) );
-        lstrcpynW( target_path, nt_path.Buffer, nt_path.Length );
-        target_path[nt_path.Length/sizeof(WCHAR)] = 0;
+        lstrcpynW( target_path, nt_path.Buffer, target_path_len+1 );
+        target_path[target_path_len+1] = 0;
         lstrcatW( target_path, target );
         RtlFreeUnicodeString( &nt_path );
     }
@@ -2234,10 +2234,10 @@ BOOLEAN WINAPI CreateSymbolicLinkW(LPCWSTR link, LPCWSTR target, DWORD flags)
     RtlFreeUnicodeString( &nt_name );
     bret = DeviceIoControl( hlink, FSCTL_SET_REPARSE_POINT, (LPVOID)buffer, buffer_size, NULL, 0,
                             &dwret, 0 );
-    CloseHandle( hlink );
     HeapFree( GetProcessHeap(), 0, buffer );
 
 cleanup:
+    CloseHandle( hlink );
     if (!bret)
     {
         if (is_dir)
