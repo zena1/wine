@@ -6177,19 +6177,22 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
     {
         unsigned int bind_flags = 0;
 
-        if (desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP)
+        if (!(desc->dwFlags & DDSD_LPSURFACE))
         {
-            bind_flags |= WINED3D_BIND_SHADER_RESOURCE;
-        }
-        else if (desc->ddsCaps.dwCaps & DDSCAPS_TEXTURE)
-        {
-            bind_flags |= WINED3D_BIND_SHADER_RESOURCE;
-        }
+            if (desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP)
+            {
+                bind_flags |= WINED3D_BIND_SHADER_RESOURCE;
+            }
+            else if (desc->ddsCaps.dwCaps & DDSCAPS_TEXTURE)
+            {
+                bind_flags |= WINED3D_BIND_SHADER_RESOURCE;
+            }
 
-        if (desc->ddsCaps.dwCaps & DDSCAPS_ZBUFFER)
-            bind_flags |= WINED3D_BIND_DEPTH_STENCIL;
-        else if (desc->ddsCaps.dwCaps & DDSCAPS_3DDEVICE)
-            bind_flags |= WINED3D_BIND_RENDER_TARGET;
+            if (desc->ddsCaps.dwCaps & DDSCAPS_ZBUFFER)
+                bind_flags |= WINED3D_BIND_DEPTH_STENCIL;
+            else if (desc->ddsCaps.dwCaps & DDSCAPS_3DDEVICE)
+                bind_flags |= WINED3D_BIND_RENDER_TARGET;
+        }
         /*
          * The ddraw RGB device allows to use system memory surfaces as rendering target.
          * This does not cause problems because the RGB device does software rasterization

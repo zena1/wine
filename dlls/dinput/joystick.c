@@ -28,6 +28,7 @@
 
 #include <stdio.h>
 
+#include "device_private.h"
 #include "joystick_private.h"
 #include "wine/debug.h"
 #include "winreg.h"
@@ -74,6 +75,16 @@ DWORD typeFromGUID(REFGUID guid)
         WARN("GUID (%s) is not a known force type\n", _dump_dinput_GUID(guid));
         return 0;
     }
+}
+
+DWORD get_device_type(DWORD version, BOOL is_joystick)
+{
+    if (is_joystick)
+        return version >= 0x0800 ? DI8DEVTYPE_JOYSTICK | (DI8DEVTYPEJOYSTICK_STANDARD << 8) :
+                    DIDEVTYPE_JOYSTICK | (DIDEVTYPEJOYSTICK_TRADITIONAL << 8);
+
+    return version >= 0x0800 ? DI8DEVTYPE_GAMEPAD | (DI8DEVTYPEJOYSTICK_STANDARD << 8) :
+                DIDEVTYPE_JOYSTICK | (DIDEVTYPEJOYSTICK_GAMEPAD << 8);
 }
 
 static void _dump_DIEFFECT_flags(DWORD dwFlags)
@@ -472,7 +483,7 @@ HRESULT WINAPI JoystickWGenericImpl_GetCapabilities(LPDIRECTINPUTDEVICE8W iface,
     JoystickGenericImpl *This = impl_from_IDirectInputDevice8W(iface);
     int size;
 
-    TRACE("%p->(%p)\n",iface,lpDIDevCaps);
+    TRACE("%p->(%p)\n",This,lpDIDevCaps);
 
     if (lpDIDevCaps == NULL) {
         WARN("invalid pointer\n");
@@ -555,7 +566,7 @@ HRESULT WINAPI JoystickWGenericImpl_GetProperty(LPDIRECTINPUTDEVICE8W iface, REF
 {
     JoystickGenericImpl *This = impl_from_IDirectInputDevice8W(iface);
 
-    TRACE("(%p,%s,%p)\n", iface, debugstr_guid(rguid), pdiph);
+    TRACE("(%p,%s,%p)\n", This, debugstr_guid(rguid), pdiph);
 
     if (TRACE_ON(dinput))
         _dump_DIPROPHEADER(pdiph);
@@ -638,7 +649,7 @@ HRESULT WINAPI JoystickAGenericImpl_GetDeviceInfo(
     DIPROPDWORD pd;
     DWORD index = 0;
 
-    TRACE("(%p,%p)\n", iface, pdidi);
+    TRACE("(%p,%p)\n", This, pdidi);
 
     if (pdidi == NULL) {
         WARN("invalid pointer\n");
@@ -782,8 +793,25 @@ HRESULT WINAPI JoystickWGenericImpl_BuildActionMap(LPDIRECTINPUTDEVICE8W iface,
     JoystickGenericImpl *This = impl_from_IDirectInputDevice8W(iface);
     unsigned int i, j;
     BOOL has_actions = FALSE;
+    WCHAR username[MAX_PATH];
+    DWORD username_size = MAX_PATH;
+    BOOL load_success = FALSE;
 
-    FIXME("(%p)->(%p,%s,%08x): semi-stub !\n", iface, lpdiaf, debugstr_w(lpszUserName), dwFlags);
+    FIXME("(%p)->(%p,%s,%08x): semi-stub !\n", This, lpdiaf, debugstr_w(lpszUserName), dwFlags);
+
+    /* Unless asked the contrary by these flags, try to load a previous mapping */
+    if (!(dwFlags & DIDBAM_HWDEFAULTS))
+    {
+        /* Retrieve logged user name if necessary */
+        if (lpszUserName == NULL)
+            GetUserNameW(username, &username_size);
+        else
+            lstrcpynW(username, lpszUserName, MAX_PATH);
+
+        load_success = load_mapping_settings((IDirectInputDeviceImpl *) This, lpdiaf, username);
+    }
+
+    if (load_success) return DI_OK;
 
     for (i=0; i < lpdiaf->dwNumActions; i++)
     {
@@ -861,7 +889,7 @@ HRESULT WINAPI JoystickWGenericImpl_SetActionMap(LPDIRECTINPUTDEVICE8W iface,
 {
     JoystickGenericImpl *This = impl_from_IDirectInputDevice8W(iface);
 
-    FIXME("(%p)->(%p,%s,%08x): semi-stub !\n", iface, lpdiaf, debugstr_w(lpszUserName), dwFlags);
+    FIXME("(%p)->(%p,%s,%08x): semi-stub !\n", This, lpdiaf, debugstr_w(lpszUserName), dwFlags);
 
     return _set_action_map(iface, lpdiaf, lpszUserName, dwFlags, This->base.data_format.wine_df);
 }
@@ -888,6 +916,8 @@ HRESULT WINAPI JoystickAGenericImpl_SetActionMap(LPDIRECTINPUTDEVICE8A iface,
     }
 
     hr = JoystickWGenericImpl_SetActionMap(&This->base.IDirectInputDevice8W_iface, &diafW, lpszUserNameW, dwFlags);
+
+    lpdiaf->dwCRC = diafW.dwCRC;
 
     HeapFree(GetProcessHeap(), 0, diafW.rgoAction);
     HeapFree(GetProcessHeap(), 0, lpszUserNameW);
