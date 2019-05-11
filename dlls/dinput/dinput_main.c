@@ -467,9 +467,10 @@ static HRESULT WINAPI IDirectInputAImpl_EnumDevices(
 
     for (i = 0; i < ARRAY_SIZE(dinput_devices); i++) {
         if (!dinput_devices[i]->enum_deviceA) continue;
+
+        TRACE(" Checking device %u ('%s')\n", i, dinput_devices[i]->name);
         for (j = 0, r = S_OK; SUCCEEDED(r); j++) {
             devInstance.dwSize = sizeof(devInstance);
-            TRACE("  - checking device %u ('%s')\n", i, dinput_devices[i]->name);
             r = dinput_devices[i]->enum_deviceA(dwDevType, dwFlags, &devInstance, This->dwVersion, j);
             if (r == S_OK)
                 if (enum_callback_wrapper(lpCallback, &devInstance, pvRef) == DIENUM_STOP)
@@ -566,53 +567,39 @@ static HRESULT WINAPI IDirectInputAImpl_QueryInterface(LPDIRECTINPUT7A iface, RE
     if (!riid || !ppobj)
         return E_POINTER;
 
+    *ppobj = NULL;
+
+#if DIRECTINPUT_VERSION == 0x0700
     if (IsEqualGUID( &IID_IUnknown, riid ) ||
-        IsEqualGUID( &IID_IDirectInputA,  riid ) ||
-        IsEqualGUID( &IID_IDirectInput2A, riid ) ||
-        IsEqualGUID( &IID_IDirectInput7A, riid ))
-    {
+         IsEqualGUID( &IID_IDirectInputA,  riid ) ||
+         IsEqualGUID( &IID_IDirectInput2A, riid ) ||
+         IsEqualGUID( &IID_IDirectInput7A, riid ))
         *ppobj = &This->IDirectInput7A_iface;
-        IUnknown_AddRef( (IUnknown*)*ppobj );
-
-        return DI_OK;
-    }
-
-    if (IsEqualGUID( &IID_IDirectInputW,  riid ) ||
-        IsEqualGUID( &IID_IDirectInput2W, riid ) ||
-        IsEqualGUID( &IID_IDirectInput7W, riid ))
-    {
+    else if (IsEqualGUID( &IID_IDirectInputW,  riid ) ||
+             IsEqualGUID( &IID_IDirectInput2W, riid ) ||
+             IsEqualGUID( &IID_IDirectInput7W, riid ))
         *ppobj = &This->IDirectInput7W_iface;
-        IUnknown_AddRef( (IUnknown*)*ppobj );
 
-        return DI_OK;
-    }
-
-    if (IsEqualGUID( &IID_IDirectInput8A, riid ))
-    {
+#else
+    if (IsEqualGUID( &IID_IUnknown, riid ) ||
+        IsEqualGUID( &IID_IDirectInput8A, riid ))
         *ppobj = &This->IDirectInput8A_iface;
-        IUnknown_AddRef( (IUnknown*)*ppobj );
 
-        return DI_OK;
-    }
-
-    if (IsEqualGUID( &IID_IDirectInput8W, riid ))
-    {
+    else if (IsEqualGUID( &IID_IDirectInput8W, riid ))
         *ppobj = &This->IDirectInput8W_iface;
-        IUnknown_AddRef( (IUnknown*)*ppobj );
 
-        return DI_OK;
-    }
+#endif
 
     if (IsEqualGUID( &IID_IDirectInputJoyConfig8, riid ))
-    {
         *ppobj = &This->IDirectInputJoyConfig8_iface;
-        IUnknown_AddRef( (IUnknown*)*ppobj );
 
+    if(*ppobj)
+    {
+        IUnknown_AddRef( (IUnknown*)*ppobj );
         return DI_OK;
     }
 
-    FIXME( "Unsupported interface: %s\n", debugstr_guid(riid));
-    *ppobj = NULL;
+    WARN( "Unsupported interface: %s\n", debugstr_guid(riid));
     return E_NOINTERFACE;
 }
 
@@ -690,7 +677,7 @@ static HRESULT WINAPI IDirectInputAImpl_Initialize(LPDIRECTINPUT7A iface, HINSTA
 {
     IDirectInputImpl *This = impl_from_IDirectInput7A( iface );
 
-    TRACE("(%p)->(%p, 0x%04x)\n", iface, hinst, version);
+    TRACE("(%p)->(%p, 0x%04x)\n", This, hinst, version);
 
     if (!hinst)
         return DIERR_INVALIDPARAM;
@@ -947,7 +934,7 @@ static HRESULT WINAPI IDirectInput8AImpl_Initialize(LPDIRECTINPUT8A iface, HINST
 {
     IDirectInputImpl *This = impl_from_IDirectInput8A( iface );
 
-    TRACE("(%p)->(%p, 0x%04x)\n", iface, hinst, version);
+    TRACE("(%p)->(%p, 0x%04x)\n", This, hinst, version);
 
     if (!hinst)
         return DIERR_INVALIDPARAM;
@@ -1264,9 +1251,34 @@ static HRESULT WINAPI IDirectInput8AImpl_ConfigureDevices(
 
     /* Copy parameters */
     diCDParamsW.dwSize = sizeof(DICONFIGUREDEVICESPARAMSW);
+    diCDParamsW.dwcUsers = lpdiCDParams->dwcUsers;
     diCDParamsW.dwcFormats = lpdiCDParams->dwcFormats;
     diCDParamsW.lprgFormats = &diafW;
     diCDParamsW.hwnd = lpdiCDParams->hwnd;
+    diCDParamsW.lptszUserNames = NULL;
+
+    if (lpdiCDParams->lptszUserNames) {
+        char *start = lpdiCDParams->lptszUserNames;
+        WCHAR *to = NULL;
+        int total_len = 0;
+        for (i = 0; i < lpdiCDParams->dwcUsers; i++)
+        {
+            char *end = start + 1;
+            int len;
+            while (*(end++));
+            len = MultiByteToWideChar(CP_ACP, 0, start, end - start, NULL, 0);
+            total_len += len + 2; /* length of string and two null char */
+            if (to)
+                to = HeapReAlloc(GetProcessHeap(), 0, to, sizeof(WCHAR) * total_len);
+            else
+                to = HeapAlloc(GetProcessHeap(), 0, sizeof(WCHAR) * total_len);
+
+            MultiByteToWideChar(CP_ACP, 0, start, end - start, to + (total_len - len - 2), len);
+            to[total_len] = 0;
+            to[total_len - 1] = 0;
+        }
+        diCDParamsW.lptszUserNames = to;
+    }
 
     diafW.rgoAction = HeapAlloc(GetProcessHeap(), 0, sizeof(DIACTIONW)*lpdiCDParams->lprgFormats->dwNumActions);
     _copy_diactionformatAtoW(&diafW, lpdiCDParams->lprgFormats);
@@ -1293,6 +1305,8 @@ static HRESULT WINAPI IDirectInput8AImpl_ConfigureDevices(
         HeapFree(GetProcessHeap(), 0, (void*) diafW.rgoAction[i].u.lptszActionName);
 
     HeapFree(GetProcessHeap(), 0, diafW.rgoAction);
+
+    HeapFree(GetProcessHeap(), 0, (void*) diCDParamsW.lptszUserNames);
 
     return hr;
 }
