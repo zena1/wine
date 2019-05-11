@@ -3071,10 +3071,25 @@ static void test_GetPointerType(void)
 {
     BOOL ret;
     POINTER_INPUT_TYPE type = -1;
+    UINT id = 0;
 
-    ret = pGetPointerType(1, &type);
-    ok(ret, "GetPointerType failed, got type %d for 1\n", type );
-    ok(type != -1, " type %d\n", type );
+    SetLastError(0xdeadbeef);
+    ret = pGetPointerType(id, NULL);
+    ok(!ret, "GetPointerType should have failed.\n");
+    ok(GetLastError() == ERROR_INVALID_PARAMETER,
+       "expected error ERROR_INVALID_PARAMETER, got %u.\n", GetLastError());
+
+    SetLastError(0xdeadbeef);
+    ret = pGetPointerType(id, &type);
+    ok(GetLastError() == ERROR_INVALID_PARAMETER,
+       "expected error ERROR_INVALID_PARAMETER, got %u.\n", GetLastError());
+    ok(!ret, "GetPointerType failed, got type %d for %u.\n", type, id );
+    ok(type == -1, " type %d\n", type );
+
+    id = 1;
+    ret = pGetPointerType(id, &type);
+    ok(ret, "GetPointerType failed, got type %d for %u.\n", type, id );
+    ok(type == PT_MOUSE, " type %d\n", type );
 }
 
 START_TEST(input)
