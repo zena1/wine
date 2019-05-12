@@ -203,6 +203,7 @@ int get_file_info( const char *path, struct stat *st, ULONG *attr )
     {
         BOOL is_dir;
 
+        stat(path, st);
         /* symbolic links always report size 0 */
         st->st_size = 0;
         /* symbolic links (either junction points or NT symlinks) are "reparse points" */
