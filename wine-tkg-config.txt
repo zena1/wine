@@ -12,6 +12,7 @@ Applied Fullscreen compositor bypass patch
 Applied steam crossover hack
 server-send_hardware_message staging patchset wasn't found, so _server_send_hwmsg_disable setting was ignored
 Applied CSMT toggle logic patch
+Applied your own patch /home/tk/Dev/Dev/PKGBUILDS/wine-tkg-git/staging4.8_symlinkfix.mystagingpatch
 Staging overrides, if any: -W winex11.drv-mouse-coorrds
 Applied The Sims 2 fix
 PBA disabled due to known issues with selected Wine version
@@ -19,3 +20,4 @@ Applied Proton fullscreen hack patch
 Applied large address aware override support
 Applied your own patch /home/tk/Dev/Dev/PKGBUILDS/wine-tkg-git/GNUTLShack.mypatch
 Applied your own patch /home/tk/Dev/Dev/PKGBUILDS/wine-tkg-git/amdags.mypatch
+Please don't report bugs about it on winehq.org and use https://github.com/Tk-Glitch/PKGBUILDS/issues instead.
