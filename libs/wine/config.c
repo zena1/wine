@@ -729,6 +729,8 @@ wine_patch_data[] =
     { "Daniel Jelinski", "wine.inf: Add registry keys for Windows Performance Library.", 1 },
     { "Daniel Wendt", "gdi32: Fix for rotated Arc, ArcTo, Chord and Pie drawing problem.", 1 },
     { "Daniel Wendt", "gdi32: Fix for rotated ellipse.", 1 },
+    { "Dmitry Timoshkov", "comctl32: Paint 32-bpp bitmaps with an alpha channel using GdiAlphaBlend.", 1 },
+    { "Dmitry Timoshkov", "comctl32: Switch to using a structure for extra storage.", 1 },
     { "Dmitry Timoshkov", "comdlg32: Postpone setting ofn->lpstrFileTitle to work around an application bug.", 1 },
     { "Dmitry Timoshkov", "gdiplus/tests: Add some tests for loading TIFF images in various color formats.", 1 },
     { "Dmitry Timoshkov", "gdiplus: Add support for more image color formats.", 1 },
