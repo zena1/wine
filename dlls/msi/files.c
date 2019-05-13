@@ -290,6 +290,8 @@ static BOOL file_hash_matches( MSIPACKAGE *package, MSIFILE *file )
 
 static msi_file_state calculate_install_state( MSIPACKAGE *package, MSIFILE *file )
 {
+    return msifs_overwrite;
+
     MSICOMPONENT *comp = file->Component;
     VS_FIXEDFILEINFO *file_version;
     WCHAR *font_version;

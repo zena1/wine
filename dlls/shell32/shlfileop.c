@@ -826,6 +826,7 @@ int WINAPI SHCreateDirectoryExW(HWND hWnd, LPCWSTR path, LPSECURITY_ATTRIBUTES s
 
 	  if (ret && hWnd &&
 	      ret != ERROR_CANCELLED &&
+	      ret != ERROR_FILE_EXISTS &&
 	      ret != ERROR_ALREADY_EXISTS)
 	  {
 	    /* We failed and should show a dialog box */

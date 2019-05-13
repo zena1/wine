@@ -281,18 +281,13 @@ static VkResult X11DRV_vkCreateWin32SurfaceKHR(VkInstance instance,
     VkResult res;
     VkXlibSurfaceCreateInfoKHR create_info_host;
     struct wine_vk_surface *x11_surface, *prev;
+    struct x11drv_win_data *parent_data, *child_data;
+    HWND parent;
 
     TRACE("%p %p %p %p\n", instance, create_info, allocator, surface);
 
     if (allocator)
         FIXME("Support for allocation callbacks not implemented yet\n");
-
-    /* TODO: support child window rendering. */
-    if (GetAncestor(create_info->hwnd, GA_PARENT) != GetDesktopWindow())
-    {
-        FIXME("Application requires child window rendering, which is not implemented yet!\n");
-        return VK_ERROR_INCOMPATIBLE_DRIVER;
-    }
 
     x11_surface = heap_alloc_zero(sizeof(*x11_surface));
     if (!x11_surface)
@@ -308,6 +303,18 @@ static VkResult X11DRV_vkCreateWin32SurfaceKHR(VkInstance instance,
         /* VK_KHR_win32_surface only allows out of host and device memory as errors. */
         res = VK_ERROR_OUT_OF_HOST_MEMORY;
         goto err;
+    }
+
+    parent = GetAncestor(create_info->hwnd, GA_PARENT);
+    /* child window rendering */
+    if (parent != GetDesktopWindow())
+    {
+        parent_data = get_win_data(parent);
+        child_data = get_win_data(create_info->hwnd);
+        if (parent_data->client_window)
+            XReparentWindow(gdi_display, child_data->client_window, parent_data->client_window, 0, 0);
+        else
+            XReparentWindow(gdi_display, child_data->client_window, parent_data->whole_window, 0, 0);
     }
 
     create_info_host.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
@@ -554,6 +561,39 @@ static VkResult X11DRV_vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR *
     return res;
 }
 
+static VkBool32 X11DRV_query_fs_hack(VkExtent2D *real_sz, VkExtent2D *user_sz,
+        VkRect2D *dst_blit)
+{
+    if(fs_hack_enabled()){
+        POINT real_res = fs_hack_real_mode();
+        POINT user_res = fs_hack_current_mode();
+        POINT scaled = fs_hack_get_scaled_screen_size();
+        POINT scaled_origin = {0, 0};
+
+        fs_hack_user_to_real(&scaled_origin);
+
+        if(real_sz){
+            real_sz->width = real_res.x;
+            real_sz->height = real_res.y;
+        }
+
+        if(user_sz){
+            user_sz->width = user_res.x;
+            user_sz->height = user_res.y;
+        }
+
+        if(dst_blit){
+            dst_blit->offset.x = scaled_origin.x;
+            dst_blit->offset.y = scaled_origin.y;
+            dst_blit->extent.width = scaled.x;
+            dst_blit->extent.height = scaled.y;
+        }
+
+        return VK_TRUE;
+    }
+    return VK_FALSE;
+}
+
 static const struct vulkan_funcs vulkan_funcs =
 {
     X11DRV_vkCreateInstance,
@@ -574,6 +614,7 @@ static const struct vulkan_funcs vulkan_funcs =
     X11DRV_vkGetPhysicalDeviceWin32PresentationSupportKHR,
     X11DRV_vkGetSwapchainImagesKHR,
     X11DRV_vkQueuePresentKHR,
+    X11DRV_query_fs_hack,
 };
 
 static void *X11DRV_get_vk_device_proc_addr(const char *name)

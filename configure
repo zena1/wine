@@ -905,6 +905,7 @@ enable_adsldp
 enable_adsldpc
 enable_advapi32
 enable_advpack
+enable_amd_ags_x64
 enable_amsi
 enable_amstream
 enable_api_ms_win_appmodel_identity_l1_1_0
@@ -15474,7 +15475,7 @@ if ${FAUDIO_LIBS:+false} :; then :
 fi
 fi
 
-FAUDIO_LIBS=${FAUDIO_LIBS:-"-lFAudio"}
+FAUDIO_LIBS=${FAUDIO_LIBS:-"-lFAudio -lavcodec -lavutil -lswresample"}
 $as_echo "$as_me:${as_lineno-$LINENO}: faudio cflags: $FAUDIO_CFLAGS" >&5
 $as_echo "$as_me:${as_lineno-$LINENO}: faudio libs: $FAUDIO_LIBS" >&5
 ac_save_CPPFLAGS=$CPPFLAGS
@@ -20616,6 +20617,7 @@ wine_fn_config_makefile dlls/advapi32 enable_advapi32
 wine_fn_config_makefile dlls/advapi32/tests enable_tests
 wine_fn_config_makefile dlls/advpack enable_advpack
 wine_fn_config_makefile dlls/advpack/tests enable_tests
+wine_fn_config_makefile dlls/amd_ags_x64 enable_amd_ags_x64
 wine_fn_config_makefile dlls/amsi enable_amsi
 wine_fn_config_makefile dlls/amstream enable_amstream
 wine_fn_config_makefile dlls/amstream/tests enable_tests
@@ -21345,14 +21347,6 @@ wine_fn_config_makefile dlls/ntoskrnl.exe enable_ntoskrnl_exe
 wine_fn_config_makefile dlls/ntoskrnl.exe/tests enable_tests
 wine_fn_config_makefile dlls/ntprint enable_ntprint
 wine_fn_config_makefile dlls/ntprint/tests enable_tests
-wine_fn_config_makefile dlls/nvapi enable_win32
-wine_fn_config_makefile dlls/nvapi/tests enable_tests
-wine_fn_config_makefile dlls/nvapi64 enable_win64
-wine_fn_config_makefile dlls/nvcuda enable_nvcuda
-wine_fn_config_makefile dlls/nvcuda/tests enable_tests
-wine_fn_config_makefile dlls/nvcuvid enable_nvcuvid
-wine_fn_config_makefile dlls/nvencodeapi enable_win32
-wine_fn_config_makefile dlls/nvencodeapi64 enable_win64
 wine_fn_config_makefile dlls/objsel enable_objsel
 wine_fn_config_makefile dlls/odbc32 enable_odbc32
 wine_fn_config_makefile dlls/odbccp32 enable_odbccp32
