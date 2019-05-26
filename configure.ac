@@ -1936,6 +1936,14 @@ then
     enable_x3daudio1_5=${enable_x3daudio1_5:-no}
     enable_x3daudio1_6=${enable_x3daudio1_6:-no}
     enable_x3daudio1_7=${enable_x3daudio1_7:-no}
+    enable_xactengine3_0=${enable_xactengine3_0:-no}
+    enable_xactengine3_1=${enable_xactengine3_1:-no}
+    enable_xactengine3_2=${enable_xactengine3_2:-no}
+    enable_xactengine3_3=${enable_xactengine3_3:-no}
+    enable_xactengine3_4=${enable_xactengine3_4:-no}
+    enable_xactengine3_5=${enable_xactengine3_5:-no}
+    enable_xactengine3_6=${enable_xactengine3_6:-no}
+    enable_xactengine3_7=${enable_xactengine3_7:-no}
     enable_xapofx1_1=${enable_xapofx1_1:-no}
     enable_xapofx1_2=${enable_xapofx1_2:-no}
     enable_xapofx1_3=${enable_xapofx1_3:-no}
@@ -2855,6 +2863,7 @@ WINE_CONFIG_MAKEFILE(dlls/advapi32)
 WINE_CONFIG_MAKEFILE(dlls/advapi32/tests)
 WINE_CONFIG_MAKEFILE(dlls/advpack)
 WINE_CONFIG_MAKEFILE(dlls/advpack/tests)
+WINE_CONFIG_MAKEFILE(dlls/amd_ags_x64)
 WINE_CONFIG_MAKEFILE(dlls/amsi)
 WINE_CONFIG_MAKEFILE(dlls/amstream)
 WINE_CONFIG_MAKEFILE(dlls/amstream/tests)
@@ -3896,6 +3905,14 @@ WINE_CONFIG_MAKEFILE(dlls/x3daudio1_4)
 WINE_CONFIG_MAKEFILE(dlls/x3daudio1_5)
 WINE_CONFIG_MAKEFILE(dlls/x3daudio1_6)
 WINE_CONFIG_MAKEFILE(dlls/x3daudio1_7)
+WINE_CONFIG_MAKEFILE(dlls/xactengine3_0)
+WINE_CONFIG_MAKEFILE(dlls/xactengine3_1)
+WINE_CONFIG_MAKEFILE(dlls/xactengine3_2)
+WINE_CONFIG_MAKEFILE(dlls/xactengine3_3)
+WINE_CONFIG_MAKEFILE(dlls/xactengine3_4)
+WINE_CONFIG_MAKEFILE(dlls/xactengine3_5)
+WINE_CONFIG_MAKEFILE(dlls/xactengine3_6)
+WINE_CONFIG_MAKEFILE(dlls/xactengine3_7)
 WINE_CONFIG_MAKEFILE(dlls/xapofx1_1)
 WINE_CONFIG_MAKEFILE(dlls/xapofx1_2)
 WINE_CONFIG_MAKEFILE(dlls/xapofx1_3)
