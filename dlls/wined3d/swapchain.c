@@ -720,20 +720,20 @@ static void wined3d_swapchain_apply_sample_count_override(const struct wined3d_s
 static void wined3d_swapchain_cs_init(void *object)
 {
     struct wined3d_swapchain *swapchain = object;
-    struct wined3d_context *context;
 
-    if (!(context = context_acquire(swapchain->device, swapchain->front_buffer, 0)))
+    if (!(swapchain->context[0] = context_create(swapchain)))
     {
-        WARN("Failed to acquire context.\n");
+        WARN("Failed to create context.\n");
         return;
     }
+    swapchain->num_contexts = 1;
 
     if (wined3d_settings.offscreen_rendering_mode != ORM_FBO
             && (!swapchain->desc.enable_auto_depth_stencil
             || swapchain->desc.auto_depth_stencil_format != swapchain->ds_format->id))
         FIXME("Add OpenGL context recreation support.\n");
 
-    context_release(context);
+    context_release(swapchain->context[0]);
 }
 
 void swapchain_set_max_frame_latency(struct wined3d_swapchain *swapchain, const struct wined3d_device *device)

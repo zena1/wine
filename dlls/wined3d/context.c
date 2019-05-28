@@ -4286,8 +4286,7 @@ struct wined3d_context *context_acquire(const struct wined3d_device *device,
     {
         TRACE("Rendering onscreen.\n");
 
-        if (!(context = swapchain_get_context(texture->swapchain)))
-            return NULL;
+        context = swapchain_get_context(texture->swapchain);
     }
     else
     {
@@ -4297,8 +4296,8 @@ struct wined3d_context *context_acquire(const struct wined3d_device *device,
          * context for the primary swapchain. */
         if (current_context && current_context->device == device)
             context = current_context;
-        else if (!(context = swapchain_get_context(device->swapchains[0])))
-            return NULL;
+        else
+            context = swapchain_get_context(device->swapchains[0]);
     }
 
     context_activate(context, texture, sub_resource_idx);
