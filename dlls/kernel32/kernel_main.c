@@ -178,6 +178,16 @@ INT WINAPI MulDiv( INT nMultiplicand, INT nMultiplier, INT nDivisor)
     return ret;
 }
 
+ULONGLONG WINAPI DECLSPEC_HOTPATCH GetTickCount64(void)
+{
+    return NtGetTickCount();
+}
+
+DWORD WINAPI DECLSPEC_HOTPATCH GetTickCount(void)
+{
+    return NtGetTickCount();
+}
+
 /******************************************************************************
  *           GetSystemRegistryQuota       (KERNEL32.@)
  */
