@@ -425,9 +425,7 @@ static void call_ldr_notifications( ULONG reason, LDR_MODULE *module )
         TRACE_(relay)("\1Call LDR notification callback (proc=%p,reason=%u,data=%p,context=%p)\n",
                 notify->callback, reason, &data, notify->context );
 
-        if(data.Loaded.BaseDllName != "rsaenh.dll" ) {
-            notify->callback(reason, &data, notify->context);
-        }
+            //notify->callback(reason, &data, notify->context);
 
         TRACE_(relay)("\1Ret  LDR notification callback (proc=%p,reason=%u,data=%p,context=%p)\n",
                 notify->callback, reason, &data, notify->context );
