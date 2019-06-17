@@ -461,6 +461,10 @@ __ASM_GLOBAL_FUNC( wine_get_es, "movw %es,%ax\n\tret" )
 __ASM_GLOBAL_FUNC( wine_get_fs, "movw %fs,%ax\n\tret" )
 __ASM_GLOBAL_FUNC( wine_get_gs, "movw %gs,%ax\n\tret" )
 __ASM_GLOBAL_FUNC( wine_get_ss, "movw %ss,%ax\n\tret" )
+__ASM_GLOBAL_FUNC( wine_set_cs, "movl 4(%esp),%eax\n\t"
+                                "xchg 0(%esp),%eax\n\t"
+                                "push %eax\n\t"
+                                "retf" )
 __ASM_GLOBAL_FUNC( wine_set_fs, "movl 4(%esp),%eax\n\tmovw %ax,%fs\n\tret" )
 __ASM_GLOBAL_FUNC( wine_set_gs, "movl 4(%esp),%eax\n\tmovw %ax,%gs\n\tret" )
 

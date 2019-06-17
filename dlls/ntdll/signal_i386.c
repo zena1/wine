@@ -437,6 +437,8 @@ static wine_signal_handler handlers[256];
 extern void DECLSPEC_NORETURN __wine_syscall_dispatcher( void );
 extern NTSTATUS WINAPI __syscall_NtGetContextThread( HANDLE handle, CONTEXT *context );
 
+static int wine_cs;
+
 /* convert from straight ASCII to Unicode without depending on the current codepage */
 static inline void ascii_to_unicode( WCHAR *dst, const char *src, size_t len )
 {
@@ -885,7 +887,7 @@ static inline void * SIGNALFUNC init_handler( const ucontext_t *sigcontext, WORD
     }
 #endif
 
-    if (!wine_ldt_is_system(CS_sig(sigcontext)) ||
+    if ((CS_sig(sigcontext) != wine_cs && !wine_ldt_is_system(CS_sig(sigcontext))) ||
         !wine_ldt_is_system(SS_sig(sigcontext)))  /* 16-bit mode */
     {
         /*
@@ -1576,7 +1578,7 @@ static inline DWORD is_privileged_instr( CONTEXT *context )
     const BYTE *instr;
     unsigned int prefix_count = 0;
 
-    if (!wine_ldt_is_system( context->SegCs )) return 0;
+    if (context->SegCs != wine_cs && !wine_ldt_is_system( context->SegCs )) return 0;
     instr = (BYTE *)context->Eip;
 
     for (;;) switch(*instr)
@@ -1674,7 +1676,7 @@ static inline BOOL check_invalid_gs( CONTEXT *context )
     WORD system_gs = x86_thread_data()->gs;
 
     if (context->SegGs == system_gs) return FALSE;
-    if (!wine_ldt_is_system( context->SegCs )) return FALSE;
+    if (context->SegCs != wine_cs && !wine_ldt_is_system( context->SegCs )) return 0;
     /* only handle faults in system libraries */
     if (virtual_is_valid_code_address( instr, 1 )) return FALSE;
 
@@ -1916,7 +1918,7 @@ static EXCEPTION_RECORD *setup_exception_record( ucontext_t *sigcontext, void *s
     EIP_sig(sigcontext) = (DWORD)func;
     /* clear single-step, direction, and align check flag */
     EFL_sig(sigcontext) &= ~(0x100|0x400|0x40000);
-    CS_sig(sigcontext)  = wine_get_cs();
+    CS_sig(sigcontext)  = wine_cs;
     DS_sig(sigcontext)  = wine_get_ds();
     ES_sig(sigcontext)  = wine_get_es();
     FS_sig(sigcontext)  = wine_get_fs();
@@ -2394,6 +2396,21 @@ static void ldt_unlock(void)
     else RtlLeaveCriticalSection( &ldt_section );
 }
 
+void signal_init_cs(void)
+{
+    LDT_ENTRY entry;
+
+    if (!wine_cs)
+        wine_cs = wine_ldt_alloc_entries( 1 );
+
+    wine_ldt_set_base( &entry, 0 );
+    wine_ldt_set_limit( &entry, (UINT_PTR)-1 );
+    wine_ldt_set_flags( &entry, WINE_LDT_FLAGS_CODE|WINE_LDT_FLAGS_32BIT );
+    wine_ldt_set_entry( wine_cs, &entry );
+
+    wine_set_cs( wine_cs );
+}
+
 
 /**********************************************************************
  *		signal_alloc_thread
@@ -2433,6 +2450,9 @@ NTSTATUS signal_alloc_thread( TEB **teb )
             status = STATUS_TOO_MANY_THREADS;
         }
     }
+
+    signal_init_cs();
+
     return status;
 }
 
