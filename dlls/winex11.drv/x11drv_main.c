@@ -610,9 +610,6 @@ static BOOL process_attach(void)
 }
 
 
-struct list g_x11_threads = LIST_INIT( g_x11_threads );
-
-
 /***********************************************************************
  *           ThreadDetach (X11DRV.@)
  */
@@ -622,7 +619,6 @@ void CDECL X11DRV_ThreadDetach(void)
 
     if (data)
     {
-        list_remove( &data->entry );
         X11DRV_XInput2_Disable();
 
         if (data->xim) XCloseIM( data->xim );
@@ -699,8 +695,6 @@ struct x11drv_thread_data *x11drv_init_thread_data(void)
     if (use_xim) X11DRV_SetupXIM();
 
     X11DRV_XInput2_Enable();
-
-    list_add_tail( &g_x11_threads, &data->entry );
 
     return data;
 }

@@ -325,7 +325,6 @@ struct x11drv_valuator_data
     double max;
     int number;
     double accum;
-    double raw_accum;
 };
 
 struct x11drv_thread_data
@@ -351,9 +350,7 @@ struct x11drv_thread_data
     struct x11drv_valuator_data y_rel_valuator;
     int      xi2_core_pointer;     /* XInput2 core pointer id */
     int      xi2_current_slave;    /* Current slave driving the Core pointer */
-    struct   list entry;           /* Entry in global list of setup X11 threads */
 };
-extern struct list g_x11_threads DECLSPEC_HIDDEN; /* Global list of setup X11 threads */
 
 extern struct x11drv_thread_data *x11drv_init_thread_data(void) DECLSPEC_HIDDEN;
 extern DWORD thread_data_tls_index DECLSPEC_HIDDEN;

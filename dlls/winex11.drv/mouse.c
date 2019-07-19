@@ -259,8 +259,6 @@ static void update_relative_valuators(XIAnyClassInfo **valuators, int n_valuator
     thread_data->y_rel_valuator.number = -1;
     thread_data->x_rel_valuator.accum = 0;
     thread_data->y_rel_valuator.accum = 0;
-    thread_data->x_rel_valuator.raw_accum = 0;
-    thread_data->y_rel_valuator.raw_accum = 0;
 
     for (i = 0; i < n_valuators; i++)
     {
@@ -1815,6 +1813,8 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
     double dx = 0, dy = 0, raw_dx = 0, raw_dy = 0, val, raw_val;
     struct x11drv_thread_data *thread_data = x11drv_thread_data();
     struct x11drv_valuator_data *x_rel, *y_rel;
+    static unsigned int last_cookie = 0;
+    static double raw_accum_x = 0, raw_accum_y = 0;
 
     if (thread_data->x_rel_valuator.number < 0 || thread_data->y_rel_valuator.number < 0) return FALSE;
     if (!event->valuators.mask_len) return FALSE;
@@ -1917,24 +1917,24 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
         }
     }
 
-    x_rel->raw_accum += raw_dx;
-    y_rel->raw_accum += raw_dy;
-    if (fabs(x_rel->raw_accum) < 1.0 && fabs(y_rel->raw_accum) < 1.0)
+    if (InterlockedExchange(&last_cookie, xev->cookie) == xev->cookie)
+        return TRUE;
+
+    raw_accum_x += raw_dx;
+    raw_accum_y += raw_dy;
+    if (fabs(raw_accum_x) < 1.0 && fabs(raw_accum_y) < 1.0)
     {
-        TRACE( "accumulating raw motion (event %f,%f, accum %f,%f)\n", raw_dx, raw_dy, x_rel->raw_accum, y_rel->raw_accum );
+        TRACE( "accumulating raw motion (event %f,%f, accum %f,%f)\n", raw_dx, raw_dy, raw_accum_x, raw_accum_y );
     }
     else
     {
-        raw_input.data.mouse.lLastX = x_rel->raw_accum;
-        raw_input.data.mouse.lLastY = y_rel->raw_accum;
-        x_rel->raw_accum -= raw_input.data.mouse.lLastX;
-        y_rel->raw_accum -= raw_input.data.mouse.lLastY;
+        raw_input.data.mouse.lLastX = raw_accum_x;
+        raw_input.data.mouse.lLastY = raw_accum_y;
+        raw_accum_x -= raw_input.data.mouse.lLastX;
+        raw_accum_y -= raw_input.data.mouse.lLastY;
 
-        if ( LIST_ENTRY(list_head(&g_x11_threads), struct x11drv_thread_data, entry) == thread_data)
-        {
-            TRACE("raw event %d,%d(event %f,%f)\n", raw_input.data.mouse.lLastX, raw_input.data.mouse.lLastY, raw_dx, raw_dy);
-            __wine_send_raw_input( &raw_input );
-        }
+        TRACE("raw event %d,%d(event %f,%f)\n", raw_input.data.mouse.lLastX, raw_input.data.mouse.lLastY, raw_dx, raw_dy);
+        __wine_send_raw_input( &raw_input );
     }
 
     return TRUE;
