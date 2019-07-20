@@ -1813,7 +1813,7 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
     double dx = 0, dy = 0, raw_dx = 0, raw_dy = 0, val, raw_val;
     struct x11drv_thread_data *thread_data = x11drv_thread_data();
     struct x11drv_valuator_data *x_rel, *y_rel;
-    static unsigned int last_cookie = 0;
+    static unsigned long last_time = 0;
     static double raw_accum_x = 0, raw_accum_y = 0;
 
     if (thread_data->x_rel_valuator.number < 0 || thread_data->y_rel_valuator.number < 0) return FALSE;
@@ -1917,7 +1917,7 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
         }
     }
 
-    if (InterlockedExchange(&last_cookie, xev->cookie) == xev->cookie)
+    if (InterlockedExchange( (LONG volatile*)&last_time, (LONG)event->time ) == event->time)
         return TRUE;
 
     raw_accum_x += raw_dx;
