@@ -2589,6 +2589,17 @@ DECL_HANDLER(send_rawinput_message)
     case RIM_TYPEMOUSE:
         if ((device = current->process->rawinput_mouse))
         {
+            struct thread *thread = device->target ? get_window_thread( device->target ) : NULL;
+            if (device->target ? (thread != current) : (current->queue->input != desktop->foreground_input))
+            {
+                if ( thread )
+                    release_object( thread );
+                release_object( desktop );
+                return;
+            }
+            if (thread)
+                release_object( thread );
+
             if (!(msg = alloc_hardware_message( 0, source, 0 ))) return;
             msg_data = msg->data;
 
