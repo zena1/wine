@@ -1,4 +1,4 @@
-# Last wine-tkg-staging-esync-faudio-git configuration - Пт июл 26 06:51:45 MSK 2019 :
+# Last wine-tkg-staging-esync-faudio-git configuration - Сб июл 27 04:56:20 MSK 2019 :
 
 Wine (plain) version: 4.12.1.r0.g82543e7858
 Using wine-staging patchset (version 4.12.1.r1.gaccf1895)
