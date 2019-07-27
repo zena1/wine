@@ -887,6 +887,7 @@ wine_patch_data[] =
     { "Firerat", "winecfg: Toggle upstream CSMT implementation.", 1},
     { "Gabriel Ivăncescu", "ntdll/server: Mark drive_c as case-insensitive when created.", 1 },
     { "Gabriel Ivăncescu", "shell32/iconcache: Generate icons from available icons if some icon sizes failed to load.", 1 },
+    { "Gabriel Ivăncescu", "winex11.drv/mouse: Use root-relative coordinates for events, if possible.", 1 },
     { "Gabriel Ivăncescu", "winex11.drv/window: Query the X server for the actual rect of the window before unmapping it.", 1 },
     { "Gijs Vermeulen", "imm32: Only generate 'WM_IME_SETCONTEXT' message if window has focus.", 1 },
     { "Hao Peng", "winecfg: Double click in dlls list to edit item's overides.", 3 },
