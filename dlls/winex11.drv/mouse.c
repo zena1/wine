@@ -411,11 +411,6 @@ static BOOL grab_clipping_window( const RECT *clip )
                        max( 1, clip->right - clip->left ), max( 1, clip->bottom - clip->top ) );
     XMapWindow( data->display, clip_window );
 
-    /* if the rectangle is shrinking we may get a pointer warp */
-    if (!data->clip_hwnd || clip->left > clip_rect.left || clip->top > clip_rect.top ||
-        clip->right < clip_rect.right || clip->bottom < clip_rect.bottom)
-        data->warp_serial = NextRequest( data->display );
-
     if (!XGrabPointer( data->display, clip_window, False,
                        PointerMotionMask | ButtonPressMask | ButtonReleaseMask,
                        GrabModeAsync, GrabModeAsync, clip_window, None, CurrentTime ))
@@ -427,6 +422,12 @@ static BOOL grab_clipping_window( const RECT *clip )
         DestroyWindow( msg_hwnd );
         return FALSE;
     }
+
+    /* if the rectangle is shrinking we may get a pointer warp */
+    if (!data->clip_hwnd || clip->left > clip_rect.left || clip->top > clip_rect.top ||
+        clip->right < clip_rect.right || clip->bottom < clip_rect.bottom)
+        data->warp_serial = NextRequest( data->display );
+
     clip_rect = *clip;
     if (!data->clip_hwnd) sync_window_cursor( clip_window );
     InterlockedExchangePointer( (void **)&cursor_window, msg_hwnd );
