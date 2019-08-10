@@ -1,0 +1,42 @@
+@@ -, +, @@ 
+---
+ dlls/ddraw/surface.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+--- a/dlls/ddraw/surface.c	
++++ a/dlls/ddraw/surface.c	
+@@ -766,6 +766,13 @@ static HRESULT WINAPI ddraw_surface7_GetAttachedSurface(IDirectDrawSurface7 *ifa
+ 
+     TRACE("iface %p, caps %p, attachment %p.\n", iface, Caps, Surface);
+ 
++    if (IDirectDrawSurface7_IsLost(&This->IDirectDrawSurface7_iface) != DD_OK)
++    {
++        WARN("Surface %p is lost.\n", This);
++        *Surface = NULL;
++        return DDERR_SURFACELOST;
++    }
++
+     wined3d_mutex_lock();
+ 
+     if(This->version < 7)
+@@ -3723,6 +3730,7 @@ static HRESULT WINAPI ddraw_surface1_IsLost(IDirectDrawSurface *iface)
+ static HRESULT WINAPI ddraw_surface7_Restore(IDirectDrawSurface7 *iface)
+ {
+     struct ddraw_surface *surface = impl_from_IDirectDrawSurface7(iface);
++    unsigned int i;
+ 
+     TRACE("iface %p.\n", iface);
+ 
+@@ -3763,6 +3771,12 @@ static HRESULT WINAPI ddraw_surface7_Restore(IDirectDrawSurface7 *iface)
+     ddraw_update_lost_surfaces(surface->ddraw);
+     surface->is_lost = FALSE;
+ 
++    for(i = 0; i < MAX_COMPLEX_ATTACHED; i++)
++    {
++        if (surface->complex_array[i])
++            surface->complex_array[i]->is_lost = FALSE;
++    }
++
+     return DD_OK;
+ }
+ 
+-- 

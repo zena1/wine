@@ -903,6 +903,7 @@ wine_patch_data[] =
     { "Esdras Tarsis", "httpapi: Add CreateUrlGroup stub.", 1 },
     { "Esdras Tarsis", "httpapi: Add SetUrlGroupProperty stub.", 1 },
     { "Felix Yan", "winex11.drv: Update a candidate window's position with over-the-spot style.", 2 },
+    { "Firerat", "winecfg: Toggle upstream CSMT implementation.", 1},
     { "Gabriel Ivăncescu", "ntdll/server: Mark drive_c as case-insensitive when created.", 1 },
     { "Gabriel Ivăncescu", "shell32/iconcache: Generate icons from available icons if some icon sizes failed to load.", 1 },
     { "Gabriel Ivăncescu", "winex11.drv/window: Query the X server for the actual rect of the window before unmapping it.", 1 },

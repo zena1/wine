@@ -155,6 +155,9 @@ static const char * event_names[MAX_EVENT_HANDLERS] =
     "SelectionNotify", "ColormapNotify", "ClientMessage", "MappingNotify", "GenericEvent"
 };
 
+/* is someone else grabbing the keyboard, for example the WM, when manipulating the window */
+BOOL keyboard_grabbed = FALSE;
+
 int xinput2_opcode = 0;
 
 /* return the name of an X event */
@@ -272,46 +275,6 @@ enum event_merge_action
 };
 
 /***********************************************************************
- *           merge_raw_motion_events
- */
-#ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
-static enum event_merge_action merge_raw_motion_events( XIRawEvent *prev, XIRawEvent *next )
-{
-    int i, j, k;
-    unsigned char mask;
-
-    if (!prev->valuators.mask_len) return MERGE_HANDLE;
-    if (!next->valuators.mask_len) return MERGE_HANDLE;
-
-    mask = prev->valuators.mask[0] | next->valuators.mask[0];
-    if (mask == next->valuators.mask[0])  /* keep next */
-    {
-        for (i = j = k = 0; i < 8; i++)
-        {
-            if (XIMaskIsSet( prev->valuators.mask, i ))
-                next->valuators.values[j] += prev->valuators.values[k++];
-            if (XIMaskIsSet( next->valuators.mask, i )) j++;
-        }
-        TRACE( "merging duplicate GenericEvent\n" );
-        return MERGE_DISCARD;
-    }
-    if (mask == prev->valuators.mask[0])  /* keep prev */
-    {
-        for (i = j = k = 0; i < 8; i++)
-        {
-            if (XIMaskIsSet( next->valuators.mask, i ))
-                prev->valuators.values[j] += next->valuators.values[k++];
-            if (XIMaskIsSet( prev->valuators.mask, i )) j++;
-        }
-        TRACE( "merging duplicate GenericEvent\n" );
-        return MERGE_IGNORE;
-    }
-    /* can't merge events with disjoint masks */
-    return MERGE_HANDLE;
-}
-#endif
-
-/***********************************************************************
  *           merge_events
  *
  * Try to merge 2 consecutive events.
@@ -362,7 +325,7 @@ static enum event_merge_action merge_events( XEvent *prev, XEvent *next )
             if (next->xcookie.extension != xinput2_opcode) break;
             if (next->xcookie.evtype != XI_RawMotion) break;
             if (x11drv_thread_data()->warp_serial) break;
-            return merge_raw_motion_events( prev->xcookie.data, next->xcookie.data );
+            return MERGE_HANDLE;
 #endif
         }
         break;
@@ -763,6 +726,14 @@ static const char * const focus_details[] =
     "NotifyDetailNone"
 };
 
+static const char * const focus_modes[] =
+{
+    "NotifyNormal",
+    "NotifyGrab",
+    "NotifyUngrab",
+    "NotifyWhileGrabbed"
+};
+
 /**********************************************************************
  *              X11DRV_FocusIn
  */
@@ -773,10 +744,35 @@ static BOOL X11DRV_FocusIn( HWND hwnd, XEvent *xev )
 
     if (!hwnd) return FALSE;
 
-    TRACE( "win %p xwin %lx detail=%s\n", hwnd, event->window, focus_details[event->detail] );
+    TRACE( "win %p xwin %lx detail=%s mode=%s\n", hwnd, event->window, focus_details[event->detail], focus_modes[event->mode] );
 
     if (event->detail == NotifyPointer) return FALSE;
     if (hwnd == GetDesktopWindow()) return FALSE;
+
+    switch (event->mode)
+    {
+    case NotifyGrab:
+        WARN( "unexpected FocusIn event with NotifyGrab mode\n" );
+        break;
+    case NotifyWhileGrabbed:
+        keyboard_grabbed = TRUE;
+        break;
+    case NotifyNormal:
+        keyboard_grabbed = FALSE;
+        break;
+    case NotifyUngrab:
+        /* Focus was just restored but it can be right after super was
+         * pressed and gnome-shell needs a bit of time to respond and
+         * toggle the activity view. If we grab the cursor right away
+         * it will cancel it and super key will do nothing.
+         */
+        if (wm_is_mutter(event->display))
+            Sleep(100);
+
+        keyboard_grabbed = FALSE;
+        retry_grab_clipping_window();
+        return TRUE; /* ignore wm specific NotifyUngrab / NotifyGrab events w.r.t focus */
+    }
 
     if ((xic = X11DRV_get_ic( hwnd ))) XSetICFocus( xic );
     if (use_take_focus)
@@ -806,8 +802,26 @@ static void focus_out( Display *display , HWND hwnd )
     Window focus_win;
     int revert;
     XIC xic;
+    struct x11drv_win_data *data;
 
     if (ximInComposeMode) return;
+
+    data = get_win_data(hwnd);
+    if(data){
+        ULONGLONG now = GetTickCount64();
+        if(data->take_focus_back > 0 &&
+                now >= data->take_focus_back &&
+                now - data->take_focus_back < 1000){
+            data->take_focus_back = 0;
+            TRACE("workaround mutter bug, taking focus back\n");
+            XSetInputFocus( data->display, data->whole_window, RevertToParent, CurrentTime);
+            release_win_data(data);
+            /* don't inform win32 client */
+            return;
+        }
+        data->take_focus_back = 0;
+        release_win_data(data);
+    }
 
     x11drv_thread_data()->last_focus = hwnd;
     if ((xic = X11DRV_get_ic( hwnd ))) XUnsetICFocus( xic );
@@ -855,7 +869,7 @@ static BOOL X11DRV_FocusOut( HWND hwnd, XEvent *xev )
 {
     XFocusChangeEvent *event = &xev->xfocus;
 
-    TRACE( "win %p xwin %lx detail=%s\n", hwnd, event->window, focus_details[event->detail] );
+    TRACE( "win %p xwin %lx detail=%s mode=%s\n", hwnd, event->window, focus_details[event->detail], focus_modes[event->mode] );
 
     if (event->detail == NotifyPointer)
     {
@@ -863,6 +877,30 @@ static BOOL X11DRV_FocusOut( HWND hwnd, XEvent *xev )
         return TRUE;
     }
     if (!hwnd) return FALSE;
+
+    switch (event->mode)
+    {
+    case NotifyUngrab:
+        WARN( "unexpected FocusOut event with NotifyUngrab mode\n" );
+        break;
+    case NotifyNormal:
+        keyboard_grabbed = FALSE;
+        break;
+    case NotifyWhileGrabbed:
+        keyboard_grabbed = TRUE;
+        break;
+    case NotifyGrab:
+        keyboard_grabbed = TRUE;
+
+        /* This will do nothing due to keyboard_grabbed == TRUE, but it
+         * will save the current clipping rect so we can restore it on
+         * FocusIn with NotifyUngrab mode.
+         */
+        retry_grab_clipping_window();
+
+        return TRUE; /* ignore wm specific NotifyUngrab / NotifyGrab events w.r.t focus */
+    }
+
     focus_out( event->display, hwnd );
     return TRUE;
 }
@@ -1091,6 +1129,12 @@ static BOOL X11DRV_ConfigureNotify( HWND hwnd, XEvent *xev )
                event->serial, data->configure_serial );
         goto done;
     }
+    if (data->pending_fullscreen)
+    {
+        TRACE( "win %p/%lx event %d,%d,%dx%d pending_fullscreen is pending, so ignoring\n",
+               hwnd, data->whole_window, event->x, event->y, event->width, event->height );
+        goto done;
+    }
 
     /* Get geometry */
 
@@ -1112,8 +1156,16 @@ static BOOL X11DRV_ConfigureNotify( HWND hwnd, XEvent *xev )
     }
     else pos = root_to_virtual_screen( x, y );
 
-    X11DRV_X_to_window_rect( data, &rect, pos.x, pos.y, event->width, event->height );
-    if (root_coords) MapWindowPoints( 0, parent, (POINT *)&rect, 2 );
+    if(data->fs_hack){
+        POINT p = fs_hack_current_mode();
+        rect.left = 0;
+        rect.top = 0;
+        rect.right = p.x;
+        rect.bottom = p.y;
+    }else{
+        X11DRV_X_to_window_rect( data, &rect, pos.x, pos.y, event->width, event->height );
+        if (root_coords) MapWindowPoints( 0, parent, (POINT *)&rect, 2 );
+    }
 
     TRACE( "win %p/%lx new X rect %d,%d,%dx%d (event %d,%d,%dx%d)\n",
            hwnd, data->whole_window, rect.left, rect.top, rect.right-rect.left, rect.bottom-rect.top,
@@ -1299,8 +1351,6 @@ static void handle_wm_state_notify( HWND hwnd, XPropertyEvent *event, BOOL updat
             {
                 TRACE( "restoring win %p/%lx\n", data->hwnd, data->whole_window );
                 release_win_data( data );
-                if ((style & (WS_MINIMIZE | WS_VISIBLE)) == (WS_MINIMIZE | WS_VISIBLE))
-                    SetActiveWindow( hwnd );
                 SendMessageW( hwnd, WM_SYSCOMMAND, SC_RESTORE, 0 );
                 return;
             }
@@ -1324,15 +1374,44 @@ done:
 }
 
 
+static void handle__net_wm_state_notify( HWND hwnd, XPropertyEvent *event )
+{
+    struct x11drv_win_data *data = get_win_data( hwnd );
+
+    if(data->pending_fullscreen)
+    {
+        read_net_wm_states( event->display, data );
+        if(data->net_wm_state & (1 << NET_WM_STATE_FULLSCREEN)){
+            data->pending_fullscreen = FALSE;
+            TRACE("PropertyNotify _NET_WM_STATE, now 0x%x, pending_fullscreen no longer pending.\n",
+                    data->net_wm_state);
+        }else
+            TRACE("PropertyNotify _NET_WM_STATE, now 0x%x, pending_fullscreen still pending.\n",
+                    data->net_wm_state);
+    }
+
+    release_win_data( data );
+}
+
+
 /***********************************************************************
  *           X11DRV_PropertyNotify
  */
 static BOOL X11DRV_PropertyNotify( HWND hwnd, XEvent *xev )
 {
     XPropertyEvent *event = &xev->xproperty;
+    char *name;
 
     if (!hwnd) return FALSE;
+
+    name = XGetAtomName(event->display, event->atom);
+    if(name){
+        TRACE("win %p PropertyNotify atom: %s, state: 0x%x\n", hwnd, name, event->state);
+        XFree(name);
+    }
+
     if (event->atom == x11drv_atom(WM_STATE)) handle_wm_state_notify( hwnd, event, TRUE );
+    else if (event->atom == x11drv_atom(_NET_WM_STATE)) handle__net_wm_state_notify( hwnd, event );
     return TRUE;
 }
 
@@ -1479,6 +1558,7 @@ static void EVENT_DropFromOffiX( HWND hWnd, XClientMessageEvent *event )
     Window		win, w_aux_root, w_aux_child;
 
     if (!(data = get_win_data( hWnd ))) return;
+    ERR("TODO: fs hack\n");
     cx = data->whole_rect.right - data->whole_rect.left;
     cy = data->whole_rect.bottom - data->whole_rect.top;
     win = data->whole_window;

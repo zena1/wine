@@ -1310,11 +1310,11 @@ void WINAPI start_process( LPTHREAD_START_ROUTINE entry, PEB *peb )
     {
         if (CreateEventA(0, 0, 0, "__winestaging_warn_event") && GetLastError() != ERROR_ALREADY_EXISTS)
         {
-            FIXME_(winediag)("Wine Staging %s is a testing version containing experimental patches.\n", wine_get_version());
-            FIXME_(winediag)("Please mention your exact version when filing bug reports on winehq.org.\n");
+            FIXME_(winediag)("Wine TkG %s is a testing version containing experimental patches.\n", wine_get_version());
+            FIXME_(winediag)("Please don't report bugs about it on winehq.org and use https://github.com/Tk-Glitch/PKGBUILDS/issues instead.\n");
         }
         else
-            WARN_(winediag)("Wine Staging %s is a testing version containing experimental patches.\n", wine_get_version());
+            WARN_(winediag)("Wine TkG %s is a testing version containing experimental patches.\n", wine_get_version());
 
 
         if (!CheckRemoteDebuggerPresent( GetCurrentProcess(), &being_debugged ))
@@ -2763,6 +2763,33 @@ BOOL WINAPI CreateProcessInternalW( HANDLE token, LPCWSTR app_name, LPWSTR cmd_l
     if (!(tidy_cmdline = get_file_name( app_name, cmd_line, name, ARRAY_SIZE( name ), &hFile, &is_64bit )))
         return FALSE;
     if (hFile == INVALID_HANDLE_VALUE) goto done;
+
+    /* CROSSOVER HACK: bug 13322 (winehq bug 39403)
+     * Insert --no-sandbox in command line of Steam's web helper process to
+     * work around problems hooking our ntdll exports. */
+    {
+        static const WCHAR steamwebhelperexeW[] = {'s','t','e','a','m','w','e','b','h','e','l','p','e','r','.','e','x','e',0};
+        static const WCHAR nosandboxW[] = {' ','-','-','n','o','-','s','a','n','d','b','o','x',0};
+
+        if (strstrW(name, steamwebhelperexeW))
+        {
+            LPWSTR new_command_line;
+
+            new_command_line = HeapAlloc(GetProcessHeap(), 0,
+                sizeof(WCHAR) * (strlenW(tidy_cmdline) + strlenW(nosandboxW) + 1));
+
+            if (!new_command_line) return FALSE;
+
+            strcpyW(new_command_line, tidy_cmdline);
+            strcatW(new_command_line, nosandboxW);
+
+            TRACE("CrossOver hack changing command line to %s\n", debugstr_w(new_command_line));
+
+            if (tidy_cmdline != cmd_line) HeapFree( GetProcessHeap(), 0, tidy_cmdline );
+            tidy_cmdline = new_command_line;
+        }
+    }
+    /* end CROSSOVER HACK */
 
     /* Warn if unsupported features are used */
 
