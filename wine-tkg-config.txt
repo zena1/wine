@@ -1,4 +1,4 @@
-# Last wine-tkg-staging-fsync-faudio-git configuration - Пн сен  2 14:24:45 MSK 2019 :
+# Last wine-tkg-staging-fsync-faudio-git configuration - Пн сен  2 14:51:04 MSK 2019 :
 
 Wine (plain) version: 4.15.r0.ga4aaf3f3d1
 Using wine-staging patchset (version 4.15.r0.ga46b9ff3)
@@ -18,7 +18,6 @@ Applied Proton fullscreen hack patch
 Using real modes in FS hack
 Applied winevulkan 1.1.113 patch (proton edition)
 Applied large address aware override support
-Applied proton mf hacks patch
 Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/legoisland_168726.mypatch
 
 Please don't report bugs about this wine build on winehq.org and use https://github.com/Tk-Glitch/PKGBUILDS/issues instead.
