@@ -282,30 +282,38 @@ struct hw_msg_source
     unsigned int    origin;
 };
 
+typedef union
+{
+    int type;
+    struct
+    {
+        int            type;
+        unsigned int   message;
+        unsigned short vkey;
+        unsigned short scan;
+    } kbd;
+    struct
+    {
+        int            type;
+        int            x;
+        int            y;
+        unsigned short button_flags;
+        unsigned short button_data;
+    } mouse;
+    struct
+    {
+        int type;
+
+    } hid;
+} hw_rawinput_t;
+
 struct hardware_msg_data
 {
     lparam_t             info;
     unsigned int         hw_id;
     unsigned int         flags;
     struct hw_msg_source source;
-    union
-    {
-        int type;
-        struct
-        {
-            int            type;
-            unsigned int   message;
-            unsigned short vkey;
-            unsigned short scan;
-        } kbd;
-        struct
-        {
-            int            type;
-            int            x;
-            int            y;
-            unsigned int   data;
-        } mouse;
-    } rawinput;
+    hw_rawinput_t        rawinput;
 };
 
 struct callback_msg_data
@@ -3238,6 +3246,18 @@ struct send_hardware_message_reply
 #define SEND_HWMSG_INJECTED    0x01
 
 
+struct send_rawinput_message_request
+{
+    struct request_header __header;
+    char __pad_12[4];
+    hw_rawinput_t input;
+};
+struct send_rawinput_message_reply
+{
+    struct reply_header __header;
+};
+
+
 
 struct get_message_request
 {
@@ -5852,6 +5872,92 @@ struct create_job_reply
     char __pad_12[4];
 };
 
+enum fsync_type
+{
+    FSYNC_SEMAPHORE = 1,
+    FSYNC_AUTO_EVENT,
+    FSYNC_MANUAL_EVENT,
+    FSYNC_MUTEX,
+    FSYNC_AUTO_SERVER,
+    FSYNC_MANUAL_SERVER,
+    FSYNC_QUEUE,
+};
+
+
+struct create_fsync_request
+{
+    struct request_header __header;
+    unsigned int access;
+    int low;
+    int high;
+    int type;
+    /* VARARG(objattr,object_attributes); */
+    char __pad_28[4];
+};
+struct create_fsync_reply
+{
+    struct reply_header __header;
+    obj_handle_t handle;
+    int type;
+    unsigned int shm_idx;
+    char __pad_20[4];
+};
+
+
+struct open_fsync_request
+{
+    struct request_header __header;
+    unsigned int access;
+    unsigned int attributes;
+    obj_handle_t rootdir;
+    int          type;
+    /* VARARG(name,unicode_str); */
+    char __pad_28[4];
+};
+struct open_fsync_reply
+{
+    struct reply_header __header;
+    obj_handle_t handle;
+    int          type;
+    unsigned int shm_idx;
+    char __pad_20[4];
+};
+
+
+struct get_fsync_idx_request
+{
+    struct request_header __header;
+    obj_handle_t handle;
+};
+struct get_fsync_idx_reply
+{
+    struct reply_header __header;
+    int          type;
+    unsigned int shm_idx;
+};
+
+struct fsync_msgwait_request
+{
+    struct request_header __header;
+    int          in_msgwait;
+};
+struct fsync_msgwait_reply
+{
+    struct reply_header __header;
+};
+
+struct get_fsync_apc_idx_request
+{
+    struct request_header __header;
+    char __pad_12[4];
+};
+struct get_fsync_apc_idx_reply
+{
+    struct reply_header __header;
+    unsigned int shm_idx;
+    char __pad_12[4];
+};
+
 
 
 struct open_job_request
@@ -6212,6 +6318,7 @@ enum request
     REQ_send_message,
     REQ_post_quit_message,
     REQ_send_hardware_message,
+    REQ_send_rawinput_message,
     REQ_get_message,
     REQ_reply_message,
     REQ_accept_hardware_message,
@@ -6369,6 +6476,11 @@ enum request
     REQ_get_suspend_context,
     REQ_set_suspend_context,
     REQ_create_job,
+    REQ_create_fsync,
+    REQ_open_fsync,
+    REQ_get_fsync_idx,
+    REQ_fsync_msgwait,
+    REQ_get_fsync_apc_idx,
     REQ_open_job,
     REQ_assign_job,
     REQ_process_in_job,
@@ -6534,6 +6646,7 @@ union generic_request
     struct send_message_request send_message_request;
     struct post_quit_message_request post_quit_message_request;
     struct send_hardware_message_request send_hardware_message_request;
+    struct send_rawinput_message_request send_rawinput_message_request;
     struct get_message_request get_message_request;
     struct reply_message_request reply_message_request;
     struct accept_hardware_message_request accept_hardware_message_request;
@@ -6691,6 +6804,11 @@ union generic_request
     struct get_suspend_context_request get_suspend_context_request;
     struct set_suspend_context_request set_suspend_context_request;
     struct create_job_request create_job_request;
+    struct create_fsync_request create_fsync_request;
+    struct open_fsync_request open_fsync_request;
+    struct get_fsync_idx_request get_fsync_idx_request;
+    struct fsync_msgwait_request fsync_msgwait_request;
+    struct get_fsync_apc_idx_request get_fsync_apc_idx_request;
     struct open_job_request open_job_request;
     struct assign_job_request assign_job_request;
     struct process_in_job_request process_in_job_request;
@@ -6854,6 +6972,7 @@ union generic_reply
     struct send_message_reply send_message_reply;
     struct post_quit_message_reply post_quit_message_reply;
     struct send_hardware_message_reply send_hardware_message_reply;
+    struct send_rawinput_message_reply send_rawinput_message_reply;
     struct get_message_reply get_message_reply;
     struct reply_message_reply reply_message_reply;
     struct accept_hardware_message_reply accept_hardware_message_reply;
@@ -7011,6 +7130,11 @@ union generic_reply
     struct get_suspend_context_reply get_suspend_context_reply;
     struct set_suspend_context_reply set_suspend_context_reply;
     struct create_job_reply create_job_reply;
+    struct create_fsync_reply create_fsync_reply;
+    struct open_fsync_reply open_fsync_reply;
+    struct get_fsync_idx_reply get_fsync_idx_reply;
+    struct fsync_msgwait_reply fsync_msgwait_reply;
+    struct get_fsync_apc_idx_reply get_fsync_apc_idx_reply;
     struct open_job_reply open_job_reply;
     struct assign_job_reply assign_job_reply;
     struct process_in_job_reply process_in_job_reply;
@@ -7027,6 +7151,6 @@ union generic_reply
     struct esync_msgwait_reply esync_msgwait_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 589
+#define SERVER_PROTOCOL_VERSION 590
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

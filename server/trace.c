@@ -405,6 +405,27 @@ static void dump_hw_input( const char *prefix, const hw_input_t *input )
     }
 }
 
+static void dump_hw_rawinput( const char *prefix, const hw_rawinput_t *rawinput )
+{
+    switch (rawinput->type)
+    {
+    case RIM_TYPEMOUSE:
+        fprintf( stderr, "%s{type=MOUSE,x=%d,y=%d,button_flags=%04hx,button_data=%04hx}",
+                 prefix, rawinput->mouse.x, rawinput->mouse.y, rawinput->mouse.button_flags,
+                 rawinput->mouse.button_data);
+        break;
+    case RIM_TYPEKEYBOARD:
+        fprintf( stderr, "%s{type=KEYBOARD}\n", prefix);
+        break;
+    case RIM_TYPEHID:
+        fprintf( stderr, "%s{type=HID}\n", prefix);
+        break;
+    default:
+        fprintf( stderr, "%s{type=%04x}", prefix, rawinput->type);
+        break;
+    }
+}
+
 static void dump_luid( const char *prefix, const luid_t *luid )
 {
     fprintf( stderr, "%s%d.%u", prefix, luid->high_part, luid->low_part );
@@ -2876,6 +2897,11 @@ static void dump_send_hardware_message_reply( const struct send_hardware_message
     dump_varargs_bytes( ", keystate=", cur_size );
 }
 
+static void dump_send_rawinput_message_request( const struct send_rawinput_message_request *req )
+{
+    dump_hw_rawinput( " input=", &req->input );
+}
+
 static void dump_get_message_request( const struct get_message_request *req )
 {
     fprintf( stderr, " flags=%08x", req->flags );
@@ -4648,6 +4674,63 @@ static void dump_create_job_reply( const struct create_job_reply *req )
     fprintf( stderr, " handle=%04x", req->handle );
 }
 
+static void dump_create_fsync_request( const struct create_fsync_request *req )
+{
+    fprintf( stderr, " access=%08x", req->access );
+    fprintf( stderr, ", low=%d", req->low );
+    fprintf( stderr, ", high=%d", req->high );
+    fprintf( stderr, ", type=%d", req->type );
+    dump_varargs_object_attributes( ", objattr=", cur_size );
+}
+
+static void dump_create_fsync_reply( const struct create_fsync_reply *req )
+{
+    fprintf( stderr, " handle=%04x", req->handle );
+    fprintf( stderr, ", type=%d", req->type );
+    fprintf( stderr, ", shm_idx=%08x", req->shm_idx );
+}
+
+static void dump_open_fsync_request( const struct open_fsync_request *req )
+{
+    fprintf( stderr, " access=%08x", req->access );
+    fprintf( stderr, ", attributes=%08x", req->attributes );
+    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    fprintf( stderr, ", type=%d", req->type );
+    dump_varargs_unicode_str( ", name=", cur_size );
+}
+
+static void dump_open_fsync_reply( const struct open_fsync_reply *req )
+{
+    fprintf( stderr, " handle=%04x", req->handle );
+    fprintf( stderr, ", type=%d", req->type );
+    fprintf( stderr, ", shm_idx=%08x", req->shm_idx );
+}
+
+static void dump_get_fsync_idx_request( const struct get_fsync_idx_request *req )
+{
+    fprintf( stderr, " handle=%04x", req->handle );
+}
+
+static void dump_get_fsync_idx_reply( const struct get_fsync_idx_reply *req )
+{
+    fprintf( stderr, " type=%d", req->type );
+    fprintf( stderr, ", shm_idx=%08x", req->shm_idx );
+}
+
+static void dump_fsync_msgwait_request( const struct fsync_msgwait_request *req )
+{
+    fprintf( stderr, " in_msgwait=%d", req->in_msgwait );
+}
+
+static void dump_get_fsync_apc_idx_request( const struct get_fsync_apc_idx_request *req )
+{
+}
+
+static void dump_get_fsync_apc_idx_reply( const struct get_fsync_apc_idx_reply *req )
+{
+    fprintf( stderr, " shm_idx=%08x", req->shm_idx );
+}
+
 static void dump_open_job_request( const struct open_job_request *req )
 {
     fprintf( stderr, " access=%08x", req->access );
@@ -4910,6 +4993,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_send_message_request,
     (dump_func)dump_post_quit_message_request,
     (dump_func)dump_send_hardware_message_request,
+    (dump_func)dump_send_rawinput_message_request,
     (dump_func)dump_get_message_request,
     (dump_func)dump_reply_message_request,
     (dump_func)dump_accept_hardware_message_request,
@@ -5067,6 +5151,11 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_get_suspend_context_request,
     (dump_func)dump_set_suspend_context_request,
     (dump_func)dump_create_job_request,
+    (dump_func)dump_create_fsync_request,
+    (dump_func)dump_open_fsync_request,
+    (dump_func)dump_get_fsync_idx_request,
+    (dump_func)dump_fsync_msgwait_request,
+    (dump_func)dump_get_fsync_apc_idx_request,
     (dump_func)dump_open_job_request,
     (dump_func)dump_assign_job_request,
     (dump_func)dump_process_in_job_request,
@@ -5228,6 +5317,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     NULL,
     NULL,
     (dump_func)dump_send_hardware_message_reply,
+    NULL,
     (dump_func)dump_get_message_reply,
     NULL,
     NULL,
@@ -5385,6 +5475,11 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_get_suspend_context_reply,
     NULL,
     (dump_func)dump_create_job_reply,
+    (dump_func)dump_create_fsync_reply,
+    (dump_func)dump_open_fsync_reply,
+    (dump_func)dump_get_fsync_idx_reply,
+    NULL,
+    (dump_func)dump_get_fsync_apc_idx_reply,
     (dump_func)dump_open_job_reply,
     NULL,
     NULL,
@@ -5546,6 +5641,7 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "send_message",
     "post_quit_message",
     "send_hardware_message",
+    "send_rawinput_message",
     "get_message",
     "reply_message",
     "accept_hardware_message",
@@ -5703,6 +5799,11 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "get_suspend_context",
     "set_suspend_context",
     "create_job",
+    "create_fsync",
+    "open_fsync",
+    "get_fsync_idx",
+    "fsync_msgwait",
+    "get_fsync_apc_idx",
     "open_job",
     "assign_job",
     "process_in_job",
