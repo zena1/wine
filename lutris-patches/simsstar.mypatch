@@ -1,0 +1,369 @@
+@@ -, +, @@ 
+---
+ dlls/ddraw/ddraw_private.h |   5 +
+ dlls/ddraw/device.c        |   2 +-
+ dlls/ddraw/surface.c       | 281 ++++++++++++++++++++++++-------------
+ dlls/ddraw/utils.c         |   2 +-
+ 4 files changed, 191 insertions(+), 99 deletions(-)
+--- a/dlls/ddraw/ddraw_private.h	
++++ a/dlls/ddraw/ddraw_private.h	
+@@ -204,6 +204,11 @@ struct ddraw_surface
+ 
+     DWORD                   Handle;
+     HDC dc;
++
++    BOOL is_paletted;
++    struct wined3d_map_desc map_desc;
++    struct wined3d_box map_box;
++    void *paletted_img_buf;
+ };
+ 
+ struct ddraw_texture
+--- a/dlls/ddraw/device.c	
++++ a/dlls/ddraw/device.c	
+@@ -1091,7 +1091,7 @@ static HRESULT d3d_device7_EnumTextureFormats(IDirect3DDevice7 *iface,
+ 
+     for (i = 0; i < ARRAY_SIZE(FormatList); ++i)
+     {
+-        if (wined3d_check_device_format(device->ddraw->wined3d, WINED3DADAPTER_DEFAULT, WINED3D_DEVICE_TYPE_HAL,
++        if (FormatList[i] == WINED3DFMT_P8_UINT || wined3d_check_device_format(device->ddraw->wined3d, WINED3DADAPTER_DEFAULT, WINED3D_DEVICE_TYPE_HAL,
+                 mode.format_id, 0, WINED3D_BIND_SHADER_RESOURCE, WINED3D_RTYPE_TEXTURE_2D, FormatList[i]) == D3D_OK)
+         {
+             DDPIXELFORMAT pformat;
+--- a/dlls/ddraw/surface.c	
++++ a/dlls/ddraw/surface.c	
+@@ -460,6 +460,145 @@ static ULONG WINAPI d3d_texture1_AddRef(IDirect3DTexture *iface)
+     return IUnknown_AddRef(surface->texture_outer);
+ }
+ 
++/*****************************************************************************
++ * IDirectDrawSurface7::Lock
++ *
++ * Locks the surface and returns a pointer to the surface's memory
++ *
++ * Params:
++ *  Rect: Rectangle to lock. If NULL, the whole surface is locked
++ *  DDSD: Pointer to a DDSURFACEDESC2 which shall receive the surface's desc.
++ *  Flags: Locking flags, e.g Read only or write only
++ *  h: An event handle that's not used and must be NULL
++ *
++ * Returns:
++ *  DD_OK on success
++ *  DDERR_INVALIDPARAMS if DDSD is NULL
++ *
++ *****************************************************************************/
++static HRESULT surface_lock(struct ddraw_surface *surface,
++        RECT *rect, DDSURFACEDESC2 *surface_desc, unsigned int surface_desc_size,
++        DWORD flags, HANDLE h)
++{
++    struct wined3d_map_desc map_desc;
++    struct wined3d_box box;
++    HRESULT hr = DD_OK;
++
++    TRACE("surface %p, rect %s, surface_desc %p, surface_desc_size %u, flags %#x, h %p.\n",
++            surface, wine_dbgstr_rect(rect), surface_desc, surface_desc_size, flags, h);
++
++    /* surface->surface_desc.dwWidth and dwHeight are changeable, thus lock */
++    wined3d_mutex_lock();
++
++    /* Should I check for the handle to be NULL?
++     *
++     * The DDLOCK flags and the D3DLOCK flags are equal
++     * for the supported values. The others are ignored by WineD3D
++     */
++
++    /* Windows zeroes this if the rect is invalid */
++    surface_desc->lpSurface = NULL;
++
++    if (rect)
++    {
++        if ((rect->left < 0) || (rect->top < 0)
++                || (rect->left > rect->right) || (rect->right > surface->surface_desc.dwWidth)
++                || (rect->top > rect->bottom) || (rect->bottom > surface->surface_desc.dwHeight))
++        {
++            WARN("Trying to lock an invalid rectangle, returning DDERR_INVALIDPARAMS\n");
++            wined3d_mutex_unlock();
++            return DDERR_INVALIDPARAMS;
++        }
++        wined3d_box_set(&box, rect->left, rect->top, rect->right, rect->bottom, 0, 1);
++    }
++    else
++    {
++        wined3d_box_set(&box, 0, 0, surface->surface_desc.dwWidth, surface->surface_desc.dwHeight, 0, 1);
++    }
++
++    if (surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
++        hr = ddraw_surface_update_frontbuffer(surface, rect, TRUE, 0);
++    if (SUCCEEDED(hr))
++        hr = wined3d_resource_map(wined3d_texture_get_resource(surface->wined3d_texture),
++                surface->sub_resource_idx, &map_desc, rect ? &box : NULL,
++                wined3dmapflags_from_ddrawmapflags(flags));
++    if (FAILED(hr))
++    {
++        wined3d_mutex_unlock();
++        switch(hr)
++        {
++            /* D3D8 and D3D9 return the general D3DERR_INVALIDCALL error, but ddraw has a more
++             * specific error. But since wined3d returns that error in this only occasion,
++             * keep d3d8 and d3d9 free from the return value override. There are many different
++             * places where d3d8/9 would have to catch the DDERR_SURFACEBUSY, it is much easier
++             * to do it in one place in ddraw.
++             */
++            case WINED3DERR_INVALIDCALL:    return DDERR_SURFACEBUSY;
++            default:                        return hr;
++        }
++    }
++
++    if (surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
++    {
++        if (flags & DDLOCK_READONLY)
++            SetRectEmpty(&surface->ddraw->primary_lock);
++        else if (rect)
++            surface->ddraw->primary_lock = *rect;
++        else
++            SetRect(&surface->ddraw->primary_lock, 0, 0, surface->surface_desc.dwWidth, surface->surface_desc.dwHeight);
++    }
++
++    /* Windows does not set DDSD_LPSURFACE on locked surfaces. */
++    DD_STRUCT_COPY_BYSIZE_(surface_desc, &surface->surface_desc, surface_desc_size, surface->surface_desc.dwSize);
++    if (surface->is_paletted)
++    {
++        surface_desc->lpSurface = surface->paletted_img_buf;
++        surface->map_box = box;
++        surface->map_desc = map_desc;
++    }
++    else
++    {
++        surface_desc->lpSurface = map_desc.data;
++    }
++
++    TRACE("locked surface returning description :\n");
++    if (TRACE_ON(ddraw))
++        DDRAW_dump_surface_desc(surface_desc);
++
++    wined3d_mutex_unlock();
++
++    return DD_OK;
++}
++
++static void convert_bits_palette(const struct ddraw_surface *surface)
++{
++    unsigned int pitch = surface->map_desc.row_pitch;
++    struct wined3d_box box = surface->map_box;
++    BYTE *input = surface->paletted_img_buf;
++    BYTE *data = surface->map_desc.data;
++    PALETTEENTRY palette[256];
++    unsigned int x, y;
++    HRESULT hr;
++
++    if (!(surface->is_paletted && surface->palette && surface->palette->wined3d_palette))
++        return;
++
++    if (FAILED(hr = wined3d_palette_get_entries(surface->palette->wined3d_palette, 0, 0, 256, palette)))
++        ERR("wined3d_palette_get_entries() failed, hr %#x.\n", hr);
++
++    for (y = box.top; y < box.bottom; ++y)
++        for (x = box.left; x < box.right; ++x)
++        {
++            BYTE index;
++
++            index = input[y * pitch + x];
++            data[y * pitch + x * 4] = palette[index].peBlue;
++            data[y * pitch + x * 4 + 1] = palette[index].peGreen;
++            data[y * pitch + x * 4 + 2] = palette[index].peRed;
++            data[y * pitch + x * 4 + 3] = 0xff;
++        }
++}
++
+ static HRESULT ddraw_surface_set_palette(struct ddraw_surface *surface, IDirectDrawPalette *palette)
+ {
+     struct ddraw_palette *palette_impl = unsafe_impl_from_IDirectDrawPalette(palette);
+@@ -498,6 +637,30 @@ static HRESULT ddraw_surface_set_palette(struct ddraw_surface *surface, IDirectD
+ 
+     wined3d_mutex_unlock();
+ 
++    if (surface->is_paletted)
++    {
++        DDSURFACEDESC2 desc;
++        HRESULT hr;
++
++        desc.dwSize = sizeof(DDSURFACEDESC2);
++
++        if (FAILED(hr = surface_lock(surface, NULL, &desc, desc.dwSize, 0, NULL)))
++        {
++            ERR("Could not lock surface, hr %#x.\n", hr);
++            return DD_OK;
++        }
++        wined3d_mutex_lock();
++
++        convert_bits_palette(surface);
++
++        hr = wined3d_resource_unmap(wined3d_texture_get_resource(surface->wined3d_texture), surface->sub_resource_idx);
++        if (SUCCEEDED(hr) && surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
++            hr = ddraw_surface_update_frontbuffer(surface, &surface->ddraw->primary_lock, FALSE, 0);
++        wined3d_mutex_unlock();
++        if (FAILED(hr))
++            ERR("Failed updating surface, hr %#x.\n", hr);
++    }
++
+     return DD_OK;
+ }
+ 
+@@ -551,6 +714,9 @@ static void ddraw_surface_cleanup(struct ddraw_surface *surface)
+     if (surface->wined3d_rtv)
+         wined3d_rendertarget_view_decref(surface->wined3d_rtv);
+     wined3d_texture_decref(surface->wined3d_texture);
++
++    if (surface->is_paletted)
++        heap_free(surface->paletted_img_buf);
+ }
+ 
+ static ULONG ddraw_surface_release_iface(struct ddraw_surface *This)
+@@ -969,103 +1135,6 @@ static HRESULT WINAPI ddraw_surface1_GetAttachedSurface(IDirectDrawSurface *ifac
+     return hr;
+ }
+ 
+-/*****************************************************************************
+- * IDirectDrawSurface7::Lock
+- *
+- * Locks the surface and returns a pointer to the surface's memory
+- *
+- * Params:
+- *  Rect: Rectangle to lock. If NULL, the whole surface is locked
+- *  DDSD: Pointer to a DDSURFACEDESC2 which shall receive the surface's desc.
+- *  Flags: Locking flags, e.g Read only or write only
+- *  h: An event handle that's not used and must be NULL
+- *
+- * Returns:
+- *  DD_OK on success
+- *  DDERR_INVALIDPARAMS if DDSD is NULL
+- *
+- *****************************************************************************/
+-static HRESULT surface_lock(struct ddraw_surface *surface,
+-        RECT *rect, DDSURFACEDESC2 *surface_desc, unsigned int surface_desc_size,
+-        DWORD flags, HANDLE h)
+-{
+-    struct wined3d_map_desc map_desc;
+-    struct wined3d_box box;
+-    HRESULT hr = DD_OK;
+-
+-    TRACE("surface %p, rect %s, surface_desc %p, surface_desc_size %u, flags %#x, h %p.\n",
+-            surface, wine_dbgstr_rect(rect), surface_desc, surface_desc_size, flags, h);
+-
+-    /* surface->surface_desc.dwWidth and dwHeight are changeable, thus lock */
+-    wined3d_mutex_lock();
+-
+-    /* Should I check for the handle to be NULL?
+-     *
+-     * The DDLOCK flags and the D3DLOCK flags are equal
+-     * for the supported values. The others are ignored by WineD3D
+-     */
+-
+-    /* Windows zeroes this if the rect is invalid */
+-    surface_desc->lpSurface = NULL;
+-
+-    if (rect)
+-    {
+-        if ((rect->left < 0) || (rect->top < 0)
+-                || (rect->left > rect->right) || (rect->right > surface->surface_desc.dwWidth)
+-                || (rect->top > rect->bottom) || (rect->bottom > surface->surface_desc.dwHeight))
+-        {
+-            WARN("Trying to lock an invalid rectangle, returning DDERR_INVALIDPARAMS\n");
+-            wined3d_mutex_unlock();
+-            return DDERR_INVALIDPARAMS;
+-        }
+-        wined3d_box_set(&box, rect->left, rect->top, rect->right, rect->bottom, 0, 1);
+-    }
+-
+-    if (surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
+-        hr = ddraw_surface_update_frontbuffer(surface, rect, TRUE, 0);
+-    if (SUCCEEDED(hr))
+-        hr = wined3d_resource_map(wined3d_texture_get_resource(surface->wined3d_texture),
+-                surface->sub_resource_idx, &map_desc, rect ? &box : NULL,
+-                wined3dmapflags_from_ddrawmapflags(flags));
+-    if (FAILED(hr))
+-    {
+-        wined3d_mutex_unlock();
+-        switch(hr)
+-        {
+-            /* D3D8 and D3D9 return the general D3DERR_INVALIDCALL error, but ddraw has a more
+-             * specific error. But since wined3d returns that error in this only occasion,
+-             * keep d3d8 and d3d9 free from the return value override. There are many different
+-             * places where d3d8/9 would have to catch the DDERR_SURFACEBUSY, it is much easier
+-             * to do it in one place in ddraw.
+-             */
+-            case WINED3DERR_INVALIDCALL:    return DDERR_SURFACEBUSY;
+-            default:                        return hr;
+-        }
+-    }
+-
+-    if (surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
+-    {
+-        if (flags & DDLOCK_READONLY)
+-            SetRectEmpty(&surface->ddraw->primary_lock);
+-        else if (rect)
+-            surface->ddraw->primary_lock = *rect;
+-        else
+-            SetRect(&surface->ddraw->primary_lock, 0, 0, surface->surface_desc.dwWidth, surface->surface_desc.dwHeight);
+-    }
+-
+-    /* Windows does not set DDSD_LPSURFACE on locked surfaces. */
+-    DD_STRUCT_COPY_BYSIZE_(surface_desc, &surface->surface_desc, surface_desc_size, surface->surface_desc.dwSize);
+-    surface_desc->lpSurface = map_desc.data;
+-
+-    TRACE("locked surface returning description :\n");
+-    if (TRACE_ON(ddraw))
+-        DDRAW_dump_surface_desc(surface_desc);
+-
+-    wined3d_mutex_unlock();
+-
+-    return DD_OK;
+-}
+-
+ static BOOL surface_validate_lock_desc(struct ddraw_surface *surface,
+         const DDSURFACEDESC *desc, unsigned int *size)
+ {
+@@ -1209,6 +1278,9 @@ static HRESULT WINAPI DECLSPEC_HOTPATCH ddraw_surface7_Unlock(IDirectDrawSurface
+     TRACE("iface %p, rect %s.\n", iface, wine_dbgstr_rect(pRect));
+ 
+     wined3d_mutex_lock();
++
++    convert_bits_palette(surface);
++
+     hr = wined3d_resource_unmap(wined3d_texture_get_resource(surface->wined3d_texture), surface->sub_resource_idx);
+     if (SUCCEEDED(hr) && surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
+         hr = ddraw_surface_update_frontbuffer(surface, &surface->ddraw->primary_lock, FALSE, 0);
+@@ -6484,6 +6556,21 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
+     }
+     *surface = root;
+ 
++    if (desc->u4.ddpfPixelFormat.dwFlags & DDPF_PALETTEINDEXED8)
++    {
++        FIXME("Paletted surfaces are not supported, enabling hack.\n");
++        root->is_paletted = TRUE;
++        if (!pitch)
++            pitch = wined3d_calculate_format_pitch(ddraw->wined3d, WINED3DADAPTER_DEFAULT,
++                    wined3d_desc.format, wined3d_desc.width);
++        root->paletted_img_buf = heap_alloc_zero(pitch * desc->dwHeight);
++    }
++    else
++    {
++        root->is_paletted = FALSE;
++        root->paletted_img_buf = NULL;
++    }
++
+     return DD_OK;
+ 
+ fail:
+--- a/dlls/ddraw/utils.c	
++++ a/dlls/ddraw/utils.c	
+@@ -337,7 +337,7 @@ enum wined3d_format_id wined3dformat_from_ddrawformat(const DDPIXELFORMAT *DDPix
+ 
+     if(DDPixelFormat->dwFlags & DDPF_PALETTEINDEXED8)
+     {
+-        return WINED3DFMT_P8_UINT;
++        return WINED3DFMT_B8G8R8A8_UNORM;
+     }
+     else if(DDPixelFormat->dwFlags & (DDPF_PALETTEINDEXED1 | DDPF_PALETTEINDEXED2 | DDPF_PALETTEINDEXED4) )
+     {
+-- 
