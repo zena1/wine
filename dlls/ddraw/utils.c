@@ -337,7 +337,7 @@ enum wined3d_format_id wined3dformat_from_ddrawformat(const DDPIXELFORMAT *DDPix
 
     if(DDPixelFormat->dwFlags & DDPF_PALETTEINDEXED8)
     {
-        return WINED3DFMT_P8_UINT;
+        return WINED3DFMT_B8G8R8A8_UNORM;
     }
     else if(DDPixelFormat->dwFlags & (DDPF_PALETTEINDEXED1 | DDPF_PALETTEINDEXED2 | DDPF_PALETTEINDEXED4) )
     {

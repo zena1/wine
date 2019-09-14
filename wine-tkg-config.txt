@@ -1,0 +1,23 @@
+# Last wine-tkg-staging-fsync-faudio-git configuration - Сб сен 14 21:16:06 MSK 2019 :
+
+Wine (plain) version: 4.16.r0.g3bf7473b88
+Using wine-staging patchset (version 4.16.r0.gc323ef47)
+Disabled the local Esync patchset to use Staging impl instead.
+
+Applied clock_monotonic patch
+Applied clock_monotonic addon patch for 13e11d3
+Applied Fullscreen compositor bypass patch
+Applied steam crossover hack
+server-send_hardware_message staging patchset wasn't found, so _server_send_hwmsg_disable setting was ignored
+Applied CSMT toggle logic patch
+Staging overrides, if any: 
+PBA disabled due to known issues with selected Wine version
+Applied fsync, an experimental replacement for esync (staging)
+Added no_alloc_handle object method to fsync
+Applied winevulkan 1.1.113 patch
+Applied large address aware override support
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/faudio-ffmpeg.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/legoisland_168726.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/simsstar.mypatch
+
+Please don't report bugs about this wine build on winehq.org and use https://github.com/Tk-Glitch/PKGBUILDS/issues instead.

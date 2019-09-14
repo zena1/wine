@@ -49,6 +49,7 @@
 #include "ddk/wdm.h"
 #include "wine/exception.h"
 #include "esync.h"
+#include "fsync.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(thread);
 
@@ -332,6 +333,7 @@ void thread_init(void)
     thread_data->wait_fd[1] = -1;
     thread_data->esync_queue_fd = -1;
     thread_data->esync_apc_fd = -1;
+    thread_data->fsync_apc_futex = NULL;
 
     signal_init_thread( teb );
     virtual_init_threading();
@@ -354,6 +356,8 @@ void thread_init(void)
 	/* initialize user_shared_data */
     __wine_user_shared_data();
     fill_cpu_info();
+
+    fsync_init();
 
     esync_init();
 
@@ -710,6 +714,7 @@ NTSTATUS WINAPI NtCreateThreadEx( HANDLE *handle_ptr, ACCESS_MASK access, OBJECT
     thread_data->start_stack = (char *)teb->Tib.StackBase;
     thread_data->esync_queue_fd = -1;
     thread_data->esync_apc_fd = -1;
+    thread_data->fsync_apc_futex = NULL;
 
     pthread_attr_init( &pthread_attr );
     pthread_attr_setstack( &pthread_attr, teb->DeallocationStack,

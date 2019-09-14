@@ -447,7 +447,7 @@ AC_CHECK_HEADERS(\
 	IOKit/IOKitLib.h \
 	IOKit/hid/IOHIDLib.h \
 	OpenAL/al.h \
-	OpenCL/opencl.h \
+	CL/opencl.h \
 	QuickTime/ImageCompression.h \
 	Security/Security.h \
 	alias.h \
