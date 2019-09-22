@@ -366,69 +366,6 @@ static inline void free_VkBufferImageCopy_array(VkBufferImageCopy_host *in, uint
     heap_free(in);
 }
 
-static inline VkBufferMemoryBarrier_host *convert_VkBufferMemoryBarrier_array_win_to_host(const VkBufferMemoryBarrier *in, uint32_t count)
-{
-    VkBufferMemoryBarrier_host *out;
-    unsigned int i;
-
-    if (!in) return NULL;
-
-    out = heap_alloc(count * sizeof(*out));
-    for (i = 0; i < count; i++)
-    {
-        out[i].sType = in[i].sType;
-        out[i].pNext = in[i].pNext;
-        out[i].srcAccessMask = in[i].srcAccessMask;
-        out[i].dstAccessMask = in[i].dstAccessMask;
-        out[i].srcQueueFamilyIndex = in[i].srcQueueFamilyIndex;
-        out[i].dstQueueFamilyIndex = in[i].dstQueueFamilyIndex;
-        out[i].buffer = in[i].buffer;
-        out[i].offset = in[i].offset;
-        out[i].size = in[i].size;
-    }
-
-    return out;
-}
-
-static inline void free_VkBufferMemoryBarrier_array(VkBufferMemoryBarrier_host *in, uint32_t count)
-{
-    if (!in) return;
-
-    heap_free(in);
-}
-
-static inline VkImageMemoryBarrier_host *convert_VkImageMemoryBarrier_array_win_to_host(const VkImageMemoryBarrier *in, uint32_t count)
-{
-    VkImageMemoryBarrier_host *out;
-    unsigned int i;
-
-    if (!in) return NULL;
-
-    out = heap_alloc(count * sizeof(*out));
-    for (i = 0; i < count; i++)
-    {
-        out[i].sType = in[i].sType;
-        out[i].pNext = in[i].pNext;
-        out[i].srcAccessMask = in[i].srcAccessMask;
-        out[i].dstAccessMask = in[i].dstAccessMask;
-        out[i].oldLayout = in[i].oldLayout;
-        out[i].newLayout = in[i].newLayout;
-        out[i].srcQueueFamilyIndex = in[i].srcQueueFamilyIndex;
-        out[i].dstQueueFamilyIndex = in[i].dstQueueFamilyIndex;
-        out[i].image = in[i].image;
-        out[i].subresourceRange = in[i].subresourceRange;
-    }
-
-    return out;
-}
-
-static inline void free_VkImageMemoryBarrier_array(VkImageMemoryBarrier_host *in, uint32_t count)
-{
-    if (!in) return;
-
-    heap_free(in);
-}
-
 static inline VkDescriptorImageInfo_host *convert_VkDescriptorImageInfo_array_win_to_host(const VkDescriptorImageInfo *in, uint32_t count)
 {
     VkDescriptorImageInfo_host *out;
@@ -516,6 +453,26 @@ static inline void free_VkWriteDescriptorSet_array(VkWriteDescriptorSet_host *in
         free_VkDescriptorBufferInfo_array((VkDescriptorBufferInfo_host *)in[i].pBufferInfo, in[i].descriptorCount);
     }
     heap_free(in);
+}
+
+static inline void convert_VkPerformanceMarkerInfoINTEL_win_to_host(const VkPerformanceMarkerInfoINTEL *in, VkPerformanceMarkerInfoINTEL_host *out)
+{
+    if (!in) return;
+
+    out->sType = in->sType;
+    out->pNext = in->pNext;
+    out->marker = in->marker;
+}
+
+static inline void convert_VkPerformanceOverrideInfoINTEL_win_to_host(const VkPerformanceOverrideInfoINTEL *in, VkPerformanceOverrideInfoINTEL_host *out)
+{
+    if (!in) return;
+
+    out->sType = in->sType;
+    out->pNext = in->pNext;
+    out->type = in->type;
+    out->enable = in->enable;
+    out->parameter = in->parameter;
 }
 
 static inline void convert_VkAccelerationStructureCreateInfoNV_win_to_host(const VkAccelerationStructureCreateInfoNV *in, VkAccelerationStructureCreateInfoNV_host *out)
@@ -755,30 +712,6 @@ static inline void free_VkRayTracingPipelineCreateInfoNV_array(VkRayTracingPipel
         free_VkPipelineShaderStageCreateInfo_array((VkPipelineShaderStageCreateInfo_host *)in[i].pStages, in[i].stageCount);
     }
     heap_free(in);
-}
-
-static inline void convert_VkSwapchainCreateInfoKHR_win_to_host(const VkSwapchainCreateInfoKHR *in, VkSwapchainCreateInfoKHR_host *out)
-{
-    if (!in) return;
-
-    out->sType = in->sType;
-    out->pNext = in->pNext;
-    out->flags = in->flags;
-    out->surface = in->surface;
-    out->minImageCount = in->minImageCount;
-    out->imageFormat = in->imageFormat;
-    out->imageColorSpace = in->imageColorSpace;
-    out->imageExtent = in->imageExtent;
-    out->imageArrayLayers = in->imageArrayLayers;
-    out->imageUsage = in->imageUsage;
-    out->imageSharingMode = in->imageSharingMode;
-    out->queueFamilyIndexCount = in->queueFamilyIndexCount;
-    out->pQueueFamilyIndices = in->pQueueFamilyIndices;
-    out->preTransform = in->preTransform;
-    out->compositeAlpha = in->compositeAlpha;
-    out->presentMode = in->presentMode;
-    out->clipped = in->clipped;
-    out->oldSwapchain = in->oldSwapchain;
 }
 
 static inline VkMappedMemoryRange_host *convert_VkMappedMemoryRange_array_win_to_host(const VkMappedMemoryRange *in, uint32_t count)
@@ -1374,10 +1307,10 @@ VkResult convert_VkDeviceCreateInfo_struct_chain(const void *pNext, VkDeviceCrea
             break;
         }
 
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VARIABLE_POINTER_FEATURES:
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VARIABLE_POINTERS_FEATURES:
         {
-            const VkPhysicalDeviceVariablePointerFeatures *in = (const VkPhysicalDeviceVariablePointerFeatures *)in_header;
-            VkPhysicalDeviceVariablePointerFeatures *out;
+            const VkPhysicalDeviceVariablePointersFeatures *in = (const VkPhysicalDeviceVariablePointersFeatures *)in_header;
+            VkPhysicalDeviceVariablePointersFeatures *out;
 
             if (!(out = heap_alloc(sizeof(*out)))) goto out_of_memory;
 
@@ -1510,10 +1443,10 @@ VkResult convert_VkDeviceCreateInfo_struct_chain(const void *pNext, VkDeviceCrea
             break;
         }
 
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETER_FEATURES:
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES:
         {
-            const VkPhysicalDeviceShaderDrawParameterFeatures *in = (const VkPhysicalDeviceShaderDrawParameterFeatures *)in_header;
-            VkPhysicalDeviceShaderDrawParameterFeatures *out;
+            const VkPhysicalDeviceShaderDrawParametersFeatures *in = (const VkPhysicalDeviceShaderDrawParametersFeatures *)in_header;
+            VkPhysicalDeviceShaderDrawParametersFeatures *out;
 
             if (!(out = heap_alloc(sizeof(*out)))) goto out_of_memory;
 
@@ -1911,6 +1844,22 @@ VkResult convert_VkDeviceCreateInfo_struct_chain(const void *pNext, VkDeviceCrea
             break;
         }
 
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_UNIFORM_BUFFER_STANDARD_LAYOUT_FEATURES_KHR:
+        {
+            const VkPhysicalDeviceUniformBufferStandardLayoutFeaturesKHR *in = (const VkPhysicalDeviceUniformBufferStandardLayoutFeaturesKHR *)in_header;
+            VkPhysicalDeviceUniformBufferStandardLayoutFeaturesKHR *out;
+
+            if (!(out = heap_alloc(sizeof(*out)))) goto out_of_memory;
+
+            out->sType = in->sType;
+            out->pNext = NULL;
+            out->uniformBufferStandardLayout = in->uniformBufferStandardLayout;
+
+            out_header->pNext = (VkBaseOutStructure *)out;
+            out_header = out_header->pNext;
+            break;
+        }
+
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_CLIP_ENABLE_FEATURES_EXT:
         {
             const VkPhysicalDeviceDepthClipEnableFeaturesEXT *in = (const VkPhysicalDeviceDepthClipEnableFeaturesEXT *)in_header;
@@ -1943,10 +1892,10 @@ VkResult convert_VkDeviceCreateInfo_struct_chain(const void *pNext, VkDeviceCrea
             break;
         }
 
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_ADDRESS_FEATURES_EXT:
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_EXT:
         {
-            const VkPhysicalDeviceBufferAddressFeaturesEXT *in = (const VkPhysicalDeviceBufferAddressFeaturesEXT *)in_header;
-            VkPhysicalDeviceBufferAddressFeaturesEXT *out;
+            const VkPhysicalDeviceBufferDeviceAddressFeaturesEXT *in = (const VkPhysicalDeviceBufferDeviceAddressFeaturesEXT *)in_header;
+            VkPhysicalDeviceBufferDeviceAddressFeaturesEXT *out;
 
             if (!(out = heap_alloc(sizeof(*out)))) goto out_of_memory;
 
@@ -1988,6 +1937,104 @@ VkResult convert_VkDeviceCreateInfo_struct_chain(const void *pNext, VkDeviceCrea
             out->sType = in->sType;
             out->pNext = NULL;
             out->ycbcrImageArrays = in->ycbcrImageArrays;
+
+            out_header->pNext = (VkBaseOutStructure *)out;
+            out_header = out_header->pNext;
+            break;
+        }
+
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COVERAGE_REDUCTION_MODE_FEATURES_NV:
+        {
+            const VkPhysicalDeviceCoverageReductionModeFeaturesNV *in = (const VkPhysicalDeviceCoverageReductionModeFeaturesNV *)in_header;
+            VkPhysicalDeviceCoverageReductionModeFeaturesNV *out;
+
+            if (!(out = heap_alloc(sizeof(*out)))) goto out_of_memory;
+
+            out->sType = in->sType;
+            out->pNext = NULL;
+            out->coverageReductionMode = in->coverageReductionMode;
+
+            out_header->pNext = (VkBaseOutStructure *)out;
+            out_header = out_header->pNext;
+            break;
+        }
+
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_FUNCTIONS2_FEATURES_INTEL:
+        {
+            const VkPhysicalDeviceShaderIntegerFunctions2INTEL *in = (const VkPhysicalDeviceShaderIntegerFunctions2INTEL *)in_header;
+            VkPhysicalDeviceShaderIntegerFunctions2INTEL *out;
+
+            if (!(out = heap_alloc(sizeof(*out)))) goto out_of_memory;
+
+            out->sType = in->sType;
+            out->pNext = NULL;
+            out->shaderIntegerFunctions2 = in->shaderIntegerFunctions2;
+
+            out_header->pNext = (VkBaseOutStructure *)out;
+            out_header = out_header->pNext;
+            break;
+        }
+
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SM_BUILTINS_FEATURES_NV:
+        {
+            const VkPhysicalDeviceShaderSMBuiltinsFeaturesNV *in = (const VkPhysicalDeviceShaderSMBuiltinsFeaturesNV *)in_header;
+            VkPhysicalDeviceShaderSMBuiltinsFeaturesNV *out;
+
+            if (!(out = heap_alloc(sizeof(*out)))) goto out_of_memory;
+
+            out->sType = in->sType;
+            out->pNext = NULL;
+            out->shaderSMBuiltins = in->shaderSMBuiltins;
+
+            out_header->pNext = (VkBaseOutStructure *)out;
+            out_header = out_header->pNext;
+            break;
+        }
+
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT:
+        {
+            const VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT *in = (const VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT *)in_header;
+            VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT *out;
+
+            if (!(out = heap_alloc(sizeof(*out)))) goto out_of_memory;
+
+            out->sType = in->sType;
+            out->pNext = NULL;
+            out->fragmentShaderSampleInterlock = in->fragmentShaderSampleInterlock;
+            out->fragmentShaderPixelInterlock = in->fragmentShaderPixelInterlock;
+            out->fragmentShaderShadingRateInterlock = in->fragmentShaderShadingRateInterlock;
+
+            out_header->pNext = (VkBaseOutStructure *)out;
+            out_header = out_header->pNext;
+            break;
+        }
+
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT:
+        {
+            const VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT *in = (const VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT *)in_header;
+            VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT *out;
+
+            if (!(out = heap_alloc(sizeof(*out)))) goto out_of_memory;
+
+            out->sType = in->sType;
+            out->pNext = NULL;
+            out->shaderDemoteToHelperInvocation = in->shaderDemoteToHelperInvocation;
+
+            out_header->pNext = (VkBaseOutStructure *)out;
+            out_header = out_header->pNext;
+            break;
+        }
+
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXEL_BUFFER_ALIGNMENT_FEATURES_EXT:
+        {
+            const VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT *in = (const VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT *)in_header;
+            VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT *out;
+
+            if (!(out = heap_alloc(sizeof(*out)))) goto out_of_memory;
+
+            out->sType = in->sType;
+            out->pNext = NULL;
+            out->texelBufferAlignment = in->texelBufferAlignment;
 
             out_header->pNext = (VkBaseOutStructure *)out;
             out_header = out_header->pNext;
@@ -2057,6 +2104,69 @@ void free_VkInstanceCreateInfo_struct_chain(VkInstanceCreateInfo *s)
     s->pNext = NULL;
 }
 
+VkBufferMemoryBarrier_host *convert_VkBufferMemoryBarrier_array_win_to_host(const VkBufferMemoryBarrier *in, uint32_t count)
+{
+    VkBufferMemoryBarrier_host *out;
+    unsigned int i;
+
+    if (!in) return NULL;
+
+    out = heap_alloc(count * sizeof(*out));
+    for (i = 0; i < count; i++)
+    {
+        out[i].sType = in[i].sType;
+        out[i].pNext = in[i].pNext;
+        out[i].srcAccessMask = in[i].srcAccessMask;
+        out[i].dstAccessMask = in[i].dstAccessMask;
+        out[i].srcQueueFamilyIndex = in[i].srcQueueFamilyIndex;
+        out[i].dstQueueFamilyIndex = in[i].dstQueueFamilyIndex;
+        out[i].buffer = in[i].buffer;
+        out[i].offset = in[i].offset;
+        out[i].size = in[i].size;
+    }
+
+    return out;
+}
+
+void free_VkBufferMemoryBarrier_array(VkBufferMemoryBarrier_host *in, uint32_t count)
+{
+    if (!in) return;
+
+    heap_free(in);
+}
+
+VkImageMemoryBarrier_host *convert_VkImageMemoryBarrier_array_win_to_host(const VkImageMemoryBarrier *in, uint32_t count)
+{
+    VkImageMemoryBarrier_host *out;
+    unsigned int i;
+
+    if (!in) return NULL;
+
+    out = heap_alloc(count * sizeof(*out));
+    for (i = 0; i < count; i++)
+    {
+        out[i].sType = in[i].sType;
+        out[i].pNext = in[i].pNext;
+        out[i].srcAccessMask = in[i].srcAccessMask;
+        out[i].dstAccessMask = in[i].dstAccessMask;
+        out[i].oldLayout = in[i].oldLayout;
+        out[i].newLayout = in[i].newLayout;
+        out[i].srcQueueFamilyIndex = in[i].srcQueueFamilyIndex;
+        out[i].dstQueueFamilyIndex = in[i].dstQueueFamilyIndex;
+        out[i].image = in[i].image;
+        out[i].subresourceRange = in[i].subresourceRange;
+    }
+
+    return out;
+}
+
+void free_VkImageMemoryBarrier_array(VkImageMemoryBarrier_host *in, uint32_t count)
+{
+    if (!in) return;
+
+    heap_free(in);
+}
+
 VkResult WINAPI wine_vkAcquireNextImage2KHR(VkDevice device, const VkAcquireNextImageInfoKHR *pAcquireInfo, uint32_t *pImageIndex)
 {
 #if defined(USE_STRUCT_CONVERSION)
@@ -2074,10 +2184,10 @@ VkResult WINAPI wine_vkAcquireNextImage2KHR(VkDevice device, const VkAcquireNext
 #endif
 }
 
-VkResult WINAPI wine_vkAcquireNextImageKHR(VkDevice device, VkSwapchainKHR swapchain, uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t *pImageIndex)
+static VkResult WINAPI wine_vkAcquirePerformanceConfigurationINTEL(VkDevice device, const VkPerformanceConfigurationAcquireInfoINTEL *pAcquireInfo, VkPerformanceConfigurationINTEL *pConfiguration)
 {
-    TRACE("%p, 0x%s, 0x%s, 0x%s, 0x%s, %p\n", device, wine_dbgstr_longlong(swapchain), wine_dbgstr_longlong(timeout), wine_dbgstr_longlong(semaphore), wine_dbgstr_longlong(fence), pImageIndex);
-    return device->funcs.p_vkAcquireNextImageKHR(device->device, swapchain, timeout, semaphore, fence, pImageIndex);
+    TRACE("%p, %p, %p\n", device, pAcquireInfo, pConfiguration);
+    return device->funcs.p_vkAcquirePerformanceConfigurationINTEL(device->device, pAcquireInfo, pConfiguration);
 }
 
 VkResult WINAPI wine_vkAllocateDescriptorSets(VkDevice device, const VkDescriptorSetAllocateInfo *pAllocateInfo, VkDescriptorSet *pDescriptorSets)
@@ -2589,25 +2699,6 @@ static void WINAPI wine_vkCmdNextSubpass2KHR(VkCommandBuffer commandBuffer, cons
     commandBuffer->device->funcs.p_vkCmdNextSubpass2KHR(commandBuffer->command_buffer, pSubpassBeginInfo, pSubpassEndInfo);
 }
 
-void WINAPI wine_vkCmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask, VkDependencyFlags dependencyFlags, uint32_t memoryBarrierCount, const VkMemoryBarrier *pMemoryBarriers, uint32_t bufferMemoryBarrierCount, const VkBufferMemoryBarrier *pBufferMemoryBarriers, uint32_t imageMemoryBarrierCount, const VkImageMemoryBarrier *pImageMemoryBarriers)
-{
-#if defined(USE_STRUCT_CONVERSION)
-    VkBufferMemoryBarrier_host *pBufferMemoryBarriers_host;
-    VkImageMemoryBarrier_host *pImageMemoryBarriers_host;
-    TRACE("%p, %#x, %#x, %#x, %u, %p, %u, %p, %u, %p\n", commandBuffer, srcStageMask, dstStageMask, dependencyFlags, memoryBarrierCount, pMemoryBarriers, bufferMemoryBarrierCount, pBufferMemoryBarriers, imageMemoryBarrierCount, pImageMemoryBarriers);
-
-    pBufferMemoryBarriers_host = convert_VkBufferMemoryBarrier_array_win_to_host(pBufferMemoryBarriers, bufferMemoryBarrierCount);
-    pImageMemoryBarriers_host = convert_VkImageMemoryBarrier_array_win_to_host(pImageMemoryBarriers, imageMemoryBarrierCount);
-    commandBuffer->device->funcs.p_vkCmdPipelineBarrier(commandBuffer->command_buffer, srcStageMask, dstStageMask, dependencyFlags, memoryBarrierCount, pMemoryBarriers, bufferMemoryBarrierCount, pBufferMemoryBarriers_host, imageMemoryBarrierCount, pImageMemoryBarriers_host);
-
-    free_VkBufferMemoryBarrier_array(pBufferMemoryBarriers_host, bufferMemoryBarrierCount);
-    free_VkImageMemoryBarrier_array(pImageMemoryBarriers_host, imageMemoryBarrierCount);
-#else
-    TRACE("%p, %#x, %#x, %#x, %u, %p, %u, %p, %u, %p\n", commandBuffer, srcStageMask, dstStageMask, dependencyFlags, memoryBarrierCount, pMemoryBarriers, bufferMemoryBarrierCount, pBufferMemoryBarriers, imageMemoryBarrierCount, pImageMemoryBarriers);
-    commandBuffer->device->funcs.p_vkCmdPipelineBarrier(commandBuffer->command_buffer, srcStageMask, dstStageMask, dependencyFlags, memoryBarrierCount, pMemoryBarriers, bufferMemoryBarrierCount, pBufferMemoryBarriers, imageMemoryBarrierCount, pImageMemoryBarriers);
-#endif
-}
-
 void WINAPI wine_vkCmdPushConstants(VkCommandBuffer commandBuffer, VkPipelineLayout layout, VkShaderStageFlags stageFlags, uint32_t offset, uint32_t size, const void *pValues)
 {
     TRACE("%p, 0x%s, %#x, %u, %u, %p\n", commandBuffer, wine_dbgstr_longlong(layout), stageFlags, offset, size, pValues);
@@ -2718,6 +2809,46 @@ void WINAPI wine_vkCmdSetLineWidth(VkCommandBuffer commandBuffer, float lineWidt
 {
     TRACE("%p, %f\n", commandBuffer, lineWidth);
     commandBuffer->device->funcs.p_vkCmdSetLineWidth(commandBuffer->command_buffer, lineWidth);
+}
+
+static VkResult WINAPI wine_vkCmdSetPerformanceMarkerINTEL(VkCommandBuffer commandBuffer, const VkPerformanceMarkerInfoINTEL *pMarkerInfo)
+{
+#if defined(USE_STRUCT_CONVERSION)
+    VkResult result;
+    VkPerformanceMarkerInfoINTEL_host pMarkerInfo_host;
+    TRACE("%p, %p\n", commandBuffer, pMarkerInfo);
+
+    convert_VkPerformanceMarkerInfoINTEL_win_to_host(pMarkerInfo, &pMarkerInfo_host);
+    result = commandBuffer->device->funcs.p_vkCmdSetPerformanceMarkerINTEL(commandBuffer->command_buffer, &pMarkerInfo_host);
+
+    return result;
+#else
+    TRACE("%p, %p\n", commandBuffer, pMarkerInfo);
+    return commandBuffer->device->funcs.p_vkCmdSetPerformanceMarkerINTEL(commandBuffer->command_buffer, pMarkerInfo);
+#endif
+}
+
+static VkResult WINAPI wine_vkCmdSetPerformanceOverrideINTEL(VkCommandBuffer commandBuffer, const VkPerformanceOverrideInfoINTEL *pOverrideInfo)
+{
+#if defined(USE_STRUCT_CONVERSION)
+    VkResult result;
+    VkPerformanceOverrideInfoINTEL_host pOverrideInfo_host;
+    TRACE("%p, %p\n", commandBuffer, pOverrideInfo);
+
+    convert_VkPerformanceOverrideInfoINTEL_win_to_host(pOverrideInfo, &pOverrideInfo_host);
+    result = commandBuffer->device->funcs.p_vkCmdSetPerformanceOverrideINTEL(commandBuffer->command_buffer, &pOverrideInfo_host);
+
+    return result;
+#else
+    TRACE("%p, %p\n", commandBuffer, pOverrideInfo);
+    return commandBuffer->device->funcs.p_vkCmdSetPerformanceOverrideINTEL(commandBuffer->command_buffer, pOverrideInfo);
+#endif
+}
+
+static VkResult WINAPI wine_vkCmdSetPerformanceStreamMarkerINTEL(VkCommandBuffer commandBuffer, const VkPerformanceStreamMarkerInfoINTEL *pMarkerInfo)
+{
+    TRACE("%p, %p\n", commandBuffer, pMarkerInfo);
+    return commandBuffer->device->funcs.p_vkCmdSetPerformanceStreamMarkerINTEL(commandBuffer->command_buffer, pMarkerInfo);
 }
 
 static void WINAPI wine_vkCmdSetSampleLocationsEXT(VkCommandBuffer commandBuffer, const VkSampleLocationsInfoEXT *pSampleLocationsInfo)
@@ -2985,6 +3116,12 @@ VkResult WINAPI wine_vkCreateGraphicsPipelines(VkDevice device, VkPipelineCache 
 #endif
 }
 
+static VkResult WINAPI wine_vkCreateHeadlessSurfaceEXT(VkInstance instance, const VkHeadlessSurfaceCreateInfoEXT *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkSurfaceKHR *pSurface)
+{
+    TRACE("%p, %p, %p, %p\n", instance, pCreateInfo, pAllocator, pSurface);
+    return instance->funcs.p_vkCreateHeadlessSurfaceEXT(instance->instance, pCreateInfo, NULL, pSurface);
+}
+
 VkResult WINAPI wine_vkCreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkImage *pImage)
 {
     TRACE("%p, %p, %p, %p\n", device, pCreateInfo, pAllocator, pImage);
@@ -3084,23 +3221,6 @@ VkResult WINAPI wine_vkCreateShaderModule(VkDevice device, const VkShaderModuleC
 {
     TRACE("%p, %p, %p, %p\n", device, pCreateInfo, pAllocator, pShaderModule);
     return device->funcs.p_vkCreateShaderModule(device->device, pCreateInfo, NULL, pShaderModule);
-}
-
-VkResult WINAPI wine_vkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkSwapchainKHR *pSwapchain)
-{
-#if defined(USE_STRUCT_CONVERSION)
-    VkResult result;
-    VkSwapchainCreateInfoKHR_host pCreateInfo_host;
-    TRACE("%p, %p, %p, %p\n", device, pCreateInfo, pAllocator, pSwapchain);
-
-    convert_VkSwapchainCreateInfoKHR_win_to_host(pCreateInfo, &pCreateInfo_host);
-    result = device->funcs.p_vkCreateSwapchainKHR(device->device, &pCreateInfo_host, NULL, pSwapchain);
-
-    return result;
-#else
-    TRACE("%p, %p, %p, %p\n", device, pCreateInfo, pAllocator, pSwapchain);
-    return device->funcs.p_vkCreateSwapchainKHR(device->device, pCreateInfo, NULL, pSwapchain);
-#endif
 }
 
 static VkResult WINAPI wine_vkCreateValidationCacheEXT(VkDevice device, const VkValidationCacheCreateInfoEXT *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkValidationCacheEXT *pValidationCache)
@@ -3251,12 +3371,6 @@ void WINAPI wine_vkDestroySurfaceKHR(VkInstance instance, VkSurfaceKHR surface, 
 {
     TRACE("%p, 0x%s, %p\n", instance, wine_dbgstr_longlong(surface), pAllocator);
     instance->funcs.p_vkDestroySurfaceKHR(instance->instance, surface, NULL);
-}
-
-void WINAPI wine_vkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks *pAllocator)
-{
-    TRACE("%p, 0x%s, %p\n", device, wine_dbgstr_longlong(swapchain), pAllocator);
-    device->funcs.p_vkDestroySwapchainKHR(device->device, swapchain, NULL);
 }
 
 static void WINAPI wine_vkDestroyValidationCacheEXT(VkDevice device, VkValidationCacheEXT validationCache, const VkAllocationCallbacks *pAllocator)
@@ -3567,6 +3681,12 @@ static VkResult WINAPI wine_vkGetMemoryHostPointerPropertiesEXT(VkDevice device,
     return device->funcs.p_vkGetMemoryHostPointerPropertiesEXT(device->device, handleType, pHostPointer, pMemoryHostPointerProperties);
 }
 
+static VkResult WINAPI wine_vkGetPerformanceParameterINTEL(VkDevice device, VkPerformanceParameterTypeINTEL parameter, VkPerformanceValueINTEL *pValue)
+{
+    TRACE("%p, %#x, %p\n", device, parameter, pValue);
+    return device->funcs.p_vkGetPerformanceParameterINTEL(device->device, parameter, pValue);
+}
+
 static VkResult WINAPI wine_vkGetPhysicalDeviceCooperativeMatrixPropertiesNV(VkPhysicalDevice physicalDevice, uint32_t *pPropertyCount, VkCooperativeMatrixPropertiesNV *pProperties)
 {
     TRACE("%p, %p, %p\n", physicalDevice, pPropertyCount, pProperties);
@@ -3798,10 +3918,10 @@ static void WINAPI wine_vkGetPhysicalDeviceSparseImageFormatProperties2KHR(VkPhy
     physicalDevice->instance->funcs.p_vkGetPhysicalDeviceSparseImageFormatProperties2KHR(physicalDevice->phys_dev, pFormatInfo, pPropertyCount, pProperties);
 }
 
-VkResult WINAPI wine_vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkSurfaceCapabilitiesKHR *pSurfaceCapabilities)
+static VkResult WINAPI wine_vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV(VkPhysicalDevice physicalDevice, uint32_t *pCombinationCount, VkFramebufferMixedSamplesCombinationNV *pCombinations)
 {
-    TRACE("%p, 0x%s, %p\n", physicalDevice, wine_dbgstr_longlong(surface), pSurfaceCapabilities);
-    return physicalDevice->instance->funcs.p_vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice->phys_dev, surface, pSurfaceCapabilities);
+    TRACE("%p, %p, %p\n", physicalDevice, pCombinationCount, pCombinations);
+    return physicalDevice->instance->funcs.p_vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV(physicalDevice->phys_dev, pCombinationCount, pCombinations);
 }
 
 VkResult WINAPI wine_vkGetPhysicalDeviceSurfaceFormatsKHR(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, uint32_t *pSurfaceFormatCount, VkSurfaceFormatKHR *pSurfaceFormats)
@@ -3864,16 +3984,16 @@ static VkResult WINAPI wine_vkGetShaderInfoAMD(VkDevice device, VkPipeline pipel
     return device->funcs.p_vkGetShaderInfoAMD(device->device, pipeline, shaderStage, infoType, pInfoSize, pInfo);
 }
 
-VkResult WINAPI wine_vkGetSwapchainImagesKHR(VkDevice device, VkSwapchainKHR swapchain, uint32_t *pSwapchainImageCount, VkImage *pSwapchainImages)
-{
-    TRACE("%p, 0x%s, %p, %p\n", device, wine_dbgstr_longlong(swapchain), pSwapchainImageCount, pSwapchainImages);
-    return device->funcs.p_vkGetSwapchainImagesKHR(device->device, swapchain, pSwapchainImageCount, pSwapchainImages);
-}
-
 static VkResult WINAPI wine_vkGetValidationCacheDataEXT(VkDevice device, VkValidationCacheEXT validationCache, size_t *pDataSize, void *pData)
 {
     TRACE("%p, 0x%s, %p, %p\n", device, wine_dbgstr_longlong(validationCache), pDataSize, pData);
     return device->funcs.p_vkGetValidationCacheDataEXT(device->device, validationCache, pDataSize, pData);
+}
+
+static VkResult WINAPI wine_vkInitializePerformanceApiINTEL(VkDevice device, const VkInitializePerformanceApiInfoINTEL *pInitializeInfo)
+{
+    TRACE("%p, %p\n", device, pInitializeInfo);
+    return device->funcs.p_vkInitializePerformanceApiINTEL(device->device, pInitializeInfo);
 }
 
 VkResult WINAPI wine_vkInvalidateMappedMemoryRanges(VkDevice device, uint32_t memoryRangeCount, const VkMappedMemoryRange *pMemoryRanges)
@@ -3930,16 +4050,22 @@ VkResult WINAPI wine_vkQueueBindSparse(VkQueue queue, uint32_t bindInfoCount, co
 #endif
 }
 
-VkResult WINAPI wine_vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR *pPresentInfo)
+static VkResult WINAPI wine_vkQueueSetPerformanceConfigurationINTEL(VkQueue queue, VkPerformanceConfigurationINTEL configuration)
 {
-    TRACE("%p, %p\n", queue, pPresentInfo);
-    return queue->device->funcs.p_vkQueuePresentKHR(queue->queue, pPresentInfo);
+    TRACE("%p, 0x%s\n", queue, wine_dbgstr_longlong(configuration));
+    return queue->device->funcs.p_vkQueueSetPerformanceConfigurationINTEL(queue->queue, configuration);
 }
 
 VkResult WINAPI wine_vkQueueWaitIdle(VkQueue queue)
 {
     TRACE("%p\n", queue);
     return queue->device->funcs.p_vkQueueWaitIdle(queue->queue);
+}
+
+static VkResult WINAPI wine_vkReleasePerformanceConfigurationINTEL(VkDevice device, VkPerformanceConfigurationINTEL configuration)
+{
+    TRACE("%p, 0x%s\n", device, wine_dbgstr_longlong(configuration));
+    return device->funcs.p_vkReleasePerformanceConfigurationINTEL(device->device, configuration);
 }
 
 VkResult WINAPI wine_vkResetCommandBuffer(VkCommandBuffer commandBuffer, VkCommandBufferResetFlags flags)
@@ -3996,6 +4122,12 @@ static void WINAPI wine_vkTrimCommandPoolKHR(VkDevice device, VkCommandPool comm
     device->funcs.p_vkTrimCommandPoolKHR(device->device, wine_cmd_pool_from_handle(commandPool)->command_pool, flags);
 }
 
+static void WINAPI wine_vkUninitializePerformanceApiINTEL(VkDevice device)
+{
+    TRACE("%p\n", device);
+    device->funcs.p_vkUninitializePerformanceApiINTEL(device->device);
+}
+
 void WINAPI wine_vkUnmapMemory(VkDevice device, VkDeviceMemory memory)
 {
     TRACE("%p, 0x%s\n", device, wine_dbgstr_longlong(memory));
@@ -4043,6 +4175,7 @@ static const struct vulkan_func vk_device_dispatch_table[] =
 {
     {"vkAcquireNextImage2KHR", &wine_vkAcquireNextImage2KHR},
     {"vkAcquireNextImageKHR", &wine_vkAcquireNextImageKHR},
+    {"vkAcquirePerformanceConfigurationINTEL", &wine_vkAcquirePerformanceConfigurationINTEL},
     {"vkAllocateCommandBuffers", &wine_vkAllocateCommandBuffers},
     {"vkAllocateDescriptorSets", &wine_vkAllocateDescriptorSets},
     {"vkAllocateMemory", &wine_vkAllocateMemory},
@@ -4121,6 +4254,9 @@ static const struct vulkan_func vk_device_dispatch_table[] =
     {"vkCmdSetEvent", &wine_vkCmdSetEvent},
     {"vkCmdSetExclusiveScissorNV", &wine_vkCmdSetExclusiveScissorNV},
     {"vkCmdSetLineWidth", &wine_vkCmdSetLineWidth},
+    {"vkCmdSetPerformanceMarkerINTEL", &wine_vkCmdSetPerformanceMarkerINTEL},
+    {"vkCmdSetPerformanceOverrideINTEL", &wine_vkCmdSetPerformanceOverrideINTEL},
+    {"vkCmdSetPerformanceStreamMarkerINTEL", &wine_vkCmdSetPerformanceStreamMarkerINTEL},
     {"vkCmdSetSampleLocationsEXT", &wine_vkCmdSetSampleLocationsEXT},
     {"vkCmdSetScissor", &wine_vkCmdSetScissor},
     {"vkCmdSetStencilCompareMask", &wine_vkCmdSetStencilCompareMask},
@@ -4222,6 +4358,7 @@ static const struct vulkan_func vk_device_dispatch_table[] =
     {"vkGetImageSparseMemoryRequirements2KHR", &wine_vkGetImageSparseMemoryRequirements2KHR},
     {"vkGetImageSubresourceLayout", &wine_vkGetImageSubresourceLayout},
     {"vkGetMemoryHostPointerPropertiesEXT", &wine_vkGetMemoryHostPointerPropertiesEXT},
+    {"vkGetPerformanceParameterINTEL", &wine_vkGetPerformanceParameterINTEL},
     {"vkGetPipelineCacheData", &wine_vkGetPipelineCacheData},
     {"vkGetQueryPoolResults", &wine_vkGetQueryPoolResults},
     {"vkGetQueueCheckpointDataNV", &wine_vkGetQueueCheckpointDataNV},
@@ -4230,14 +4367,17 @@ static const struct vulkan_func vk_device_dispatch_table[] =
     {"vkGetShaderInfoAMD", &wine_vkGetShaderInfoAMD},
     {"vkGetSwapchainImagesKHR", &wine_vkGetSwapchainImagesKHR},
     {"vkGetValidationCacheDataEXT", &wine_vkGetValidationCacheDataEXT},
+    {"vkInitializePerformanceApiINTEL", &wine_vkInitializePerformanceApiINTEL},
     {"vkInvalidateMappedMemoryRanges", &wine_vkInvalidateMappedMemoryRanges},
     {"vkMapMemory", &wine_vkMapMemory},
     {"vkMergePipelineCaches", &wine_vkMergePipelineCaches},
     {"vkMergeValidationCachesEXT", &wine_vkMergeValidationCachesEXT},
     {"vkQueueBindSparse", &wine_vkQueueBindSparse},
     {"vkQueuePresentKHR", &wine_vkQueuePresentKHR},
+    {"vkQueueSetPerformanceConfigurationINTEL", &wine_vkQueueSetPerformanceConfigurationINTEL},
     {"vkQueueSubmit", &wine_vkQueueSubmit},
     {"vkQueueWaitIdle", &wine_vkQueueWaitIdle},
+    {"vkReleasePerformanceConfigurationINTEL", &wine_vkReleasePerformanceConfigurationINTEL},
     {"vkResetCommandBuffer", &wine_vkResetCommandBuffer},
     {"vkResetCommandPool", &wine_vkResetCommandPool},
     {"vkResetDescriptorPool", &wine_vkResetDescriptorPool},
@@ -4247,6 +4387,7 @@ static const struct vulkan_func vk_device_dispatch_table[] =
     {"vkSetEvent", &wine_vkSetEvent},
     {"vkTrimCommandPool", &wine_vkTrimCommandPool},
     {"vkTrimCommandPoolKHR", &wine_vkTrimCommandPoolKHR},
+    {"vkUninitializePerformanceApiINTEL", &wine_vkUninitializePerformanceApiINTEL},
     {"vkUnmapMemory", &wine_vkUnmapMemory},
     {"vkUpdateDescriptorSetWithTemplate", &wine_vkUpdateDescriptorSetWithTemplate},
     {"vkUpdateDescriptorSetWithTemplateKHR", &wine_vkUpdateDescriptorSetWithTemplateKHR},
@@ -4257,6 +4398,7 @@ static const struct vulkan_func vk_device_dispatch_table[] =
 static const struct vulkan_func vk_instance_dispatch_table[] =
 {
     {"vkCreateDevice", &wine_vkCreateDevice},
+    {"vkCreateHeadlessSurfaceEXT", &wine_vkCreateHeadlessSurfaceEXT},
     {"vkCreateWin32SurfaceKHR", &wine_vkCreateWin32SurfaceKHR},
     {"vkDestroyInstance", &wine_vkDestroyInstance},
     {"vkDestroySurfaceKHR", &wine_vkDestroySurfaceKHR},
@@ -4295,6 +4437,7 @@ static const struct vulkan_func vk_instance_dispatch_table[] =
     {"vkGetPhysicalDeviceSparseImageFormatProperties", &wine_vkGetPhysicalDeviceSparseImageFormatProperties},
     {"vkGetPhysicalDeviceSparseImageFormatProperties2", &wine_vkGetPhysicalDeviceSparseImageFormatProperties2},
     {"vkGetPhysicalDeviceSparseImageFormatProperties2KHR", &wine_vkGetPhysicalDeviceSparseImageFormatProperties2KHR},
+    {"vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV", &wine_vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV},
     {"vkGetPhysicalDeviceSurfaceCapabilitiesKHR", &wine_vkGetPhysicalDeviceSurfaceCapabilitiesKHR},
     {"vkGetPhysicalDeviceSurfaceFormatsKHR", &wine_vkGetPhysicalDeviceSurfaceFormatsKHR},
     {"vkGetPhysicalDeviceSurfacePresentModesKHR", &wine_vkGetPhysicalDeviceSurfacePresentModesKHR},
@@ -4361,6 +4504,7 @@ static const char * const vk_device_extensions[] =
     "VK_EXT_external_memory_host",
     "VK_EXT_filter_cubic",
     "VK_EXT_fragment_density_map",
+    "VK_EXT_fragment_shader_interlock",
     "VK_EXT_global_priority",
     "VK_EXT_host_query_reset",
     "VK_EXT_inline_uniform_block",
@@ -4373,10 +4517,12 @@ static const char * const vk_device_extensions[] =
     "VK_EXT_sampler_filter_minmax",
     "VK_EXT_scalar_block_layout",
     "VK_EXT_separate_stencil_usage",
+    "VK_EXT_shader_demote_to_helper_invocation",
     "VK_EXT_shader_stencil_export",
     "VK_EXT_shader_subgroup_ballot",
     "VK_EXT_shader_subgroup_vote",
     "VK_EXT_shader_viewport_index_layer",
+    "VK_EXT_texel_buffer_alignment",
     "VK_EXT_transform_feedback",
     "VK_EXT_validation_cache",
     "VK_EXT_vertex_attribute_divisor",
@@ -4385,6 +4531,8 @@ static const char * const vk_device_extensions[] =
     "VK_GOOGLE_hlsl_functionality1",
     "VK_IMG_filter_cubic",
     "VK_IMG_format_pvrtc",
+    "VK_INTEL_performance_query",
+    "VK_INTEL_shader_integer_functions2",
     "VK_KHR_16bit_storage",
     "VK_KHR_8bit_storage",
     "VK_KHR_bind_memory2",
@@ -4416,12 +4564,14 @@ static const char * const vk_device_extensions[] =
     "VK_KHR_storage_buffer_storage_class",
     "VK_KHR_swapchain",
     "VK_KHR_swapchain_mutable_format",
+    "VK_KHR_uniform_buffer_standard_layout",
     "VK_KHR_variable_pointers",
     "VK_KHR_vulkan_memory_model",
     "VK_NV_clip_space_w_scaling",
     "VK_NV_compute_shader_derivatives",
     "VK_NV_cooperative_matrix",
     "VK_NV_corner_sampled_image",
+    "VK_NV_coverage_reduction_mode",
     "VK_NV_dedicated_allocation",
     "VK_NV_dedicated_allocation_image_aliasing",
     "VK_NV_device_diagnostic_checkpoints",
@@ -4437,6 +4587,7 @@ static const char * const vk_device_extensions[] =
     "VK_NV_sample_mask_override_coverage",
     "VK_NV_scissor_exclusive",
     "VK_NV_shader_image_footprint",
+    "VK_NV_shader_sm_builtins",
     "VK_NV_shader_subgroup_partitioned",
     "VK_NV_shading_rate_image",
     "VK_NV_viewport_array2",
@@ -4445,6 +4596,7 @@ static const char * const vk_device_extensions[] =
 
 static const char * const vk_instance_extensions[] =
 {
+    "VK_EXT_headless_surface",
     "VK_EXT_swapchain_colorspace",
     "VK_KHR_device_group_creation",
     "VK_KHR_external_fence_capabilities",

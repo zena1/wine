@@ -59,6 +59,8 @@ typedef int Status;
 #include "wine/gdi_driver.h"
 #include "wine/list.h"
 
+#include "mwm.h"
+
 #define MAX_DASHLEN 16
 
 #define WINE_XDND_VERSION 5
@@ -194,6 +196,8 @@ extern BOOL CDECL X11DRV_UnrealizePalette( HPALETTE hpal ) DECLSPEC_HIDDEN;
 
 extern void X11DRV_Xcursor_Init(void) DECLSPEC_HIDDEN;
 extern void X11DRV_XInput2_Init(void) DECLSPEC_HIDDEN;
+extern void X11DRV_XInput2_Enable(void) DECLSPEC_HIDDEN;
+extern void X11DRV_XInput2_Disable(void) DECLSPEC_HIDDEN;
 
 extern DWORD copy_image_bits( BITMAPINFO *info, BOOL is_r8g8b8, XImage *image,
                               const struct gdi_image_bits *src_bits, struct gdi_image_bits *dst_bits,
@@ -308,6 +312,7 @@ struct x11drv_escape_flush_gl_drawable
     enum x11drv_escape_codes code;         /* escape code (X11DRV_FLUSH_GL_DRAWABLE) */
     Drawable                 gl_drawable;  /* GL drawable */
     BOOL                     flush;        /* flush X11 before copying */
+    BOOL                     fs_hack;
 };
 
 /**************************************************************************
@@ -319,6 +324,7 @@ struct x11drv_valuator_data
     double min;
     double max;
     int number;
+    double accum;
 };
 
 struct x11drv_thread_data
@@ -337,11 +343,15 @@ struct x11drv_thread_data
     HWND     clip_hwnd;            /* message window stored in desktop while clipping is active */
     DWORD    clip_reset;           /* time when clipping was last reset */
     HKL      kbd_layout;           /* active keyboard layout */
-    enum { xi_unavailable = -1, xi_unknown, xi_disabled, xi_enabled } xi2_state; /* XInput2 state */
+    enum { xi_unavailable = -1, xi_unknown, xi_disabled, xi_enabled, xi_extra } xi2_state; /* XInput2 state */
     void    *xi2_devices;          /* list of XInput2 devices (valid when state is enabled) */
     int      xi2_device_count;
     struct x11drv_valuator_data x_rel_valuator;
     struct x11drv_valuator_data y_rel_valuator;
+    struct x11drv_valuator_data x_abs_valuator;
+    struct x11drv_valuator_data y_abs_valuator;
+    struct x11drv_valuator_data wheel_valuator;
+    double   xi2_wheel_multiplier;
     int      xi2_core_pointer;     /* XInput2 core pointer id */
     int      xi2_current_slave;    /* Current slave driving the Core pointer */
 };
@@ -429,6 +439,9 @@ enum x11drv_atoms
     XATOM_RAW_CAP_HEIGHT,
     XATOM_Rel_X,
     XATOM_Rel_Y,
+    XATOM_Abs_X,
+    XATOM_Abs_Y,
+    XATOM_Rel_Vert_Scroll,
     XATOM_WM_PROTOCOLS,
     XATOM_WM_DELETE_WINDOW,
     XATOM_WM_STATE,
@@ -441,9 +454,11 @@ enum x11drv_atoms
     XATOM__NET_STARTUP_INFO_BEGIN,
     XATOM__NET_STARTUP_INFO,
     XATOM__NET_SUPPORTED,
+    XATOM__NET_SUPPORTING_WM_CHECK,
     XATOM__NET_SYSTEM_TRAY_OPCODE,
     XATOM__NET_SYSTEM_TRAY_S0,
     XATOM__NET_SYSTEM_TRAY_VISUAL,
+    XATOM__NET_WM_BYPASS_COMPOSITOR,
     XATOM__NET_WM_ICON,
     XATOM__NET_WM_MOVERESIZE,
     XATOM__NET_WM_NAME,
@@ -490,6 +505,7 @@ enum x11drv_atoms
     XATOM_WCF_SYLK,
     XATOM_WCF_TIFF,
     XATOM_WCF_WAVE,
+    XATOM_WINDOW,
     XATOM_image_bmp,
     XATOM_image_gif,
     XATOM_image_jpeg,
@@ -572,6 +588,9 @@ struct x11drv_win_data
     BOOL        shaped : 1;     /* is window using a custom region shape? */
     BOOL        layered : 1;    /* is window layered and with valid attributes? */
     BOOL        use_alpha : 1;  /* does window use an alpha channel? */
+    BOOL        fs_hack : 1;
+    BOOL        pending_fullscreen : 1;
+    ULONGLONG   take_focus_back;
     int         wm_state;       /* current value of the WM_STATE property */
     DWORD       net_wm_state;   /* bit mask of active x11drv_net_wm_state values */
     Window      embedder;       /* window id of embedder */
@@ -581,6 +600,7 @@ struct x11drv_win_data
     Pixmap         icon_mask;
     unsigned long *icon_bits;
     unsigned int   icon_size;
+    MwmHints prev_hints;
 };
 
 extern struct x11drv_win_data *get_win_data( HWND hwnd ) DECLSPEC_HIDDEN;
@@ -605,6 +625,26 @@ extern void change_systray_owner( Display *display, Window systray_window ) DECL
 extern void update_systray_balloon_position(void) DECLSPEC_HIDDEN;
 extern HWND create_foreign_window( Display *display, Window window ) DECLSPEC_HIDDEN;
 extern BOOL update_clipboard( HWND hwnd ) DECLSPEC_HIDDEN;
+
+extern BOOL fs_hack_enabled(void) DECLSPEC_HIDDEN;
+extern BOOL fs_hack_matches_current_mode(int w, int h) DECLSPEC_HIDDEN;
+extern BOOL fs_hack_matches_real_mode(int w, int h) DECLSPEC_HIDDEN;
+extern POINT fs_hack_current_mode(void) DECLSPEC_HIDDEN;
+extern POINT fs_hack_real_mode(void) DECLSPEC_HIDDEN;
+extern void fs_hack_user_to_real(POINT *pos) DECLSPEC_HIDDEN;
+extern void fs_hack_real_to_user(POINT *pos) DECLSPEC_HIDDEN;
+extern void fs_hack_scale_user_to_real(POINT *pos) DECLSPEC_HIDDEN;
+extern void fs_hack_scale_real_to_user(POINT *pos) DECLSPEC_HIDDEN;
+extern void fs_hack_rect_user_to_real(RECT *data) DECLSPEC_HIDDEN;
+extern void fs_hack_rgndata_user_to_real(RGNDATA *data) DECLSPEC_HIDDEN;
+extern POINT fs_hack_get_scaled_screen_size(void) DECLSPEC_HIDDEN;
+extern BOOL fs_hack_window_is_hacked(HWND hwnd, struct x11drv_win_data *data) DECLSPEC_HIDDEN;
+extern void fs_hack_xrender_copy(Drawable src, Drawable dst) DECLSPEC_HIDDEN;
+extern double fs_hack_user_to_real_w, fs_hack_user_to_real_h DECLSPEC_HIDDEN;
+extern double fs_hack_real_to_user_w, fs_hack_real_to_user_h DECLSPEC_HIDDEN;
+BOOL fs_hack_matches_last_mode(int w, int h) DECLSPEC_HIDDEN;
+
+BOOL wm_is_mutter(Display *) DECLSPEC_HIDDEN;
 
 static inline void mirror_rect( const RECT *window_rect, RECT *rect )
 {
@@ -659,7 +699,7 @@ extern void X11DRV_resize_desktop(unsigned int width, unsigned int height) DECLS
 extern BOOL is_desktop_fullscreen(void) DECLSPEC_HIDDEN;
 extern BOOL create_desktop_win_data( Window win ) DECLSPEC_HIDDEN;
 extern void X11DRV_Settings_AddDepthModes(void) DECLSPEC_HIDDEN;
-extern void X11DRV_Settings_AddOneMode(unsigned int width, unsigned int height, unsigned int bpp, unsigned int freq) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_Settings_AddOneMode(unsigned int width, unsigned int height, unsigned int bpp, unsigned int freq) DECLSPEC_HIDDEN;
 unsigned int X11DRV_Settings_GetModeCount(void) DECLSPEC_HIDDEN;
 void X11DRV_Settings_Init(void) DECLSPEC_HIDDEN;
 struct x11drv_mode_info *X11DRV_Settings_SetHandlers(const char *name,
@@ -667,6 +707,7 @@ struct x11drv_mode_info *X11DRV_Settings_SetHandlers(const char *name,
                                                      LONG (*pNewSCM)(int),
                                                      unsigned int nmodes,
                                                      int reserve_depths) DECLSPEC_HIDDEN;
+void X11DRV_Settings_SetRealMode(unsigned int w, unsigned int h) DECLSPEC_HIDDEN;
 
 void X11DRV_XF86VM_Init(void) DECLSPEC_HIDDEN;
 void X11DRV_XRandR_Init(void) DECLSPEC_HIDDEN;

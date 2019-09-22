@@ -48,6 +48,7 @@
 
 #include "ntdll_misc.h"
 #include "esync.h"
+#include "fsync.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(esync);
 
@@ -57,7 +58,7 @@ int do_esync(void)
     static int do_esync_cached = -1;
 
     if (do_esync_cached == -1)
-        do_esync_cached = getenv("WINEESYNC") && atoi(getenv("WINEESYNC"));
+        do_esync_cached = getenv("WINEESYNC") && atoi(getenv("WINEESYNC")) && !do_fsync();
 
     return do_esync_cached;
 #else
@@ -155,10 +156,22 @@ void esync_init(void)
     shm_addrs_size = 128;
 }
 
+static RTL_CRITICAL_SECTION shm_addrs_section;
+static RTL_CRITICAL_SECTION_DEBUG shm_addrs_debug =
+{
+    0, 0, &shm_addrs_section,
+    { &shm_addrs_debug.ProcessLocksList, &shm_addrs_debug.ProcessLocksList },
+      0, 0, { (DWORD_PTR)(__FILE__ ": shm_addrs_section") }
+};
+static RTL_CRITICAL_SECTION shm_addrs_section = { &shm_addrs_debug, -1, 0, 0, 0, 0 };
+
 static void *get_shm( unsigned int idx )
 {
     int entry  = (idx * 8) / pagesize;
     int offset = (idx * 8) % pagesize;
+    void *ret;
+
+    RtlEnterCriticalSection(&shm_addrs_section);
 
     if (entry >= shm_addrs_size)
     {
@@ -180,7 +193,11 @@ static void *get_shm( unsigned int idx )
             munmap( addr, pagesize ); /* someone beat us to it */
     }
 
-    return (void *)((unsigned long)shm_addrs[entry] + offset);
+    ret = (void *)((unsigned long)shm_addrs[entry] + offset);
+
+    RtlLeaveCriticalSection(&shm_addrs_section);
+
+    return ret;
 }
 
 /* We'd like lookup to be fast. To that end, we use a static list indexed by handle.
@@ -261,6 +278,13 @@ static NTSTATUS get_object( HANDLE handle, struct esync **obj )
     {
         /* We can deal with pseudo-handles, but it's just easier this way */
         return STATUS_NOT_IMPLEMENTED;
+    }
+
+    if (!handle)
+    {
+        /* Shadow of the Tomb Raider really likes passing in NULL handles to
+         * various functions. Concerning, but let's avoid a server call. */
+        return STATUS_INVALID_HANDLE;
     }
 
     /* We need to try grabbing it from the server. */
@@ -554,6 +578,14 @@ static inline void small_pause(void)
  * problem at all.
  */
 
+/* Removing this spinlock is harder than it looks. esync_wait_objects() can
+ * deal with inconsistent state well enough, and a race between SetEvent() and
+ * ResetEvent() gives us license to yield either result as long as we act
+ * consistently, but that's not enough. Notably, esync_wait_objects() should
+ * probably act like a fence, so that the second half of esync_set_event() does
+ * not seep past a subsequent reset. That's one problem, but no guarantee there
+ * aren't others. */
+
 NTSTATUS esync_set_event( HANDLE handle, LONG *prev )
 {
     static const uint64_t value = 1;
@@ -567,21 +599,35 @@ NTSTATUS esync_set_event( HANDLE handle, LONG *prev )
     if ((ret = get_object( handle, &obj ))) return ret;
     event = obj->shm;
 
-    /* Acquire the spinlock. */
-    while (interlocked_cmpxchg( &event->locked, 1, 0 ))
-        small_pause();
+    if (obj->type == ESYNC_MANUAL_EVENT)
+    {
+        /* Acquire the spinlock. */
+        while (interlocked_cmpxchg( &event->locked, 1, 0 ))
+            small_pause();
+    }
 
-    /* Only bother signaling the fd if we weren't already signaled. */
-    if (!(current = interlocked_xchg( &event->signaled, 1 )))
+    /* For manual-reset events, as long as we're in a lock, we can take the
+     * optimization of only calling write() if the event wasn't already
+     * signaled.
+     *
+     * For auto-reset events, esync_wait_objects() must grab the kernel object.
+     * Thus if we got into a race so that the shm state is signaled but the
+     * eventfd is unsignaled (i.e. reset shm, set shm, set fd, reset fd), we
+     * *must* signal the fd now, or any waiting threads will never wake up. */
+
+    if (!(current = interlocked_xchg( &event->signaled, 1 )) || obj->type == ESYNC_AUTO_EVENT)
     {
         if (write( obj->fd, &value, sizeof(value) ) == -1)
-            return FILE_GetNtStatus();
+            ERR("write: %s\n", strerror(errno));
     }
 
     if (prev) *prev = current;
 
-    /* Release the spinlock. */
-    event->locked = 0;
+    if (obj->type == ESYNC_MANUAL_EVENT)
+    {
+        /* Release the spinlock. */
+        event->locked = 0;
+    }
 
     return STATUS_SUCCESS;
 }
@@ -599,21 +645,34 @@ NTSTATUS esync_reset_event( HANDLE handle, LONG *prev )
     if ((ret = get_object( handle, &obj ))) return ret;
     event = obj->shm;
 
-    /* Acquire the spinlock. */
-    while (interlocked_cmpxchg( &event->locked, 1, 0 ))
-        small_pause();
-
-    /* Only bother signaling the fd if we weren't already signaled. */
-    if ((current = interlocked_xchg( &event->signaled, 0 )))
+    if (obj->type == ESYNC_MANUAL_EVENT)
     {
-        /* we don't care about the return value */
-        read( obj->fd, &value, sizeof(value) );
+        /* Acquire the spinlock. */
+        while (interlocked_cmpxchg( &event->locked, 1, 0 ))
+            small_pause();
+    }
+
+    /* For manual-reset events, as long as we're in a lock, we can take the
+     * optimization of only calling read() if the event was already signaled.
+     *
+     * For auto-reset events, we have no guarantee that the previous "signaled"
+     * state is actually correct. We need to leave both states unsignaled after
+     * leaving this function, so we always have to read(). */
+    if ((current = interlocked_xchg( &event->signaled, 0 )) || obj->type == ESYNC_AUTO_EVENT)
+    {
+        if (read( obj->fd, &value, sizeof(value) ) == -1 && errno != EWOULDBLOCK && errno != EAGAIN)
+        {
+            ERR("read: %s\n", strerror(errno));
+        }
     }
 
     if (prev) *prev = current;
 
-    /* Release the spinlock. */
-    event->locked = 0;
+    if (obj->type == ESYNC_MANUAL_EVENT)
+    {
+        /* Release the spinlock. */
+        event->locked = 0;
+    }
 
     return STATUS_SUCCESS;
 }
@@ -828,8 +887,9 @@ static void update_grabbed_object( struct esync *obj )
     else if (obj->type == ESYNC_AUTO_EVENT)
     {
         struct event *event = obj->shm;
-        /* We don't have to worry about a race between this and read(), for
-         * reasons described near esync_set_event(). */
+        /* We don't have to worry about a race between this and read(), since
+         * this is just a hint, and the real state is in the kernel object.
+         * This might already be 0, but that's okay! */
         event->signaled = 0;
     }
 }
@@ -1046,6 +1106,14 @@ static NTSTATUS __esync_wait_objects( DWORD count, const HANDLE *handles,
             ret = do_poll( fds, pollcount, timeout ? &end : NULL );
             if (ret > 0)
             {
+                /* We must check this first! The server may set an event that
+                 * we're waiting on, but we need to return STATUS_USER_APC. */
+                if (alertable)
+                {
+                    if (fds[pollcount - 1].revents & POLLIN)
+                        goto userapc;
+                }
+
                 /* Find out which object triggered the wait. */
                 for (i = 0; i < count; i++)
                 {
@@ -1070,6 +1138,7 @@ static NTSTATUS __esync_wait_objects( DWORD count, const HANDLE *handles,
                         }
                         else
                         {
+                            /* FIXME: Could we check the poll or shm state first? Should we? */
                             if ((size = read( fds[i].fd, &value, sizeof(value) )) == sizeof(value))
                             {
                                 /* We found our object. */
@@ -1088,11 +1157,6 @@ static NTSTATUS __esync_wait_objects( DWORD count, const HANDLE *handles,
                         TRACE("Woken up by driver events.\n");
                         return count - 1;
                     }
-                }
-                if (alertable)
-                {
-                    if (fds[i++].revents & POLLIN)
-                        goto userapc;
                 }
 
                 /* If we got here, someone else stole (or reset, etc.) whatever
