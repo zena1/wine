@@ -170,8 +170,6 @@ static int internal_set_entry( unsigned short sel, const LDT_ENTRY *entry )
 {
     int ret = 0, index = sel >> 3;
 
-    if (index < LDT_FIRST_ENTRY) return 0;  /* cannot modify reserved entries */
-
 #ifdef linux
     {
         struct modify_ldt_s ldt_info;
@@ -223,7 +221,7 @@ static int internal_set_entry( unsigned short sel, const LDT_ENTRY *entry )
         wine_ldt_copy.limit[index] = wine_ldt_get_limit(entry);
         wine_ldt_copy.flags[index] = (entry->HighWord.Bits.Type |
                                  (entry->HighWord.Bits.Default_Big ? WINE_LDT_FLAGS_32BIT : 0) |
-                                 (wine_ldt_copy.flags[index] & WINE_LDT_FLAGS_ALLOCATED));
+                                 WINE_LDT_FLAGS_ALLOCATED);
     }
     return ret;
 }
@@ -463,6 +461,10 @@ __ASM_GLOBAL_FUNC( wine_get_es, "movw %es,%ax\n\tret" )
 __ASM_GLOBAL_FUNC( wine_get_fs, "movw %fs,%ax\n\tret" )
 __ASM_GLOBAL_FUNC( wine_get_gs, "movw %gs,%ax\n\tret" )
 __ASM_GLOBAL_FUNC( wine_get_ss, "movw %ss,%ax\n\tret" )
+__ASM_GLOBAL_FUNC( wine_set_cs, "movl 4(%esp),%eax\n\t"
+                                "xchg 0(%esp),%eax\n\t"
+                                "push %eax\n\t"
+                                "retf" )
 __ASM_GLOBAL_FUNC( wine_set_fs, "movl 4(%esp),%eax\n\tmovw %ax,%fs\n\tret" )
 __ASM_GLOBAL_FUNC( wine_set_gs, "movl 4(%esp),%eax\n\tmovw %ax,%gs\n\tret" )
 
