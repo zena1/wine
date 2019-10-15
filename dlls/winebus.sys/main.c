@@ -84,9 +84,26 @@ static const struct product_desc XBOX_CONTROLLERS[] = {
     {VID_MICROSOFT, 0x0719, NULL, xbox360_product_string, NULL}, /* Xbox 360 Wireless Adapter */
 };
 
+#define VID_VALVE 0x28de
+
+static const struct product_desc STEAM_CONTROLLERS[] = {
+    {VID_VALVE, 0x1101, NULL, NULL, NULL}, /* Valve Legacy Steam Controller */
+    {VID_VALVE, 0x1102, NULL, NULL, NULL}, /* Valve wired Steam Controller */
+    {VID_VALVE, 0x1105, NULL, NULL, NULL}, /* Valve Bluetooth Steam Controller */
+    {VID_VALVE, 0x1106, NULL, NULL, NULL}, /* Valve Bluetooth Steam Controller */
+    {VID_VALVE, 0x1142, NULL, NULL, NULL}, /* Valve wireless Steam Controller */
+    {VID_VALVE, 0x1201, NULL, NULL, NULL}, /* Valve wired Steam Controller */
+    {VID_VALVE, 0x1202, NULL, NULL, NULL}, /* Valve Bluetooth Steam Controller */
+};
+
 static DRIVER_OBJECT *driver_obj;
 
+
 static DEVICE_OBJECT *mouse_obj;
+
+/* The root-enumerated device stack. */
+DEVICE_OBJECT *bus_pdo;
+static DEVICE_OBJECT *bus_fdo;
 
 HANDLE driver_key;
 
@@ -102,7 +119,7 @@ struct device_extension
 
     WORD vid, pid, input;
     DWORD uid, version, index;
-    BOOL is_gamepad;
+    BOOL is_gamepad, xinput_hack;
     WCHAR *serial;
     const WCHAR *busid;  /* Expected to be a static constant */
 
@@ -219,7 +236,8 @@ static WCHAR *get_compatible_ids(DEVICE_OBJECT *device)
 
 DEVICE_OBJECT *bus_create_hid_device(const WCHAR *busidW, WORD vid, WORD pid,
                                      WORD input, DWORD version, DWORD uid, const WCHAR *serialW, BOOL is_gamepad,
-                                     const GUID *class, const platform_vtbl *vtbl, DWORD platform_data_size)
+                                     const GUID *class, const platform_vtbl *vtbl, DWORD platform_data_size,
+                                     BOOL xinput_hack)
 {
     static const WCHAR device_name_fmtW[] = {'\\','D','e','v','i','c','e','\\','%','s','#','%','p',0};
     WCHAR *id, instance[MAX_DEVICE_ID_LEN];
@@ -263,6 +281,7 @@ DEVICE_OBJECT *bus_create_hid_device(const WCHAR *busidW, WORD vid, WORD pid,
     ext->version            = version;
     ext->index              = get_device_index(vid, pid, input);
     ext->is_gamepad         = is_gamepad;
+    ext->xinput_hack = xinput_hack;
     ext->serial             = strdupW(serialW);
     ext->busid              = busidW;
     ext->vtbl               = vtbl;
@@ -490,18 +509,57 @@ static NTSTATUS handle_IRP_MN_QUERY_ID(DEVICE_OBJECT *device, IRP *irp)
     return status;
 }
 
-static NTSTATUS WINAPI common_pnp_dispatch(DEVICE_OBJECT *device, IRP *irp)
+static NTSTATUS fdo_pnp_dispatch(DEVICE_OBJECT *device, IRP *irp)
+{
+    static const WCHAR SDL_enabledW[] = {'E','n','a','b','l','e',' ','S','D','L',0};
+    static const UNICODE_STRING SDL_enabled = {sizeof(SDL_enabledW) - sizeof(WCHAR), sizeof(SDL_enabledW), (WCHAR*)SDL_enabledW};
+    IO_STACK_LOCATION *irpsp = IoGetCurrentIrpStackLocation(irp);
+    NTSTATUS ret;
+
+    switch (irpsp->MinorFunction)
+    {
+    case IRP_MN_QUERY_DEVICE_RELATIONS:
+        irp->IoStatus.u.Status = handle_IRP_MN_QUERY_DEVICE_RELATIONS(irp);
+        break;
+    case IRP_MN_START_DEVICE:
+        udev_driver_init();
+        iohid_driver_init();
+
+        if (check_bus_option(&SDL_enabled, 1))
+        {
+            sdl_driver_init();
+        }
+        irp->IoStatus.u.Status = STATUS_SUCCESS;
+        break;
+    case IRP_MN_SURPRISE_REMOVAL:
+        irp->IoStatus.u.Status = STATUS_SUCCESS;
+        break;
+    case IRP_MN_REMOVE_DEVICE:
+        udev_driver_unload();
+        iohid_driver_unload();
+        sdl_driver_unload();
+
+        irp->IoStatus.u.Status = STATUS_SUCCESS;
+        IoSkipCurrentIrpStackLocation(irp);
+        ret = IoCallDriver(bus_pdo, irp);
+        IoDetachDevice(bus_pdo);
+        IoDeleteDevice(device);
+        return ret;
+    default:
+        FIXME("Unhandled minor function %#x.\n", irpsp->MinorFunction);
+    }
+
+    IoSkipCurrentIrpStackLocation(irp);
+    return IoCallDriver(bus_pdo, irp);
+}
+
+static NTSTATUS pdo_pnp_dispatch(DEVICE_OBJECT *device, IRP *irp)
 {
     NTSTATUS status = irp->IoStatus.u.Status;
     IO_STACK_LOCATION *irpsp = IoGetCurrentIrpStackLocation(irp);
 
     switch (irpsp->MinorFunction)
     {
-        case IRP_MN_QUERY_DEVICE_RELATIONS:
-            TRACE("IRP_MN_QUERY_DEVICE_RELATIONS\n");
-            status = handle_IRP_MN_QUERY_DEVICE_RELATIONS(irp);
-            irp->IoStatus.u.Status = status;
-            break;
         case IRP_MN_QUERY_ID:
             TRACE("IRP_MN_QUERY_ID\n");
             status = handle_IRP_MN_QUERY_ID(device, irp);
@@ -517,6 +575,13 @@ static NTSTATUS WINAPI common_pnp_dispatch(DEVICE_OBJECT *device, IRP *irp)
 
     IoCompleteRequest(irp, IO_NO_INCREMENT);
     return status;
+}
+
+static NTSTATUS WINAPI common_pnp_dispatch(DEVICE_OBJECT *device, IRP *irp)
+{
+    if (device == bus_fdo)
+        return fdo_pnp_dispatch(device, irp);
+    return pdo_pnp_dispatch(device, irp);
 }
 
 static NTSTATUS deliver_last_report(struct device_extension *ext, DWORD buffer_length, BYTE* buffer, ULONG_PTR *out_length)
@@ -592,6 +657,12 @@ static NTSTATUS WINAPI hid_internal_dispatch(DEVICE_OBJECT *device, IRP *irp)
 
     TRACE("(%p, %p)\n", device, irp);
 
+    if (device == bus_fdo)
+    {
+        IoSkipCurrentIrpStackLocation(irp);
+        return IoCallDriver(bus_pdo, irp);
+    }
+
     switch (irpsp->Parameters.DeviceIoControl.IoControlCode)
     {
         case IOCTL_HID_GET_DEVICE_ATTRIBUTES:
@@ -610,6 +681,7 @@ static NTSTATUS WINAPI hid_internal_dispatch(DEVICE_OBJECT *device, IRP *irp)
             attr->VendorID = ext->vid;
             attr->ProductID = ext->pid;
             attr->VersionNumber = ext->version;
+            attr->Reserved[0] = ext->xinput_hack;
 
             irp->IoStatus.u.Status = status = STATUS_SUCCESS;
             irp->IoStatus.Information = sizeof(*attr);
@@ -836,11 +908,40 @@ BOOL is_xbox_gamepad(WORD vid, WORD pid)
     return FALSE;
 }
 
+static NTSTATUS WINAPI driver_add_device(DRIVER_OBJECT *driver, DEVICE_OBJECT *pdo)
+{
+    NTSTATUS ret;
+
+    TRACE("driver %p, pdo %p.\n", driver, pdo);
+
+    if ((ret = IoCreateDevice(driver, 0, NULL, FILE_DEVICE_BUS_EXTENDER, 0, FALSE, &bus_fdo)))
+    {
+        ERR("Failed to create FDO, status %#x.\n", ret);
+        return ret;
+    }
+
+    IoAttachDeviceToDeviceStack(bus_fdo, pdo);
+    bus_pdo = pdo;
+
+    bus_fdo->Flags &= ~DO_DEVICE_INITIALIZING;
+
+    return STATUS_SUCCESS;
+}
+
+BOOL is_steam_controller(WORD vid, WORD pid)
+{
+    if (vid == VID_VALVE)
+    {
+        int i;
+        for (i = 0; i < ARRAY_SIZE(STEAM_CONTROLLERS); i++)
+            if (pid == STEAM_CONTROLLERS[i].pid) return TRUE;
+    }
+
+    return FALSE;
+}
+
 static void WINAPI driver_unload(DRIVER_OBJECT *driver)
 {
-    udev_driver_unload();
-    iohid_driver_unload();
-    sdl_driver_unload();
     NtClose(driver_key);
 }
 
@@ -910,14 +1011,12 @@ static void mouse_device_create(void)
     static const WCHAR busidW[] = {'W','I','N','E','M','O','U','S','E',0};
 
     mouse_obj = bus_create_hid_device(busidW, 0, 0, -1, 0, 0, busidW, FALSE,
-            &wine_mouse_class, &mouse_vtbl, 0);
+            &wine_mouse_class, &mouse_vtbl, 0, 0);
     IoInvalidateDeviceRelations(mouse_obj, BusRelations);
 }
 
 NTSTATUS WINAPI DriverEntry( DRIVER_OBJECT *driver, UNICODE_STRING *path )
 {
-    static const WCHAR SDL_enabledW[] = {'E','n','a','b','l','e',' ','S','D','L',0};
-    static const UNICODE_STRING SDL_enabled = {sizeof(SDL_enabledW) - sizeof(WCHAR), sizeof(SDL_enabledW), (WCHAR*)SDL_enabledW};
     OBJECT_ATTRIBUTES attr = {0};
     NTSTATUS ret;
 
@@ -933,17 +1032,8 @@ NTSTATUS WINAPI DriverEntry( DRIVER_OBJECT *driver, UNICODE_STRING *path )
 
     driver->MajorFunction[IRP_MJ_PNP] = common_pnp_dispatch;
     driver->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = hid_internal_dispatch;
+    driver->DriverExtension->AddDevice = driver_add_device;
     driver->DriverUnload = driver_unload;
-
-    mouse_device_create();
-
-    if (check_bus_option(&SDL_enabled, 1))
-    {
-        if (sdl_driver_init() == STATUS_SUCCESS)
-            return STATUS_SUCCESS;
-    }
-    udev_driver_init();
-    iohid_driver_init();
 
     return STATUS_SUCCESS;
 }

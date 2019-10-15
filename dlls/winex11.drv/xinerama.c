@@ -288,6 +288,14 @@ static BOOL xinerama_get_monitors( ULONG_PTR adapter_id, struct x11drv_monitor *
 
             index++;
         }
+
+        if(fs_hack_enabled()){
+            POINT fs = fs_hack_current_mode();
+            MONITORINFOEXW *primary = get_primary();
+            primary->rcMonitor.right = primary->rcMonitor.left + fs.x;
+            primary->rcMonitor.bottom = primary->rcMonitor.top + fs.y;
+            primary->rcWork = primary->rcMonitor;
+        }
     }
 
     *new_monitors = monitor;

@@ -61,6 +61,14 @@ const char * CDECL NTDLL_wine_get_version(void)
 }
 
 /*********************************************************************
+ *                  wine_get_patches   (NTDLL.@)
+ */
+const void * CDECL NTDLL_wine_get_patches(void)
+{
+    return wine_get_patches();
+}
+
+/*********************************************************************
  *                  wine_get_build_id   (NTDLL.@)
  */
 const char * CDECL NTDLL_wine_get_build_id(void)
@@ -616,4 +624,11 @@ BOOL WINAPI ApiSetQueryApiSetPresence(const UNICODE_STRING *namespace, BOOLEAN *
     if(present)
         *present = TRUE;
     return TRUE;
+}
+
+BOOL IsTransgaming(void)
+{
+    static int call_count = -1;
+    call_count++;
+    return call_count == 1;
 }

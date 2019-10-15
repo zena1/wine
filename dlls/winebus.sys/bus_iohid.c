@@ -349,7 +349,7 @@ static void handle_DeviceMatchingCallback(void *context, IOReturn result, void *
 
     device = bus_create_hid_device(busidW, vid, pid, input,
             version, uid, str?serial_string:NULL, is_gamepad, &GUID_DEVCLASS_IOHID,
-            &iohid_vtbl, sizeof(struct platform_private));
+            &iohid_vtbl, sizeof(struct platform_private), FALSE);
     if (!device)
         ERR("Failed to create device\n");
     else
@@ -357,7 +357,7 @@ static void handle_DeviceMatchingCallback(void *context, IOReturn result, void *
         struct platform_private *private = impl_from_DEVICE_OBJECT(device);
         private->device = IOHIDDevice;
         private->buffer = NULL;
-        IoInvalidateDeviceRelations(device, BusRelations);
+        IoInvalidateDeviceRelations(bus_pdo, BusRelations);
     }
 }
 

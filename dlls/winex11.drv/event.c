@@ -596,12 +596,26 @@ static void set_input_focus( struct x11drv_win_data *data )
  */
 static void set_focus( Display *display, HWND hwnd, Time time )
 {
-    HWND focus;
+    HWND focus, old_active;
     Window win;
     GUITHREADINFO threadinfo;
 
+    old_active = GetForegroundWindow();
+
+    /* prevent recursion */
+    x11drv_thread_data()->active_window = hwnd;
+
     TRACE( "setting foreground window to %p\n", hwnd );
     SetForegroundWindow( hwnd );
+
+    /* Some applications expect that a being deactivated topmost window
+     * receives the WM_WINDOWPOSCHANGING/WM_WINDOWPOSCHANGED messages,
+     * and perform some specific actions. Chessmaster is one of such apps.
+     * Window Manager keeps a topmost window on top in z-oder, so there is
+     * no need to actually do anything, just send the messages.
+     */
+    if (old_active && (GetWindowLongW( old_active, GWL_EXSTYLE ) & WS_EX_TOPMOST))
+        SetWindowPos( old_active, hwnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER );
 
     threadinfo.cbSize = sizeof(threadinfo);
     GetGUIThreadInfo(0, &threadinfo);
@@ -788,6 +802,14 @@ static BOOL X11DRV_FocusIn( HWND hwnd, XEvent *xev )
         keyboard_grabbed = FALSE;
         break;
     case NotifyUngrab:
+        /* Focus was just restored but it can be right after super was
+         * pressed and gnome-shell needs a bit of time to respond and
+         * toggle the activity view. If we grab the cursor right away
+         * it will cancel it and super key will do nothing.
+         */
+        if (wm_is_mutter(event->display))
+            Sleep(100);
+
         keyboard_grabbed = FALSE;
         retry_grab_clipping_window();
         return TRUE; /* ignore wm specific NotifyUngrab / NotifyGrab events w.r.t focus */
@@ -821,8 +843,26 @@ static void focus_out( Display *display , HWND hwnd )
     Window focus_win;
     int revert;
     XIC xic;
+    struct x11drv_win_data *data;
 
     if (ximInComposeMode) return;
+
+    data = get_win_data(hwnd);
+    if(data){
+        ULONGLONG now = GetTickCount64();
+        if(data->take_focus_back > 0 &&
+                now >= data->take_focus_back &&
+                now - data->take_focus_back < 1000){
+            data->take_focus_back = 0;
+            TRACE("workaround mutter bug, taking focus back\n");
+            XSetInputFocus( data->display, data->whole_window, RevertToParent, CurrentTime);
+            release_win_data(data);
+            /* don't inform win32 client */
+            return;
+        }
+        data->take_focus_back = 0;
+        release_win_data(data);
+    }
 
     x11drv_thread_data()->last_focus = hwnd;
     if ((xic = X11DRV_get_ic( hwnd ))) XUnsetICFocus( xic );
@@ -847,6 +887,8 @@ static void focus_out( Display *display , HWND hwnd )
 
     if (!focus_win)
     {
+        x11drv_thread_data()->active_window = 0;
+
         /* Abey : 6-Oct-99. Check again if the focus out window is the
            Foreground window, because in most cases the messages sent
            above must have already changed the foreground window, in which
@@ -985,6 +1027,7 @@ static BOOL X11DRV_Expose( HWND hwnd, XEvent *xev )
 static BOOL X11DRV_MapNotify( HWND hwnd, XEvent *event )
 {
     struct x11drv_win_data *data;
+    BOOL is_embedded;
 
     if (event->xany.window == x11drv_thread_data()->clip_window) return TRUE;
 
@@ -996,7 +1039,12 @@ static BOOL X11DRV_MapNotify( HWND hwnd, XEvent *event )
         if (hwndFocus && IsChild( hwnd, hwndFocus ))
             set_input_focus( data );
     }
+
+    is_embedded = data->embedded;
     release_win_data( data );
+
+    if (is_embedded)
+        EnableWindow( hwnd, TRUE );
     return TRUE;
 }
 
@@ -1006,6 +1054,17 @@ static BOOL X11DRV_MapNotify( HWND hwnd, XEvent *event )
  */
 static BOOL X11DRV_UnmapNotify( HWND hwnd, XEvent *event )
 {
+    struct x11drv_win_data *data;
+    BOOL is_embedded;
+
+    if (!(data = get_win_data( hwnd ))) return FALSE;
+
+    is_embedded = data->embedded;
+    release_win_data( data );
+
+    if (is_embedded)
+        EnableWindow( hwnd, FALSE );
+
     return TRUE;
 }
 
@@ -1107,6 +1166,12 @@ static BOOL X11DRV_ConfigureNotify( HWND hwnd, XEvent *xev )
                event->serial, data->configure_serial );
         goto done;
     }
+    if (data->pending_fullscreen)
+    {
+        TRACE( "win %p/%lx event %d,%d,%dx%d pending_fullscreen is pending, so ignoring\n",
+               hwnd, data->whole_window, event->x, event->y, event->width, event->height );
+        goto done;
+    }
 
     /* Get geometry */
 
@@ -1128,8 +1193,16 @@ static BOOL X11DRV_ConfigureNotify( HWND hwnd, XEvent *xev )
     }
     else pos = root_to_virtual_screen( x, y );
 
-    X11DRV_X_to_window_rect( data, &rect, pos.x, pos.y, event->width, event->height );
-    if (root_coords) MapWindowPoints( 0, parent, (POINT *)&rect, 2 );
+    if(data->fs_hack){
+        POINT p = fs_hack_current_mode();
+        rect.left = 0;
+        rect.top = 0;
+        rect.right = p.x;
+        rect.bottom = p.y;
+    }else{
+        X11DRV_X_to_window_rect( data, &rect, pos.x, pos.y, event->width, event->height );
+        if (root_coords) MapWindowPoints( 0, parent, (POINT *)&rect, 2 );
+    }
 
     TRACE( "win %p/%lx new X rect %d,%d,%dx%d (event %d,%d,%dx%d)\n",
            hwnd, data->whole_window, rect.left, rect.top, rect.right-rect.left, rect.bottom-rect.top,
@@ -1315,8 +1388,6 @@ static void handle_wm_state_notify( HWND hwnd, XPropertyEvent *event, BOOL updat
             {
                 TRACE( "restoring win %p/%lx\n", data->hwnd, data->whole_window );
                 release_win_data( data );
-                if ((style & (WS_MINIMIZE | WS_VISIBLE)) == (WS_MINIMIZE | WS_VISIBLE))
-                    SetActiveWindow( hwnd );
                 SendMessageW( hwnd, WM_SYSCOMMAND, SC_RESTORE, 0 );
                 return;
             }
@@ -1340,15 +1411,57 @@ done:
 }
 
 
+static void handle__net_wm_state_notify( HWND hwnd, XPropertyEvent *event )
+{
+    struct x11drv_win_data *data = get_win_data( hwnd );
+
+    if(data->pending_fullscreen)
+    {
+        read_net_wm_states( event->display, data );
+        if(data->net_wm_state & (1 << NET_WM_STATE_FULLSCREEN)){
+            data->pending_fullscreen = FALSE;
+            TRACE("PropertyNotify _NET_WM_STATE, now 0x%x, pending_fullscreen no longer pending.\n",
+                    data->net_wm_state);
+        }else
+            TRACE("PropertyNotify _NET_WM_STATE, now 0x%x, pending_fullscreen still pending.\n",
+                    data->net_wm_state);
+    }
+
+    release_win_data( data );
+}
+
+
 /***********************************************************************
  *           X11DRV_PropertyNotify
  */
 static BOOL X11DRV_PropertyNotify( HWND hwnd, XEvent *xev )
 {
     XPropertyEvent *event = &xev->xproperty;
+    char *name;
 
     if (!hwnd) return FALSE;
+
+    name = XGetAtomName(event->display, event->atom);
+    if(name){
+        TRACE("win %p PropertyNotify atom: %s, state: 0x%x\n", hwnd, name, event->state);
+        XFree(name);
+    }
+
+    if (event->atom == x11drv_atom(_NET_WM_BYPASS_COMPOSITOR))
+    {
+        struct x11drv_win_data *data = get_win_data( hwnd );
+        if (!data) return TRUE;
+
+        /* workaround for mutter gitlab bug #676, changing decorations of a
+         * fullscreen and unredirected window freezes the compositing.
+         */
+        if (wm_is_mutter( data->display )) set_wm_hints( data );
+
+        release_win_data( data );
+    }
+
     if (event->atom == x11drv_atom(WM_STATE)) handle_wm_state_notify( hwnd, event, TRUE );
+    else if (event->atom == x11drv_atom(_NET_WM_STATE)) handle__net_wm_state_notify( hwnd, event );
     return TRUE;
 }
 
@@ -1495,6 +1608,7 @@ static void EVENT_DropFromOffiX( HWND hWnd, XClientMessageEvent *event )
     Window		win, w_aux_root, w_aux_child;
 
     if (!(data = get_win_data( hWnd ))) return;
+    ERR("TODO: fs hack\n");
     cx = data->whole_rect.right - data->whole_rect.left;
     cy = data->whole_rect.bottom - data->whole_rect.top;
     win = data->whole_window;
