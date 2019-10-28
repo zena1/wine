@@ -1,0 +1,26 @@
+# Last wine-tkg-staging-fsync-faudio-git configuration - Пн окт 28 05:14:03 MSK 2019 :
+
+Wine (plain) version: 4.18.r0.g8c74027ba6
+Using wine-staging patchset (version 4.18.r0.g9807a02b)
+Disabled the local Esync patchset to use Staging impl instead.
+
+Applied clock_monotonic patch
+Applied clock_monotonic addon patch for 13e11d3
+Applied Fullscreen compositor bypass patch
+Applied steam crossover hack
+Applied CSMT toggle logic patch
+Staging overrides, if any: 
+Applied fsync, an experimental replacement for esync (staging)
+Added no_alloc_handle object method to fsync
+Applied winevulkan 1.1.113 patch
+Applied large address aware override support
+Using kernelbase reverts patch (staging) (<9551cb0)
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/legoisland_168726.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/ms_powerpoint_fix.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/reminput.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/remiput_addon.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/rockstar_installer_fix_2.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/rockstarlauncher_downloads.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/rockstarlauncher_install_fix.mypatch
+
+Please don't report bugs about this wine build on winehq.org and use https://github.com/Tk-Glitch/PKGBUILDS/issues instead.

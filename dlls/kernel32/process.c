@@ -442,22 +442,11 @@ static HANDLE open_exe_file( const WCHAR *name, BOOL *is_64bit )
  */
 static BOOL find_exe_file( const WCHAR *name, WCHAR *buffer, int buflen, HANDLE *handle )
 {
-    WCHAR cur_dir[MAX_PATH];
-    WCHAR *load_path;
-    BOOL ret;
+    TRACE("looking for %s\n", debugstr_w(name) );
 
-    if (!set_ntstatus( RtlGetExePath( name, &load_path ))) return FALSE;
-
-    TRACE("looking for %s in %s\n", debugstr_w(name), debugstr_w(load_path) );
-
-    ret = (NeedCurrentDirectoryForExePathW( name ) && GetCurrentDirectoryW( MAX_PATH, cur_dir) &&
-           SearchPathW( cur_dir, name, exeW, buflen, buffer, NULL )) ||
-           /* not found in the working directory, try the system search path */
-           (SearchPathW( load_path, name, exeW, buflen, buffer, NULL ) ||
-           /* no builtin found, try native without extension in case it is a Unix app */
-           SearchPathW( load_path, name, NULL, buflen, buffer, NULL ));
-    RtlReleasePath( load_path );
-    if (!ret) return FALSE;
+    if (!SearchPathW( NULL, name, exeW, buflen, buffer, NULL ) &&
+        /* no builtin found, try native without extension in case it is a Unix app */
+        !SearchPathW( NULL, name, NULL, buflen, buffer, NULL )) return FALSE;
 
     TRACE( "Trying native exe %s\n", debugstr_w(buffer) );
     *handle = CreateFileW( buffer, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_DELETE,
@@ -1304,11 +1293,11 @@ void WINAPI start_process( LPTHREAD_START_ROUTINE entry, PEB *peb )
     {
         if (CreateEventA(0, 0, 0, "__winestaging_warn_event") && GetLastError() != ERROR_ALREADY_EXISTS)
         {
-            FIXME_(winediag)("Wine Staging %s is a testing version containing experimental patches.\n", wine_get_version());
-            FIXME_(winediag)("Please mention your exact version when filing bug reports on winehq.org.\n");
+            FIXME_(winediag)("Wine TkG %s is a testing version containing experimental patches.\n", wine_get_version());
+            FIXME_(winediag)("Please don't report bugs about it on winehq.org and use https://github.com/Tk-Glitch/PKGBUILDS/issues instead.\n");
         }
         else
-            WARN_(winediag)("Wine Staging %s is a testing version containing experimental patches.\n", wine_get_version());
+            WARN_(winediag)("Wine TkG %s is a testing version containing experimental patches.\n", wine_get_version());
 
 
         if (!CheckRemoteDebuggerPresent( GetCurrentProcess(), &being_debugged ))
@@ -1404,7 +1393,6 @@ void * CDECL __wine_kernel_init(void)
     RTL_USER_PROCESS_PARAMETERS *params = peb->ProcessParameters;
     HANDLE boot_events[2];
     BOOL got_environment = TRUE;
-    WCHAR *load_path, *dummy;
 
     /* Initialize everything */
 
@@ -1443,14 +1431,12 @@ void * CDECL __wine_kernel_init(void)
     {
         BOOL is_64bit;
 
-        RtlGetExePath( __wine_main_wargv[0], &load_path );
-        if (!SearchPathW( load_path, __wine_main_wargv[0], exeW, MAX_PATH, main_exe_name, NULL ) &&
+        if (!SearchPathW( NULL, __wine_main_wargv[0], exeW, MAX_PATH, main_exe_name, NULL ) &&
             !get_builtin_path( __wine_main_wargv[0], exeW, main_exe_name, MAX_PATH, &is_64bit ))
         {
             MESSAGE( "wine: cannot find '%s'\n", __wine_main_argv[0] );
             ExitProcess( GetLastError() );
         }
-        RtlReleasePath( load_path );
         update_library_argv0( main_exe_name );
         if (!build_command_line( __wine_main_wargv )) goto error;
         start_wineboot( boot_events );
@@ -1463,8 +1449,8 @@ void * CDECL __wine_kernel_init(void)
     TRACE( "starting process name=%s argv[0]=%s\n",
            debugstr_w(main_exe_name), debugstr_w(__wine_main_wargv[0]) );
 
-    LdrGetDllPath( main_exe_name, 0, &load_path, &dummy );
-    RtlInitUnicodeString( &NtCurrentTeb()->Peb->ProcessParameters->DllPath, load_path );
+    RtlInitUnicodeString( &NtCurrentTeb()->Peb->ProcessParameters->DllPath,
+                          MODULE_get_dll_load_path( main_exe_name, -1 ));
 
     if (boot_events[0])
     {
@@ -2760,6 +2746,33 @@ BOOL WINAPI CreateProcessInternalW( HANDLE token, LPCWSTR app_name, LPWSTR cmd_l
     if (!(tidy_cmdline = get_file_name( app_name, cmd_line, name, ARRAY_SIZE( name ), &hFile, &is_64bit )))
         return FALSE;
     if (hFile == INVALID_HANDLE_VALUE) goto done;
+
+    /* CROSSOVER HACK: bug 13322 (winehq bug 39403)
+     * Insert --no-sandbox in command line of Steam's web helper process to
+     * work around problems hooking our ntdll exports. */
+    {
+        static const WCHAR steamwebhelperexeW[] = {'s','t','e','a','m','w','e','b','h','e','l','p','e','r','.','e','x','e',0};
+        static const WCHAR nosandboxW[] = {' ','-','-','n','o','-','s','a','n','d','b','o','x',0};
+
+        if (strstrW(name, steamwebhelperexeW))
+        {
+            LPWSTR new_command_line;
+
+            new_command_line = HeapAlloc(GetProcessHeap(), 0,
+                sizeof(WCHAR) * (strlenW(tidy_cmdline) + strlenW(nosandboxW) + 1));
+
+            if (!new_command_line) return FALSE;
+
+            strcpyW(new_command_line, tidy_cmdline);
+            strcatW(new_command_line, nosandboxW);
+
+            TRACE("CrossOver hack changing command line to %s\n", debugstr_w(new_command_line));
+
+            if (tidy_cmdline != cmd_line) HeapFree( GetProcessHeap(), 0, tidy_cmdline );
+            tidy_cmdline = new_command_line;
+        }
+    }
+    /* end CROSSOVER HACK */
 
     /* Warn if unsupported features are used */
 

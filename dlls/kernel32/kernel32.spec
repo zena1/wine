@@ -140,7 +140,7 @@
 @ stdcall AddAtomW(wstr)
 @ stdcall AddConsoleAliasA(str str str)
 @ stdcall AddConsoleAliasW(wstr wstr wstr)
-@ stdcall -import AddDllDirectory(wstr)
+@ stdcall AddDllDirectory(wstr)
 # @ stub AddIntegrityLabelToBoundaryDescriptor
 # @ stub AddLocalAlternateComputerNameA
 # @ stub AddLocalAlternateComputerNameW
@@ -356,7 +356,7 @@
 @ stdcall DecodeSystemPointer(ptr) ntdll.RtlDecodeSystemPointer
 @ stdcall DefineDosDeviceA(long str str)
 @ stdcall DefineDosDeviceW(long wstr wstr)
-@ stdcall -import DelayLoadFailureHook(str str)
+@ stdcall DelayLoadFailureHook(str str)
 @ stdcall DeleteAtom(long)
 # @ stub DeleteBoundaryDescriptor
 @ stdcall DeleteCriticalSection(ptr) ntdll.RtlDeleteCriticalSection
@@ -377,7 +377,7 @@
 @ stdcall DeleteVolumeMountPointW(wstr)
 @ stdcall -arch=x86_64 DequeueUmsCompletionListItems(ptr long ptr)
 @ stdcall DeviceIoControl(long long ptr long ptr long ptr ptr)
-@ stdcall -import DisableThreadLibraryCalls(long)
+@ stdcall DisableThreadLibraryCalls(long)
 @ stdcall -import DisconnectNamedPipe(long)
 @ stdcall DnsHostnameToComputerNameA (str ptr ptr)
 @ stdcall DnsHostnameToComputerNameW (wstr ptr ptr)
@@ -528,7 +528,7 @@
 @ stdcall -import FreeEnvironmentStringsA(ptr)
 @ stdcall -import FreeEnvironmentStringsW(ptr)
 @ stub -i386 FreeLSCallback
-@ stdcall -import FreeLibrary(long)
+@ stdcall FreeLibrary(long)
 @ stdcall FreeLibraryAndExitThread(long long)
 @ stdcall FreeLibraryWhenCallbackReturns(ptr ptr) ntdll.TpCallbackUnloadDllOnCompletion
 @ stdcall -import FreeResource(long)
@@ -718,12 +718,12 @@
 @ stdcall GetMailslotInfo(long ptr ptr ptr ptr)
 @ stdcall GetMaximumProcessorCount(long)
 @ stdcall GetMaximumProcessorGroupCount()
-@ stdcall -import GetModuleFileNameA(long ptr long)
-@ stdcall -import GetModuleFileNameW(long ptr long)
-@ stdcall -import GetModuleHandleA(str)
-@ stdcall -import GetModuleHandleExA(long ptr ptr)
-@ stdcall -import GetModuleHandleExW(long ptr ptr)
-@ stdcall -import GetModuleHandleW(wstr)
+@ stdcall GetModuleFileNameA(long ptr long)
+@ stdcall GetModuleFileNameW(long ptr long)
+@ stdcall GetModuleHandleA(str)
+@ stdcall GetModuleHandleExA(long ptr ptr)
+@ stdcall GetModuleHandleExW(long ptr ptr)
+@ stdcall GetModuleHandleW(wstr)
 # @ stub GetNamedPipeAttribute
 # @ stub GetNamedPipeClientComputerNameA
 # @ stub GetNamedPipeClientComputerNameW
@@ -1042,10 +1042,10 @@
 @ stdcall LeaveCriticalSection(ptr) ntdll.RtlLeaveCriticalSection
 @ stdcall LeaveCriticalSectionWhenCallbackReturns(ptr ptr) ntdll.TpCallbackLeaveCriticalSectionOnCompletion
 # @ stub LoadAppInitDlls
-@ stdcall -import LoadLibraryA(str)
-@ stdcall -import LoadLibraryExA( str long long)
-@ stdcall -import LoadLibraryExW(wstr long long)
-@ stdcall -import LoadLibraryW(wstr)
+@ stdcall LoadLibraryA(str)
+@ stdcall LoadLibraryExA( str long long)
+@ stdcall LoadLibraryExW(wstr long long)
+@ stdcall LoadLibraryW(wstr)
 @ stdcall LoadModule(str ptr)
 @ stdcall -import LoadResource(long long)
 # @ stub LoadStringBaseExW
@@ -1274,7 +1274,7 @@
 @ stdcall ReplaceFileW(wstr wstr wstr long ptr ptr)
 # @ stub RemoveDirectoryTransactedA
 # @ stub RemoveDirectoryTransactedW
-@ stdcall -import RemoveDllDirectory(ptr)
+@ stdcall RemoveDllDirectory(ptr)
 # @ stub RemoveSecureMemoryCacheCallback
 # @ stub ReplacePartitionUnit
 @ stdcall RequestDeviceWakeup(long)
@@ -1324,8 +1324,8 @@
 @ stdcall -i386 -private -norelay SUnMapLS_IP_EBP_8() krnl386.exe16.SUnMapLS_IP_EBP_8
 @ stdcall -import ScrollConsoleScreenBufferA(long ptr ptr ptr ptr)
 @ stdcall -import ScrollConsoleScreenBufferW(long ptr ptr ptr ptr)
-@ stdcall -import SearchPathA(str str str long ptr ptr)
-@ stdcall -import SearchPathW(wstr wstr wstr long ptr ptr)
+@ stdcall SearchPathA(str str str long ptr ptr)
+@ stdcall SearchPathW(wstr wstr wstr long ptr ptr)
 @ stdcall SetCPGlobal(long)
 @ stdcall SetCalendarInfoA(long long long str)
 @ stdcall SetCalendarInfoW(long long long wstr)
@@ -1379,7 +1379,7 @@
 @ stub SetDaylightFlag
 @ stdcall SetDefaultCommConfigA(str ptr long)
 @ stdcall SetDefaultCommConfigW(wstr ptr long)
-@ stdcall -import SetDefaultDllDirectories(long)
+@ stdcall SetDefaultDllDirectories(long)
 @ stdcall SetDllDirectoryA(str)
 @ stdcall SetDllDirectoryW(wstr)
 # @ stub SetDynamicTimeZoneInformation

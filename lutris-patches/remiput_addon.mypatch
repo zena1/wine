@@ -1,0 +1,137 @@
+From: "Rémi Bernon" <rbernon@codeweavers.com>
+Subject: [PATCH] winex11.drv: Wait for process_attach to complete before enabling xrandr.
+Message-Id: <20191025083001.17311-1-rbernon@codeweavers.com>
+Date: Fri, 25 Oct 2019 10:30:01 +0200
+
+X11DRV_XRandR_Init is called in process_attach and calling
+thread_init_display there would make thread data to be initialized
+before its completion.
+
+It breaks some assumtions that could be made in x11drv_init_thread_data,
+for example that DesktopWindow has already been created.
+
+Signed-off-by: Rémi Bernon <rbernon@codeweavers.com>
+---
+ dlls/winex11.drv/x11drv.h      |  1 +
+ dlls/winex11.drv/x11drv_main.c |  1 +
+ dlls/winex11.drv/xrandr.c      | 38 ++++++++++++++++++++++++----------
+ 3 files changed, 29 insertions(+), 11 deletions(-)
+
+diff --git a/dlls/winex11.drv/x11drv.h b/dlls/winex11.drv/x11drv.h
+index 135faa8989b..fdd2fbb5057 100644
+--- a/dlls/winex11.drv/x11drv.h
++++ b/dlls/winex11.drv/x11drv.h
+@@ -668,6 +668,7 @@ struct x11drv_mode_info *X11DRV_Settings_SetHandlers(const char *name,
+
+ void X11DRV_XF86VM_Init(void) DECLSPEC_HIDDEN;
+ void X11DRV_XRandR_Init(void) DECLSPEC_HIDDEN;
++void X11DRV_XRandR_Enable(void) DECLSPEC_HIDDEN;
+
+ /* X11 display device handler. Used to initialize display device registry data */
+
+diff --git a/dlls/winex11.drv/x11drv_main.c b/dlls/winex11.drv/x11drv_main.c
+index 21807af3f18..109d37ce4c3 100644
+--- a/dlls/winex11.drv/x11drv_main.c
++++ b/dlls/winex11.drv/x11drv_main.c
+@@ -680,6 +680,7 @@ struct x11drv_thread_data *x11drv_init_thread_data(void)
+     TlsSetValue( thread_data_tls_index, data );
+
+     if (use_xim) X11DRV_SetupXIM();
++    X11DRV_XRandR_Enable();
+     if (GetWindowThreadProcessId( GetDesktopWindow(), NULL ) == GetCurrentThreadId())
+         X11DRV_XInput2_Enable();
+
+diff --git a/dlls/winex11.drv/xrandr.c b/dlls/winex11.drv/xrandr.c
+index 6bb2b18ce7f..ecbb3ec85a3 100644
+--- a/dlls/winex11.drv/xrandr.c
++++ b/dlls/winex11.drv/xrandr.c
+@@ -1069,30 +1069,33 @@ static BOOL xrandr14_device_change_event( HWND hwnd, XEvent *event )
+
+ #endif
+
++static int xrandr_load_version = 0;
++static int xrandr_minor = 0;
++static int xrandr_major = 0;
++
+ void X11DRV_XRandR_Init(void)
+ {
+     struct x11drv_display_device_handler handler;
+-    int event_base, error_base, minor, ret;
+-    static int major;
++    int event_base, error_base;
+     Bool ok;
+
+-    if (major) return; /* already initialized? */
++    if (xrandr_major) return; /* already initialized? */
+     if (!usexrandr) return; /* disabled in config */
+     if (root_window != DefaultRootWindow( gdi_display )) return;
+-    if (!(ret = load_xrandr())) return;  /* can't load the Xrandr library */
++    if (!(xrandr_load_version = load_xrandr())) return;  /* can't load the Xrandr library */
+
+     /* see if Xrandr is available */
+     if (!pXRRQueryExtension( gdi_display, &event_base, &error_base )) return;
+     X11DRV_expect_error( gdi_display, XRandRErrorHandler, NULL );
+-    ok = pXRRQueryVersion( gdi_display, &major, &minor );
++    ok = pXRRQueryVersion( gdi_display, &xrandr_major, &xrandr_minor );
+     if (X11DRV_check_error() || !ok) return;
+
+-    TRACE("Found XRandR %d.%d.\n", major, minor);
++    TRACE("Found XRandR %d.%d.\n", xrandr_major, xrandr_minor);
+
+ #ifdef HAVE_XRRGETSCREENRESOURCES
+-    if (ret >= 2 && (major > 1 || (major == 1 && minor >= 2)))
++    if (xrandr_load_version >= 2 && (xrandr_major > 1 || (xrandr_major == 1 && xrandr_minor >= 2)))
+     {
+-        if (major > 1 || (major == 1 && minor >= 3))
++        if (xrandr_major > 1 || (xrandr_major == 1 && xrandr_minor >= 3))
+             pXRRGetScreenResourcesCurrent = wine_dlsym( xrandr_handle, "XRRGetScreenResourcesCurrent", NULL, 0 );
+         if (!pXRRGetScreenResourcesCurrent)
+             pXRRGetScreenResourcesCurrent = pXRRGetScreenResources;
+@@ -1103,7 +1106,7 @@ void X11DRV_XRandR_Init(void)
+         xrandr10_init_modes();
+
+ #ifdef HAVE_XRRGETPROVIDERRESOURCES
+-    if (ret >= 4 && (major > 1 || (major == 1 && minor >= 4)))
++    if (xrandr_load_version >= 4 && (xrandr_major > 1 || (xrandr_major == 1 && xrandr_minor >= 4)))
+     {
+         handler.name = "XRandR 1.4";
+         handler.priority = 200;
+@@ -1115,8 +1118,6 @@ void X11DRV_XRandR_Init(void)
+         handler.pFreeMonitors = xrandr14_free_monitors;
+         X11DRV_DisplayDevices_SetHandler( &handler );
+
+-        pXRRSelectInput( thread_init_display(), root_window,
+-                         RRCrtcChangeNotifyMask | RROutputChangeNotifyMask | RRProviderChangeNotifyMask);
+         X11DRV_register_event_handler( event_base + RRNotify_CrtcChange, xrandr14_device_change_event,
+                                        "XRandR CrtcChange" );
+         X11DRV_register_event_handler( event_base + RRNotify_OutputChange, xrandr14_device_change_event,
+@@ -1127,6 +1128,17 @@ void X11DRV_XRandR_Init(void)
+ #endif
+ }
+
++void X11DRV_XRandR_Enable(void)
++{
++#ifdef HAVE_XRRGETPROVIDERRESOURCES
++    struct x11drv_thread_data *data = x11drv_thread_data();
++
++    if (xrandr_load_version >= 4 && (xrandr_major > 1 || (xrandr_major == 1 && xrandr_minor >= 4)))
++        pXRRSelectInput( data->display, root_window,
++                         RRCrtcChangeNotifyMask | RROutputChangeNotifyMask | RRProviderChangeNotifyMask);
++#endif
++}
++
+ #else /* SONAME_LIBXRANDR */
+
+ void X11DRV_XRandR_Init(void)
+@@ -1134,4 +1146,8 @@ void X11DRV_XRandR_Init(void)
+     TRACE("XRandR support not compiled in.\n");
+ }
+
++void X11DRV_XRandR_Enable(void)
++{
++}
++
+ #endif /* SONAME_LIBXRANDR */
+--
+2.24.0.rc0
+
