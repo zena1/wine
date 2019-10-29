@@ -19,7 +19,7 @@
 @ stdcall AddAuditAccessAce(ptr long long ptr long long)
 @ stdcall AddAuditAccessAceEx(ptr long long long ptr long long)
 @ stdcall AddAuditAccessObjectAce(ptr long long long ptr ptr ptr long long)
-@ stdcall AddDllDirectory(wstr)
+@ stdcall AddDllDirectory(wstr) kernel32.AddDllDirectory
 @ stdcall AddMandatoryAce(ptr long long long ptr)
 @ stdcall AddRefActCtx(ptr)
 # @ stub AddResourceAttributeAce
@@ -244,7 +244,7 @@
 # @ stub DecodeRemotePointer
 @ stdcall DecodeSystemPointer(ptr) ntdll.RtlDecodeSystemPointer
 @ stdcall DefineDosDeviceW(long wstr wstr) kernel32.DefineDosDeviceW
-@ stdcall DelayLoadFailureHook(str str)
+@ stdcall DelayLoadFailureHook(str str) kernel32.DelayLoadFailureHook
 # @ stub DelayLoadFailureHookLookup
 @ stdcall DeleteAce(ptr long)
 # @ stub DeleteBoundaryDescriptor
@@ -263,7 +263,7 @@
 @ stdcall DestroyPrivateObjectSecurity(ptr)
 @ stdcall DeviceIoControl(long long ptr long ptr long ptr ptr)
 @ stdcall DisablePredefinedHandleTableInternal(long)
-@ stdcall DisableThreadLibraryCalls(long)
+@ stdcall DisableThreadLibraryCalls(long) kernel32.DisableThreadLibraryCalls
 @ stdcall DisassociateCurrentThreadFromCallback(ptr) ntdll.TpDisassociateCallback
 # @ stub DiscardVirtualMemory
 @ stdcall DisconnectNamedPipe(long)
@@ -394,7 +394,7 @@
 @ stdcall FreeEnvironmentStringsW(ptr)
 # @ stub FreeGPOListInternalA
 # @ stub FreeGPOListInternalW
-@ stdcall FreeLibrary(long)
+@ stdcall FreeLibrary(long) kernel32.FreeLibrary
 @ stdcall FreeLibraryAndExitThread(long long)
 @ stdcall FreeLibraryWhenCallbackReturns(ptr ptr) ntdll.TpCallbackUnloadDllOnCompletion
 @ stdcall FreeResource(long)
@@ -556,14 +556,14 @@
 # @ stub GetMemoryErrorHandlingCapabilities
 # @ stub GetModuleBaseNameA
 # @ stub GetModuleBaseNameW
-@ stdcall GetModuleFileNameA(long ptr long)
+@ stdcall GetModuleFileNameA(long ptr long) kernel32.GetModuleFileNameA
 # @ stub GetModuleFileNameExA
 # @ stub GetModuleFileNameExW
-@ stdcall GetModuleFileNameW(long ptr long)
-@ stdcall GetModuleHandleA(str)
-@ stdcall GetModuleHandleExA(long ptr ptr)
-@ stdcall GetModuleHandleExW(long ptr ptr)
-@ stdcall GetModuleHandleW(wstr)
+@ stdcall GetModuleFileNameW(long ptr long) kernel32.GetModuleFileNameW
+@ stdcall GetModuleHandleA(str) kernel32.GetModuleHandleA
+@ stdcall GetModuleHandleExA(long ptr ptr) kernel32.GetModuleHandleExA
+@ stdcall GetModuleHandleExW(long ptr ptr) kernel32.GetModuleHandleExW
+@ stdcall GetModuleHandleW(wstr) kernel32.GetModuleHandleW
 # @ stub GetModuleInformation
 @ stub GetNLSVersion
 @ stub GetNLSVersionEx
@@ -618,7 +618,7 @@
 # @ stub GetPreviousFgPolicyRefreshInfoInternal
 @ stdcall GetPriorityClass(long)
 @ stdcall GetPrivateObjectSecurity(ptr long ptr long ptr)
-@ stdcall GetProcAddress(long str)
+@ stdcall GetProcAddress(long str) kernel32.GetProcAddress
 # @ stub GetProcAddressForCaller
 # @ stub GetProcessDefaultCpuSets
 # @ stub GetProcessGroupAffinity
@@ -922,10 +922,10 @@
 @ stdcall LeaveCriticalSectionWhenCallbackReturns(ptr ptr) ntdll.TpCallbackLeaveCriticalSectionOnCompletion
 # @ stub LoadAppInitDlls
 # @ stub LoadEnclaveData
-@ stdcall LoadLibraryA(str)
-@ stdcall LoadLibraryExA( str long long)
-@ stdcall LoadLibraryExW(wstr long long)
-@ stdcall LoadLibraryW(wstr)
+@ stdcall LoadLibraryA(str) kernel32.LoadLibraryA
+@ stdcall LoadLibraryExA( str long long) kernel32.LoadLibraryExA
+@ stdcall LoadLibraryExW(wstr long long) kernel32.LoadLibraryExW
+@ stdcall LoadLibraryW(wstr) kernel32.LoadLibraryW
 # @ stub LoadPackagedLibrary
 @ stdcall LoadResource(long long)
 @ stdcall LoadStringA(long long ptr long)
@@ -1333,7 +1333,7 @@
 @ stdcall RemapPredefinedHandleInternal(long long)
 @ stdcall RemoveDirectoryA(str) kernel32.RemoveDirectoryA
 @ stdcall RemoveDirectoryW(wstr) kernel32.RemoveDirectoryW
-@ stdcall RemoveDllDirectory(ptr)
+@ stdcall RemoveDllDirectory(ptr) kernel32.RemoveDllDirectory
 # @ stub RemovePackageStatus
 # @ stub RemovePackageStatusForUser
 @ stdcall RemoveVectoredContinueHandler(ptr) ntdll.RtlRemoveVectoredContinueHandler
@@ -1343,7 +1343,7 @@
 @ stdcall ResetEvent(long)
 # @ stub ResetState
 @ stdcall ResetWriteWatch(ptr long)
-@ stdcall -import ResolveDelayLoadedAPI(ptr ptr ptr ptr ptr long) LdrResolveDelayLoadedAPI
+@ stdcall ResolveDelayLoadedAPI(ptr ptr ptr ptr ptr long) kernel32.ResolveDelayLoadedAPI
 # @ stub ResolveDelayLoadsFromDll
 @ stdcall ResolveLocaleName(wstr ptr long)
 @ stdcall RestoreLastError(long) ntdll.RtlRestoreLastWin32Error
@@ -1385,8 +1385,8 @@
 # @ stub SaveStateRootFolderPath
 @ stdcall ScrollConsoleScreenBufferA(long ptr ptr ptr ptr)
 @ stdcall ScrollConsoleScreenBufferW(long ptr ptr ptr ptr)
-@ stdcall SearchPathA(str str str long ptr ptr)
-@ stdcall SearchPathW(wstr wstr wstr long ptr ptr)
+@ stdcall SearchPathA(str str str long ptr ptr) kernel32.SearchPathA
+@ stdcall SearchPathW(wstr wstr wstr long ptr ptr) kernel32.SearchPathW
 @ stdcall SetAclInformation(ptr ptr long long)
 # @ stub SetCachedSigningLevel
 @ stdcall SetCalendarInfoW(long long long wstr) kernel32.SetCalendarInfoW
@@ -1419,7 +1419,7 @@
 @ stdcall SetCriticalSectionSpinCount(ptr long) ntdll.RtlSetCriticalSectionSpinCount
 @ stdcall SetCurrentDirectoryA(str)
 @ stdcall SetCurrentDirectoryW(wstr)
-@ stdcall SetDefaultDllDirectories(long)
+@ stdcall SetDefaultDllDirectories(long) kernel32.SetDefaultDllDirectories
 # @ stub SetDynamicTimeZoneInformation
 @ stdcall SetEndOfFile(long)
 @ stub SetEnvironmentStringsW

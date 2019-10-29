@@ -132,7 +132,7 @@ static void *address_space_start = (void *)0x110000;    /* keep DOS area clear *
 static const UINT page_shift = 12;
 static const UINT_PTR page_mask = 0xfff;
 static void *address_space_limit = (void *)0x7fffffff0000;
-static void *user_space_limit    = (void *)0x7fffffff0000;
+static void *user_space_limit    = (void *)0x7ffffff0000;
 static void *working_set_limit   = (void *)0x7fffffff0000;
 static void *address_space_start = (void *)0x10000;
 #else
@@ -448,8 +448,7 @@ static struct file_view *VIRTUAL_FindView( const void *addr, size_t size )
  */
 static inline UINT_PTR get_mask( ULONG alignment )
 {
-    if (!alignment) return 0xffff;  /* allocations are aligned to 64K by default */
-    if (alignment < page_shift) alignment = page_shift;
+    if (alignment < 16) return 0xffff;  /* some apps rely on all allocations being aligned to 64K */
     if (alignment > 21) return 0;
     return (1 << alignment) - 1;
 }
@@ -2621,11 +2620,13 @@ void virtual_release_address_space(void)
  *
  * Enable use of a large address space when allowed by the application.
  */
-void virtual_set_large_address_space(void)
+void virtual_set_large_address_space(BOOL force_large_address)
 {
     IMAGE_NT_HEADERS *nt = RtlImageNtHeader( NtCurrentTeb()->Peb->ImageBaseAddress );
 
-    if (!(nt->FileHeader.Characteristics & IMAGE_FILE_LARGE_ADDRESS_AWARE)) return;
+    if (is_win64) return;
+    if (!(nt->FileHeader.Characteristics & IMAGE_FILE_LARGE_ADDRESS_AWARE) && !force_large_address) return;
+
     /* no large address space on win9x */
     if (NtCurrentTeb()->Peb->OSPlatformId != VER_PLATFORM_WIN32_NT) return;
 
