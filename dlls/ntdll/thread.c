@@ -30,9 +30,6 @@
 #ifdef HAVE_SYS_MMAN_H
 #include <sys/mman.h>
 #endif
-#ifdef HAVE_SYS_PRCTL_H
-# include <sys/prctl.h>
-#endif
 #ifdef HAVE_SYS_TIMES_H
 #include <sys/times.h>
 #endif
@@ -52,6 +49,7 @@
 #include "ddk/wdm.h"
 #include "wine/exception.h"
 #include "esync.h"
+#include "fsync.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(thread);
 
@@ -206,69 +204,6 @@ BOOL read_process_time(int unix_pid, int unix_tid, unsigned long clk_tck,
     return FALSE;
 }
 
-
-/***********************************************************************
- *           set_process_name
- *
- * Change the process name in the ps output.
- */
-static void set_process_name( int argc, char *argv[] )
-{
-    BOOL shift_strings;
-    char *p, *name;
-    int i;
-
-#ifdef HAVE_SETPROCTITLE
-    setproctitle("-%s", argv[1]);
-    shift_strings = FALSE;
-#else
-    p = argv[0];
-
-    shift_strings = (argc >= 2);
-    for (i = 1; i < argc; i++)
-    {
-        p += strlen(p) + 1;
-        if (p != argv[i])
-        {
-            shift_strings = FALSE;
-            break;
-        }
-    }
-#endif
-
-    if (shift_strings)
-    {
-        int offset = argv[1] - argv[0];
-        char *end = argv[argc-1] + strlen(argv[argc-1]) + 1;
-        memmove( argv[0], argv[1], end - argv[1] );
-        memset( end - offset, 0, offset );
-        for (i = 1; i < argc; i++)
-            argv[i-1] = argv[i] - offset;
-        argv[i-1] = NULL;
-    }
-    else
-    {
-        /* remove argv[0] */
-        memmove( argv, argv + 1, argc * sizeof(argv[0]) );
-    }
-
-    name = argv[0];
-    if ((p = strrchr( name, '\\' ))) name = p + 1;
-    if ((p = strrchr( name, '/' ))) name = p + 1;
-
-#if defined(HAVE_SETPROGNAME)
-    setprogname( name );
-#endif
-
-#ifdef HAVE_PRCTL
-#ifndef PR_SET_NAME
-# define PR_SET_NAME 15
-#endif
-    prctl( PR_SET_NAME, name );
-#endif  /* HAVE_PRCTL */
-}
-
-
 /***********************************************************************
  *           thread_init
  *
@@ -362,6 +297,7 @@ void thread_init(void)
     thread_data->wait_fd[1] = -1;
     thread_data->esync_queue_fd = -1;
     thread_data->esync_apc_fd = -1;
+    thread_data->fsync_apc_futex = NULL;
 
     signal_init_thread( teb );
     virtual_init_threading();
@@ -378,13 +314,14 @@ void thread_init(void)
         exit(1);
     }
 
-    set_process_name( __wine_main_argc, __wine_main_argv );
     init_directories();
     init_user_process_params( info_size );
 
 	/* initialize user_shared_data */
     __wine_user_shared_data();
     fill_cpu_info();
+
+    fsync_init();
 
     esync_init();
 
@@ -776,6 +713,7 @@ NTSTATUS WINAPI NtCreateThreadEx( HANDLE *handle_ptr, ACCESS_MASK access, OBJECT
     thread_data->start_stack = (char *)teb->Tib.StackBase;
     thread_data->esync_queue_fd = -1;
     thread_data->esync_apc_fd = -1;
+    thread_data->fsync_apc_futex = NULL;
 
     pthread_attr_init( &pthread_attr );
     pthread_attr_setstack( &pthread_attr, teb->DeallocationStack,

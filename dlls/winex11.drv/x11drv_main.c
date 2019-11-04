@@ -144,6 +144,9 @@ static const char * const atom_names[NB_XATOMS - FIRST_XATOM] =
     "RAW_CAP_HEIGHT",
     "Rel X",
     "Rel Y",
+    "Rel Vert Scroll",
+    "Abs X",
+    "Abs Y",
     "WM_PROTOCOLS",
     "WM_DELETE_WINDOW",
     "WM_STATE",
@@ -159,6 +162,7 @@ static const char * const atom_names[NB_XATOMS - FIRST_XATOM] =
     "_NET_SYSTEM_TRAY_OPCODE",
     "_NET_SYSTEM_TRAY_S0",
     "_NET_SYSTEM_TRAY_VISUAL",
+    "_NET_WM_BYPASS_COMPOSITOR",
     "_NET_WM_ICON",
     "_NET_WM_MOVERESIZE",
     "_NET_WM_NAME",
@@ -560,6 +564,7 @@ static void init_visuals( Display *display, int screen )
            default_visual.visualid, default_visual.class, argb_visual.visualid );
 }
 
+
 /***********************************************************************
  *           X11DRV process initialisation routine
  */
@@ -639,6 +644,8 @@ void CDECL X11DRV_ThreadDetach(void)
 
     if (data)
     {
+        if (GetWindowThreadProcessId( GetDesktopWindow(), NULL ) == GetCurrentThreadId())
+            X11DRV_XInput2_Disable();
         if (data->xim) XCloseIM( data->xim );
         if (data->font_set) XFreeFontSet( data->display, data->font_set );
         XCloseDisplay( data->display );
@@ -711,6 +718,9 @@ struct x11drv_thread_data *x11drv_init_thread_data(void)
     TlsSetValue( thread_data_tls_index, data );
 
     if (use_xim) X11DRV_SetupXIM();
+    X11DRV_XRandR_Enable();
+    if (GetWindowThreadProcessId( GetDesktopWindow(), NULL ) == GetCurrentThreadId())
+        X11DRV_XInput2_Enable();
 
     return data;
 }

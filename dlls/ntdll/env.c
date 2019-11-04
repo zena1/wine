@@ -47,8 +47,6 @@ static WCHAR empty[] = {0};
 static const UNICODE_STRING empty_str = { 0, sizeof(empty), empty };
 static const UNICODE_STRING null_str = { 0, 0, NULL };
 
-static const BOOL is_win64 = (sizeof(void *) > sizeof(int));
-
 static const WCHAR windows_dir[] = {'C',':','\\','w','i','n','d','o','w','s',0};
 
 static inline SIZE_T get_env_length( const WCHAR *env )
@@ -439,201 +437,6 @@ static void get_current_directory( UNICODE_STRING *dir )
         dir->Length += sizeof(WCHAR);
     }
     dir->Buffer[dir->Length / sizeof(WCHAR)] = 0;
-}
-
-
-/***********************************************************************
- *           is_path_prefix
- */
-static inline BOOL is_path_prefix( const WCHAR *prefix, const WCHAR *path, const WCHAR *file )
-{
-    DWORD len = strlenW( prefix );
-
-    if (strncmpiW( path, prefix, len )) return FALSE;
-    while (path[len] == '\\') len++;
-    return path + len == file;
-}
-
-
-/***********************************************************************
- *           get_image_path
- */
-static void get_image_path( const char *argv0, UNICODE_STRING *path )
-{
-    static const WCHAR exeW[] = {'.','e','x','e',0};
-    WCHAR *load_path, *file_part, *name, full_name[MAX_PATH];
-    DWORD len;
-
-    len = ntdll_umbstowcs( 0, argv0, strlen(argv0) + 1, NULL, 0 );
-    if (!(name = RtlAllocateHeap( GetProcessHeap(), 0, len * sizeof(WCHAR) ))) goto failed;
-    ntdll_umbstowcs( 0, argv0, strlen(argv0) + 1, name, len );
-
-    if (RtlDetermineDosPathNameType_U( name ) != RELATIVE_PATH ||
-        strchrW( name, '/' ) || strchrW( name, '\\' ))
-    {
-        len = RtlGetFullPathName_U( name, sizeof(full_name), full_name, &file_part );
-        if (!len || len > sizeof(full_name)) goto failed;
-        /* try first without extension */
-        if (RtlDoesFileExists_U( full_name )) goto done;
-        if (len < (MAX_PATH - 4) * sizeof(WCHAR) && !strchrW( file_part, '.' ))
-        {
-            strcatW( file_part, exeW );
-            if (RtlDoesFileExists_U( full_name )) goto done;
-        }
-        /* check for builtin path inside system directory */
-        if (!is_path_prefix( system_dir, full_name, file_part ))
-        {
-            if (!is_win64 && !is_wow64) goto failed;
-            if (!is_path_prefix( syswow64_dir, full_name, file_part )) goto failed;
-        }
-    }
-    else
-    {
-        RtlGetExePath( name, &load_path );
-        len = RtlDosSearchPath_U( load_path, name, exeW, sizeof(full_name), full_name, &file_part );
-        RtlReleasePath( load_path );
-        if (!len || len > sizeof(full_name))
-        {
-            /* build builtin path inside system directory */
-            len = strlenW( system_dir );
-            if (strlenW( name ) >= MAX_PATH - 4 - len) goto failed;
-            strcpyW( full_name, system_dir );
-            strcatW( full_name, name );
-            if (!strchrW( name, '.' )) strcatW( full_name, exeW );
-        }
-    }
-done:
-    RtlCreateUnicodeString( path, full_name );
-    RtlFreeHeap( GetProcessHeap(), 0, name );
-    return;
-
-failed:
-    MESSAGE( "wine: cannot find '%s'\n", argv0 );
-    RtlExitUserProcess( GetLastError() );
-}
-
-
-/***********************************************************************
- *              set_library_wargv
- *
- * Set the Wine library Unicode argv global variables.
- */
-static void set_library_wargv( char **argv, const UNICODE_STRING *image )
-{
-    int argc;
-    WCHAR *p, **wargv;
-    DWORD total = 0;
-
-    if (image) total += 1 + image->Length / sizeof(WCHAR);
-    for (argc = (image != NULL); argv[argc]; argc++)
-        total += ntdll_umbstowcs( 0, argv[argc], strlen(argv[argc]) + 1, NULL, 0 );
-
-    wargv = RtlAllocateHeap( GetProcessHeap(), 0,
-                             total * sizeof(WCHAR) + (argc + 1) * sizeof(*wargv) );
-    p = (WCHAR *)(wargv + argc + 1);
-    if (image)
-    {
-        strcpyW( p, image->Buffer );
-        wargv[0] = p;
-        p += 1 + image->Length / sizeof(WCHAR);
-        total -= 1 + image->Length / sizeof(WCHAR);
-    }
-    for (argc = (image != NULL); argv[argc]; argc++)
-    {
-        DWORD reslen = ntdll_umbstowcs( 0, argv[argc], strlen(argv[argc]) + 1, p, total );
-        wargv[argc] = p;
-        p += reslen;
-        total -= reslen;
-    }
-    wargv[argc] = NULL;
-
-    __wine_main_argc = argc;
-    __wine_main_wargv = wargv;
-}
-
-
-/***********************************************************************
- *           build_command_line
- *
- * Build the command line of a process from the argv array.
- *
- * Note that it does NOT necessarily include the file name.
- * Sometimes we don't even have any command line options at all.
- *
- * We must quote and escape characters so that the argv array can be rebuilt
- * from the command line:
- * - spaces and tabs must be quoted
- *   'a b'   -> '"a b"'
- * - quotes must be escaped
- *   '"'     -> '\"'
- * - if '\'s are followed by a '"', they must be doubled and followed by '\"',
- *   resulting in an odd number of '\' followed by a '"'
- *   '\"'    -> '\\\"'
- *   '\\"'   -> '\\\\\"'
- * - '\'s are followed by the closing '"' must be doubled,
- *   resulting in an even number of '\' followed by a '"'
- *   ' \'    -> '" \\"'
- *   ' \\'    -> '" \\\\"'
- * - '\'s that are not followed by a '"' can be left as is
- *   'a\b'   == 'a\b'
- *   'a\\b'  == 'a\\b'
- */
-static void build_command_line( WCHAR **argv, UNICODE_STRING *cmdline )
-{
-    int len;
-    WCHAR **arg;
-    LPWSTR p;
-
-    len = 1;
-    for (arg = argv; *arg; arg++) len += 3 + 2 * strlenW( *arg );
-    cmdline->MaximumLength = len * sizeof(WCHAR);
-    if (!(cmdline->Buffer = RtlAllocateHeap( GetProcessHeap(), 0, cmdline->MaximumLength ))) return;
-
-    p = cmdline->Buffer;
-    for (arg = argv; *arg; arg++)
-    {
-        BOOL has_space, has_quote;
-        int i, bcount;
-        WCHAR *a;
-
-        /* check for quotes and spaces in this argument */
-        if (arg == argv || !**arg) has_space = TRUE;
-        else has_space = strchrW( *arg, ' ' ) || strchrW( *arg, '\t' );
-        has_quote = strchrW( *arg, '"' ) != NULL;
-
-        /* now transfer it to the command line */
-        if (has_space) *p++ = '"';
-        if (has_quote || has_space)
-        {
-            bcount = 0;
-            for (a = *arg; *a; a++)
-            {
-                if (*a == '\\') bcount++;
-                else
-                {
-                    if (*a == '"') /* double all the '\\' preceding this '"', plus one */
-                        for (i = 0; i <= bcount; i++) *p++ = '\\';
-                    bcount = 0;
-                }
-                *p++ = *a;
-            }
-        }
-        else
-        {
-            strcpyW( p, *arg );
-            p += strlenW( p );
-        }
-        if (has_space)
-        {
-            /* Double all the '\' preceding the closing quote */
-            for (i = 0; i < bcount; i++) *p++ = '\\';
-            *p++ = '"';
-        }
-        *p++ = ' ';
-    }
-    if (p > cmdline->Buffer) p--;  /* remove last space */
-    *p = 0;
-    cmdline->Length = (p - cmdline->Buffer) * sizeof(WCHAR);
 }
 
 
@@ -1140,7 +943,7 @@ static inline void get_unicode_string( UNICODE_STRING *str, WCHAR **src, UINT le
  */
 void init_user_process_params( SIZE_T data_size )
 {
-    WCHAR *src, *load_path, *dummy;
+    WCHAR *src;
     SIZE_T info_size, env_size;
     NTSTATUS status;
     startup_info_t *info = NULL;
@@ -1157,12 +960,6 @@ void init_user_process_params( SIZE_T data_size )
         NtCurrentTeb()->Peb->ProcessParameters = params;
         params->Environment = build_initial_environment( __wine_get_main_environment() );
         get_current_directory( &params->CurrentDirectory.DosPath );
-        get_image_path( __wine_main_argv[0], &params->ImagePathName );
-        set_library_wargv( __wine_main_argv, &params->ImagePathName );
-        build_command_line( __wine_main_wargv, &params->CommandLine );
-        LdrGetDllPath( params->ImagePathName.Buffer, 0, &load_path, &dummy );
-        RtlCreateUnicodeString( &params->DllPath, load_path );
-        RtlReleasePath( load_path );
 
         if (isatty(0) || isatty(1) || isatty(2))
             params->ConsoleHandle = (HANDLE)2; /* see kernel32/kernel_private.h */
@@ -1231,8 +1028,6 @@ void init_user_process_params( SIZE_T data_size )
         if (env_size) memcpy( params->Environment, (char *)info + info_size, env_size );
         else params->Environment[0] = 0;
     }
-
-    set_library_wargv( __wine_main_argv, NULL );
 
 done:
     RtlFreeHeap( GetProcessHeap(), 0, info );

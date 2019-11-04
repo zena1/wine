@@ -130,7 +130,6 @@ extern FARPROC SNOOP_GetProcAddress( HMODULE hmod, const IMAGE_EXPORT_DIRECTORY 
 extern void RELAY_SetupDLL( HMODULE hmod ) DECLSPEC_HIDDEN;
 extern void SNOOP_SetupDLL( HMODULE hmod ) DECLSPEC_HIDDEN;
 extern const WCHAR system_dir[] DECLSPEC_HIDDEN;
-extern const WCHAR syswow64_dir[] DECLSPEC_HIDDEN;
 
 extern void (WINAPI *kernel32_start_process)(LPTHREAD_START_ROUTINE,void*) DECLSPEC_HIDDEN;
 
@@ -199,7 +198,7 @@ extern SIZE_T virtual_uninterrupted_read_memory( const void *addr, void *buffer,
 extern NTSTATUS virtual_uninterrupted_write_memory( void *addr, const void *buffer, SIZE_T size ) DECLSPEC_HIDDEN;
 extern void VIRTUAL_SetForceExec( BOOL enable ) DECLSPEC_HIDDEN;
 extern void virtual_release_address_space(void) DECLSPEC_HIDDEN;
-extern void virtual_set_large_address_space(void) DECLSPEC_HIDDEN;
+extern void virtual_set_large_address_space( BOOL force ) DECLSPEC_HIDDEN;
 extern void virtual_fill_image_information( const pe_image_info_t *pe_info,
                                             SECTION_IMAGE_INFORMATION *info ) DECLSPEC_HIDDEN;
 extern struct _KUSER_SHARED_DATA *user_shared_data DECLSPEC_HIDDEN;
@@ -285,6 +284,7 @@ struct ntdll_thread_data
     struct debug_info *debug_info;    /* info for debugstr functions */
     int                esync_queue_fd;/* fd to wait on for driver events */
     int                esync_apc_fd;  /* fd to wait on for user APCs */
+    int               *fsync_apc_futex;
     void              *start_stack;   /* stack for thread startup */
     int                request_fd;    /* fd for sending server requests */
     int                reply_fd;      /* fd for receiving server replies */

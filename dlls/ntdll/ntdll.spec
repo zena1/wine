@@ -72,7 +72,6 @@
 @ stub KiUserExceptionDispatcher
 # @ stub LdrAccessOutOfProcessResource
 @ stdcall LdrAccessResource(long ptr ptr ptr)
-@ stdcall LdrAddDllDirectory(ptr ptr)
 @ stdcall LdrAddRefDll(long ptr)
 # @ stub LdrAlternateResourcesEnabled
 # @ stub LdrCreateOutOfProcessImage
@@ -86,10 +85,9 @@
 # @ stub LdrFindResourceEx_U
 @ stdcall LdrFindResource_U(long ptr long ptr)
 @ stub LdrFlushAlternateResourceModules
-@ stdcall LdrGetDllDirectory(ptr)
 @ stdcall LdrGetDllHandle(wstr long ptr ptr)
 # @ stub LdrGetDllHandleEx
-@ stdcall LdrGetDllPath(wstr long ptr ptr)
+@ stdcall LdrGetDllDirectory(ptr)
 @ stdcall LdrGetProcedureAddress(ptr ptr long ptr)
 # @ stub LdrHotPatchRoutine
 @ stub LdrInitShimEngineDynamic
@@ -101,10 +99,8 @@
 @ stdcall LdrQueryImageFileExecutionOptions(ptr wstr long ptr long ptr)
 @ stdcall LdrQueryProcessModuleInformation(ptr long ptr)
 @ stdcall LdrRegisterDllNotification(long ptr ptr ptr)
-@ stdcall LdrRemoveDllDirectory(ptr)
 @ stdcall LdrResolveDelayLoadedAPI(ptr ptr ptr ptr ptr long)
 @ stub LdrSetAppCompatDllRedirectionCallback
-@ stdcall LdrSetDefaultDllDirectories(long)
 @ stdcall LdrSetDllDirectory(ptr)
 @ stub LdrSetDllManifestProber
 @ stdcall LdrShutdownProcess()
@@ -688,7 +684,6 @@
 @ stdcall RtlGetDaclSecurityDescriptor(ptr ptr ptr ptr)
 @ stub RtlGetElementGenericTable
 # @ stub RtlGetElementGenericTableAvl
-@ stdcall RtlGetExePath(wstr ptr)
 # @ stub RtlGetFirstRange
 @ stdcall RtlGetFrame()
 @ stdcall RtlGetFullPathName_U(wstr long ptr ptr)
@@ -1559,6 +1554,7 @@
 
 # Virtual memory
 @ cdecl __wine_locked_recvmsg(long ptr long)
+@ cdecl __wine_needs_override_large_address_aware()
 
 # Token
 @ cdecl __wine_create_default_token(long)
@@ -1582,3 +1578,5 @@
 
 # User shared data
 @ cdecl __wine_user_shared_data()
+
+@ cdecl IsTransgaming()
