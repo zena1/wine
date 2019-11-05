@@ -679,7 +679,6 @@ struct x11drv_mode_info *X11DRV_Settings_SetHandlers(const char *name,
 
 void X11DRV_XF86VM_Init(void) DECLSPEC_HIDDEN;
 void X11DRV_XRandR_Init(void) DECLSPEC_HIDDEN;
-void X11DRV_XRandR_Enable(void) DECLSPEC_HIDDEN;
 
 /* X11 display device handler. Used to initialize display device registry data */
 

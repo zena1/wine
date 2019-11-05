@@ -327,6 +327,9 @@ static int dinput_mouse_hook( LPDIRECTINPUTDEVICE8A iface, WPARAM wparam, LPARAM
     SysMouseImpl* This = impl_from_IDirectInputDevice8A(iface);
     int wdata = 0, inst_id = -1, ret = 0, i;
 
+    if (This->base.use_raw_input && (wparam != RIM_INPUT && wparam != RIM_INPUTSINK))
+        return ret;
+
     if (wparam == RIM_INPUT || wparam == RIM_INPUTSINK)
     {
         RAWINPUTHEADER raw_header;
@@ -671,6 +674,12 @@ static HRESULT WINAPI SysMouseWImpl_GetDeviceState(LPDIRECTINPUTDEVICE8W iface, 
     if(This->base.acquired == 0) return DIERR_NOTACQUIRED;
 
     check_dinput_events();
+
+    if ((This->base.dwCoopLevel & DISCL_FOREGROUND) && This->base.win != GetForegroundWindow())
+    {
+        This->base.acquired = 0;
+        return DIERR_INPUTLOST;
+    }
 
     EnterCriticalSection(&This->base.crit);
     _dump_mouse_state(&This->m_state);

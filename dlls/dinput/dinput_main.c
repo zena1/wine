@@ -1840,7 +1840,7 @@ static DWORD WINAPI hook_thread_proc(void *param)
                 EnterCriticalSection( &dinput->crit );
                 LIST_FOR_EACH_ENTRY( dev, &dinput->devices_list, IDirectInputDeviceImpl, entry )
                 {
-                    if (!dev->acquired || !dev->event_proc || dev->use_raw_input) continue;
+                    if (!dev->acquired || !dev->event_proc) continue;
 
                     if (IsEqualGUID( &dev->guid, &GUID_SysKeyboard ))
                         kbd_cnt++;

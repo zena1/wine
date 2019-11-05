@@ -1,4 +1,4 @@
-# Last wine-tkg-staging-fsync-faudio-git configuration - Пн ноя  4 09:31:30 MSK 2019 :
+# Last wine-tkg-staging-fsync-faudio-git configuration - Вт ноя  5 11:31:21 MSK 2019 :
 
 Wine (plain) version: 4.19.r0.g6f2ef158b7
 Using wine-staging patchset (version 4.19.r0.g1f775840)
@@ -23,7 +23,7 @@ Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/GNUTLShack
 Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/legoisland_168726.mypatch
 Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/ms_powerpoint_fix.mypatch
 Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/origin_install_fix.mypatch
-Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/reminput.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/rawinput.mypatch
 Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/rockstar_installer_fix_heap.mypatch
 Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/rockstarlauncher_downloads.mypatch
 

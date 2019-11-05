@@ -1078,6 +1078,8 @@ static void xrandr14_register_event_handlers(void)
     if (!pXRRQueryExtension( display, &event_base, &error_base ))
         return;
 
+    pXRRSelectInput( display, root_window,
+                     RRCrtcChangeNotifyMask | RROutputChangeNotifyMask | RRProviderChangeNotifyMask );
     X11DRV_register_event_handler( event_base + RRNotify_CrtcChange, xrandr14_device_change_handler,
                                    "XRandR CrtcChange" );
     X11DRV_register_event_handler( event_base + RRNotify_OutputChange, xrandr14_device_change_handler,
@@ -1088,33 +1090,30 @@ static void xrandr14_register_event_handlers(void)
 
 #endif
 
-static int xrandr_load_version = 0;
-static int xrandr_minor = 0;
-static int xrandr_major = 0;
-
 void X11DRV_XRandR_Init(void)
 {
     struct x11drv_display_device_handler handler;
-    int event_base, error_base;
+    int event_base, error_base, minor, ret;
+    static int major;
     Bool ok;
 
-    if (xrandr_major) return; /* already initialized? */
+    if (major) return; /* already initialized? */
     if (!usexrandr) return; /* disabled in config */
     if (root_window != DefaultRootWindow( gdi_display )) return;
-    if (!(xrandr_load_version = load_xrandr())) return;  /* can't load the Xrandr library */
+    if (!(ret = load_xrandr())) return;  /* can't load the Xrandr library */
 
     /* see if Xrandr is available */
     if (!pXRRQueryExtension( gdi_display, &event_base, &error_base )) return;
     X11DRV_expect_error( gdi_display, XRandRErrorHandler, NULL );
-    ok = pXRRQueryVersion( gdi_display, &xrandr_major, &xrandr_minor );
+    ok = pXRRQueryVersion( gdi_display, &major, &minor );
     if (X11DRV_check_error() || !ok) return;
 
-    TRACE("Found XRandR %d.%d.\n", xrandr_major, xrandr_minor);
+    TRACE("Found XRandR %d.%d.\n", major, minor);
 
 #ifdef HAVE_XRRGETSCREENRESOURCES
-    if (xrandr_load_version >= 2 && (xrandr_major > 1 || (xrandr_major == 1 && xrandr_minor >= 2)))
+    if (ret >= 2 && (major > 1 || (major == 1 && minor >= 2)))
     {
-        if (xrandr_major > 1 || (xrandr_major == 1 && xrandr_minor >= 3))
+        if (major > 1 || (major == 1 && minor >= 3))
             pXRRGetScreenResourcesCurrent = wine_dlsym( xrandr_handle, "XRRGetScreenResourcesCurrent", NULL, 0 );
         if (!pXRRGetScreenResourcesCurrent)
             pXRRGetScreenResourcesCurrent = pXRRGetScreenResources;
@@ -1125,7 +1124,7 @@ void X11DRV_XRandR_Init(void)
         xrandr10_init_modes();
 
 #ifdef HAVE_XRRGETPROVIDERRESOURCES
-    if (xrandr_load_version >= 4 && (xrandr_major > 1 || (xrandr_major == 1 && xrandr_minor >= 4)))
+    if (ret >= 4 && (major > 1 || (major == 1 && minor >= 4)))
     {
         handler.name = "XRandR 1.4";
         handler.priority = 200;
@@ -1141,26 +1140,11 @@ void X11DRV_XRandR_Init(void)
 #endif
 }
 
-void X11DRV_XRandR_Enable(void)
-{
-#ifdef HAVE_XRRGETPROVIDERRESOURCES
-    struct x11drv_thread_data *data = x11drv_thread_data();
-
-    if (xrandr_load_version >= 4 && (xrandr_major > 1 || (xrandr_major == 1 && xrandr_minor >= 4)))
-        pXRRSelectInput( data->display, root_window,
-                         RRCrtcChangeNotifyMask | RROutputChangeNotifyMask | RRProviderChangeNotifyMask);
-#endif
-}
-
 #else /* SONAME_LIBXRANDR */
 
 void X11DRV_XRandR_Init(void)
 {
     TRACE("XRandR support not compiled in.\n");
-}
-
-void X11DRV_XRandR_Enable(void)
-{
 }
 
 #endif /* SONAME_LIBXRANDR */

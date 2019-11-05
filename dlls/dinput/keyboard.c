@@ -116,6 +116,9 @@ static int KeyboardCallback( LPDIRECTINPUTDEVICE8A iface, WPARAM wparam, LPARAM 
         wparam != RIM_INPUT && wparam != RIM_INPUTSINK)
         return 0;
 
+    if (This->base.use_raw_input && (wparam != RIM_INPUT && wparam != RIM_INPUTSINK))
+        return ret;
+
     if (wparam == RIM_INPUT || wparam == RIM_INPUTSINK)
     {
         RAWINPUTHEADER raw_header;
@@ -425,6 +428,12 @@ static HRESULT WINAPI SysKeyboardWImpl_GetDeviceState(LPDIRECTINPUTDEVICE8W ifac
         return DIERR_INVALIDPARAM;
 
     check_dinput_events();
+
+    if ((This->base.dwCoopLevel & DISCL_FOREGROUND) && This->base.win != GetForegroundWindow())
+    {
+        This->base.acquired = 0;
+        return DIERR_INPUTLOST;
+    }
 
     EnterCriticalSection(&This->base.crit);
 
