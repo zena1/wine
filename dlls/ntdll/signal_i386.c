@@ -59,6 +59,7 @@
 #include "ntdll_misc.h"
 #include "wine/exception.h"
 #include "wine/debug.h"
+#include "umip.h"
 
 #ifdef HAVE_VALGRIND_MEMCHECK_H
 #include <valgrind/memcheck.h>
@@ -2100,8 +2101,26 @@ static void SIGNALFUNC segv_handler( int signal, siginfo_t *siginfo, void *sigco
     case TRAP_x86_UNKNOWN:   /* Unknown fault code */
         {
             WORD err = get_error_code(context);
+            int result;
+            void *err_addr;
             if (!err && (stack->rec.ExceptionCode = is_privileged_instr( &stack->context ))) break;
             if ((err & 7) == 2 && handle_interrupt( err >> 3, context, stack )) return;
+            if (!err && (result = umip_emulate_instruction( &stack->context, &err_addr )))
+            {
+                if (result == 1)
+                {
+                    restore_context( &stack->context, sigcontext );
+                    return;
+                }
+                else
+                {
+                    stack->rec.ExceptionCode = EXCEPTION_ACCESS_VIOLATION;
+                    stack->rec.NumberParameters = 2;
+                    stack->rec.ExceptionInformation[0] = 1;
+                    stack->rec.ExceptionInformation[1] = err_addr;
+                    break;
+                }
+            }
             stack->rec.ExceptionCode = EXCEPTION_ACCESS_VIOLATION;
             stack->rec.NumberParameters = 2;
             stack->rec.ExceptionInformation[0] = 0;

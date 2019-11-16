@@ -68,7 +68,11 @@ struct IDirectInputDeviceImpl
     DWORD                       dwCoopLevel;
     HWND                        win;
     int                         acquired;
+    int                         inputlost;
     DI_EVENT_PROC               event_proc;  /* function to receive mouse & keyboard events */
+
+    BOOL                        use_raw_input; /* use raw input instead of low-level messages */
+    RAWINPUTDEVICE              raw_device;    /* raw device to (un)register */
 
     LPDIDEVICEOBJECTDATA        data_queue;  /* buffer for 'GetDeviceData'.                 */
     int                         queue_len;   /* size of the queue - set in 'SetProperty'    */
