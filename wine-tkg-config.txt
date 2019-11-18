@@ -1,4 +1,4 @@
-# Last wine-tkg-staging-fsync-git configuration - Сб ноя 16 20:47:22 MSK 2019 :
+# Last wine-tkg-staging-fsync-git configuration - Вт ноя 19 01:27:49 MSK 2019 :
 
 Wine (plain) version: 4.20.r0.g60626d0df8
 Using wine-staging patchset (version 4.20.r0.g356f2282)
@@ -25,6 +25,7 @@ Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/overwatch_
 Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/rawinput.mypatch
 Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/rockstar_installer_fix_heap.mypatch
 Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/rockstarlauncher_downloads.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/setupapi-Add-SetupGetInfDriverStoreLocationW-stub.mypatch
 Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/UIMP_emulation.mypatch
 Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/_wsplitpath_s.mypatch
 
