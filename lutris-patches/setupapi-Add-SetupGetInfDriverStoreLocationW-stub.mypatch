@@ -1,0 +1,49 @@
+From 9799cb1a039b6478ce0e55a5d06689ed204e2261 Mon Sep 17 00:00:00 2001
+From: Derek Lesho <dlesho@codeweavers.com>
+Date: Mon, 18 Nov 2019 16:14:47 -0600
+Subject: [PATCH] setupapi: Add SetupGetInfDriverStoreLocationW stub.
+
+Signed-off-by: Derek Lesho <dlesho@codeweavers.com>
+---
+ dlls/setupapi/query.c       | 14 ++++++++++++++
+ dlls/setupapi/setupapi.spec |  1 +
+ 2 files changed, 15 insertions(+)
+
+diff --git a/dlls/setupapi/query.c b/dlls/setupapi/query.c
+index ea1b969618..c960a6a2ba 100644
+--- a/dlls/setupapi/query.c
++++ b/dlls/setupapi/query.c
+@@ -717,3 +717,17 @@ BOOL WINAPI SetupQueryInfOriginalFileInformationW(
+ 
+     return TRUE;
+ }
++
++/***********************************************************************
++ *      SetupGetInfDriverStoreLocationW (SETUPAPI.@)
++ */
++BOOL WINAPI SetupGetInfDriverStoreLocationW(
++    PCWSTR FileName, PSP_ALTPLATFORM_INFO AlternativePlatformInfo,
++    PCWSTR LocaleName, PWSTR ReturnBuffer, DWORD ReturnBufferSize,
++    PDWORD RequiredSize)
++{
++    FIXME("stub!: %s %p %s %p %u %p\n", debugstr_w(FileName), AlternativePlatformInfo, debugstr_w(LocaleName), ReturnBuffer, ReturnBufferSize, RequiredSize);
++
++    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
++    return FALSE;
++}
+\ No newline at end of file
+diff --git a/dlls/setupapi/setupapi.spec b/dlls/setupapi/setupapi.spec
+index 1d09b0e7e5..8b6928f647 100644
+--- a/dlls/setupapi/setupapi.spec
++++ b/dlls/setupapi/setupapi.spec
+@@ -421,6 +421,7 @@
+ @ stdcall SetupGetFileCompressionInfoW(wstr ptr ptr ptr ptr)
+ @ stdcall SetupGetFileQueueCount(long long ptr)
+ @ stdcall SetupGetFileQueueFlags(long ptr)
++@ stdcall SetupGetInfDriverStoreLocationW(wstr ptr wstr ptr long ptr)
+ @ stdcall SetupGetInfFileListA(str long ptr long ptr)
+ @ stdcall SetupGetInfFileListW(wstr long ptr long ptr)
+ @ stdcall SetupGetInfInformationA(ptr long ptr long ptr)
+-- 
+2.23.0
+
