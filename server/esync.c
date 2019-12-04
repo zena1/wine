@@ -46,6 +46,7 @@
 #include "request.h"
 #include "file.h"
 #include "esync.h"
+#include "fsync.h"
 
 int do_esync(void)
 {
@@ -53,7 +54,7 @@ int do_esync(void)
     static int do_esync_cached = -1;
 
     if (do_esync_cached == -1)
-        do_esync_cached = getenv("WINEESYNC") && atoi(getenv("WINEESYNC"));
+        do_esync_cached = getenv("WINEESYNC") && atoi(getenv("WINEESYNC")) && !do_fsync();
 
     return do_esync_cached;
 #else
@@ -102,6 +103,8 @@ void esync_init(void)
     if (ftruncate( shm_fd, shm_size ) == -1)
         perror( "ftruncate" );
 
+    fprintf( stderr, "esync: up and running.\n" );
+
     atexit( shm_cleanup );
 }
 
@@ -127,6 +130,7 @@ const struct object_ops esync_ops =
     NULL,                      /* remove_queue */
     NULL,                      /* signaled */
     esync_get_esync_fd,        /* get_esync_fd */
+    NULL,                      /* get_fsync_idx */
     NULL,                      /* satisfied */
     no_signal,                 /* signal */
     no_get_fd,                 /* get_fd */

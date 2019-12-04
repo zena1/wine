@@ -1,0 +1,31 @@
+# Last wine-tkg-staging-fsync-git configuration - Ср дек  4 02:52:19 MSK 2019 :
+
+Wine (plain) version: 4.21.r0.g2935bab965
+Using wine-staging patchset (version 4.21.r0.g9be789b2)
+Disabled the local Esync patchset to use Staging impl instead.
+
+Applied clock_monotonic patch
+Applied clock_monotonic addon patch for 13e11d3
+Applied Fullscreen compositor bypass patch
+Applied steam crossover hack
+Applied CSMT toggle logic patch
+Staging overrides, if any: 
+Applied Final Fantasy XIV Launcher fix
+Applied Mortal Kombat 11 fix
+Applied fsync, an experimental replacement for esync (staging)
+Added no_alloc_handle object method to fsync
+Applied large address aware override support
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/faudio-ffmpeg.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/GNUTLShack.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/LCONTROL.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/legoisland_168726.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/ms_powerpoint_fix.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/origin_downloads_e4ca5dbe_revert.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/overwatch_alttab.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/rawinput.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/rockstar_installer_fix_heap.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/rockstarlauncher_downloads.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/UIMP_emulation.mypatch
+Applied your own patch /home/alex/git_projects/PKGBUILDS/wine-tkg-git/_wsplitpath_s.mypatch
+
+Please don't report bugs about this wine build on winehq.org and use https://github.com/Tk-Glitch/PKGBUILDS/issues instead.

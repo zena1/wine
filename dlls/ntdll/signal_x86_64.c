@@ -70,6 +70,7 @@
 #include "wine/list.h"
 #include "ntdll_misc.h"
 #include "wine/debug.h"
+#include "umip.h"
 
 #ifdef HAVE_VALGRIND_MEMCHECK_H
 #include <valgrind/memcheck.h>
@@ -2433,12 +2434,21 @@ static NTSTATUS call_stack_handlers( EXCEPTION_RECORD *rec, CONTEXT *orig_contex
     UNWIND_HISTORY_TABLE table;
     DISPATCHER_CONTEXT dispatch;
     CONTEXT context;
+    MEMORY_BASIC_INFORMATION wine_frame_stack_info, current_stack_info;
+    int is_teb_frame_in_current_stack = 1;
     NTSTATUS status;
 
     context = *orig_context;
     dispatch.TargetIp      = 0;
     dispatch.ContextRecord = &context;
     dispatch.HistoryTable  = &table;
+
+    if ( !(NtQueryVirtualMemory(NtCurrentProcess(), teb_frame, MemoryBasicInformation, &wine_frame_stack_info, sizeof(MEMORY_BASIC_INFORMATION), NULL)) &&
+         !(NtQueryVirtualMemory(NtCurrentProcess(), (PVOID)context.Rsp, MemoryBasicInformation, &current_stack_info, sizeof(MEMORY_BASIC_INFORMATION), NULL)))
+    {
+        is_teb_frame_in_current_stack = wine_frame_stack_info.AllocationBase == current_stack_info.AllocationBase;
+    }
+
     for (;;)
     {
         status = virtual_unwind( UNW_FLAG_EHANDLER, &dispatch, &context );
@@ -2484,7 +2494,7 @@ static NTSTATUS call_stack_handlers( EXCEPTION_RECORD *rec, CONTEXT *orig_contex
             }
         }
         /* hack: call wine handlers registered in the tib list */
-        else while ((ULONG64)teb_frame < context.Rsp)
+        else if (is_teb_frame_in_current_stack) while ((ULONG64)teb_frame < context.Rsp)
         {
             TRACE( "found wine frame %p rsp %lx handler %p\n",
                     teb_frame, context.Rsp, teb_frame->Handler );
@@ -2929,8 +2939,26 @@ static void segv_handler( int signal, siginfo_t *siginfo, void *sigcontext )
     case TRAP_x86_UNKNOWN:   /* Unknown fault code */
         {
             WORD err = ERROR_sig(ucontext);
+            int result;
+            void *err_addr;
             if (!err && (stack->rec.ExceptionCode = is_privileged_instr( &stack->context ))) break;
             if ((err & 7) == 2 && handle_interrupt( ucontext, stack )) return;
+            if (!err && (result = umip_emulate_instruction( &stack->context, &err_addr )))
+            {
+                if (result == 1)
+                {
+                    restore_context( &stack->context, sigcontext );
+                    return;
+                }
+                else
+                {
+                    stack->rec.ExceptionCode = EXCEPTION_ACCESS_VIOLATION;
+                    stack->rec.NumberParameters = 2;
+                    stack->rec.ExceptionInformation[0] = 1;
+                    stack->rec.ExceptionInformation[1] = (ULONG_PTR)err_addr;
+                    break;
+                }
+            }
             stack->rec.ExceptionCode = EXCEPTION_ACCESS_VIOLATION;
             stack->rec.NumberParameters = 2;
             stack->rec.ExceptionInformation[0] = 0;

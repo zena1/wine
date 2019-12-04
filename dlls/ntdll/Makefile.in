@@ -20,6 +20,7 @@ C_SRCS = \
 	esync.c \
 	exception.c \
 	file.c \
+	fsync.c \
 	handletable.c \
 	heap.c \
 	large_int.c \
@@ -52,6 +53,7 @@ C_SRCS = \
 	thread.c \
 	threadpool.c \
 	time.c \
+	umip.c \
 	version.c \
 	virtual.c \
 	wcstring.c
