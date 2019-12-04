@@ -1,0 +1,69 @@
+From: Derek Lesho <dlesho@codeweavers.com>
+Subject: [PATCH] bcrypt: Add fallback when gnutls_decode_rs_value isn't present.
+Message-Id: <20191207021103.170772-1-dlesho@codeweavers.com>
+Date: Fri,  6 Dec 2019 20:11:03 -0600
+
+Signed-off-by: Derek Lesho <dlesho@codeweavers.com>
+---
+I overlooked the fact that wine won't compile on systems where gnutls headers are too old.
+---
+ dlls/bcrypt/gnutls.c | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/dlls/bcrypt/gnutls.c b/dlls/bcrypt/gnutls.c
+index 1c31b5625f..868f898bbb 100644
+--- a/dlls/bcrypt/gnutls.c
++++ b/dlls/bcrypt/gnutls.c
+@@ -86,13 +86,15 @@ static int (*pgnutls_privkey_export_rsa_raw)(gnutls_privkey_t, gnutls_datum_t *,
+                                              gnutls_datum_t *);
+ static int (*pgnutls_privkey_generate)(gnutls_privkey_t, gnutls_pk_algorithm_t, unsigned int, unsigned int);
+ 
++/* Not present in gnutls version < 3.6.0 */
++static int (*pgnutls_decode_rs_value)(const gnutls_datum_t *, gnutls_datum_t *, gnutls_datum_t *);
++
+ static void *libgnutls_handle;
+ #define MAKE_FUNCPTR(f) static typeof(f) * p##f
+ MAKE_FUNCPTR(gnutls_cipher_decrypt2);
+ MAKE_FUNCPTR(gnutls_cipher_deinit);
+ MAKE_FUNCPTR(gnutls_cipher_encrypt2);
+ MAKE_FUNCPTR(gnutls_cipher_init);
+-MAKE_FUNCPTR(gnutls_decode_rs_value);
+ MAKE_FUNCPTR(gnutls_global_deinit);
+ MAKE_FUNCPTR(gnutls_global_init);
+ MAKE_FUNCPTR(gnutls_global_set_log_function);
+@@ -164,6 +166,11 @@ static int compat_gnutls_privkey_generate(gnutls_privkey_t key, gnutls_pk_algori
+     return GNUTLS_E_UNKNOWN_PK_ALGORITHM;
+ }
+ 
++static int compat_gnutls_decode_rs_value(const gnutls_datum_t * sig_value, gnutls_datum_t * r, gnutls_datum_t * s)
++{
++    return GNUTLS_E_INTERNAL_ERROR;
++}
++
+ static void gnutls_log( int level, const char *msg )
+ {
+     TRACE( "<%d> %s", level, msg );
+@@ -190,7 +197,6 @@ BOOL gnutls_initialize(void)
+     LOAD_FUNCPTR(gnutls_cipher_deinit)
+     LOAD_FUNCPTR(gnutls_cipher_encrypt2)
+     LOAD_FUNCPTR(gnutls_cipher_init)
+-    LOAD_FUNCPTR(gnutls_decode_rs_value)
+     LOAD_FUNCPTR(gnutls_global_deinit)
+     LOAD_FUNCPTR(gnutls_global_init)
+     LOAD_FUNCPTR(gnutls_global_set_log_function)
+@@ -259,6 +265,11 @@ BOOL gnutls_initialize(void)
+         WARN("gnutls_privkey_generate not found\n");
+         pgnutls_privkey_generate = compat_gnutls_privkey_generate;
+     }
++    if (!(pgnutls_decode_rs_value = wine_dlsym( libgnutls_handle, "gnutls_decode_rs_value", NULL, 0 )))
++    {
++        WARN("gnutls_decode_rs_value not found\n");
++        pgnutls_decode_rs_value = compat_gnutls_decode_rs_value;
++    }
+ 
+     if (TRACE_ON( bcrypt ))
+     {
+
+-- 
+2.24.0
+

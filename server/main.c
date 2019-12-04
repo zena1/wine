@@ -37,6 +37,7 @@
 #include "thread.h"
 #include "request.h"
 #include "esync.h"
+#include "fsync.h"
 #include "wine/library.h"
 
 /* command-line options */
@@ -142,6 +143,9 @@ int main( int argc, char *argv[] )
 
     sock_init();
     open_master_socket();
+
+    if (do_fsync())
+        fsync_init();
 
     if (do_esync())
         esync_init();

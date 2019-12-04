@@ -33,6 +33,9 @@
 #ifdef HAVE_X11_XKBLIB_H
 #include <X11/XKBlib.h>
 #endif
+#ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
+#include <X11/extensions/XInput2.h>
+#endif
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -1149,7 +1152,7 @@ static void X11DRV_send_keyboard_input( HWND hwnd, WORD vkey, WORD scan, DWORD f
     input.u.ki.time        = time;
     input.u.ki.dwExtraInfo = 0;
 
-    __wine_send_input( hwnd, &input );
+    __wine_send_input( hwnd, &input, SEND_HWMSG_WINDOW );
 }
 
 
@@ -1417,6 +1420,43 @@ BOOL X11DRV_KeyEvent( HWND hwnd, XEvent *xev )
     X11DRV_send_keyboard_input( hwnd, vkey & 0xff, bScan, dwFlags, event_time );
     return TRUE;
 }
+
+
+#ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
+/***********************************************************************
+ *           X11DRV_KeyEvent
+ *
+ * Handle a raw XInput2 key event for background windows
+ */
+BOOL X11DRV_RawKeyEvent( XGenericEventCookie *cookie )
+{
+    XIRawEvent *event = cookie->data;
+    DWORD flags;
+    WORD vkey, scan;
+    INPUT input;
+
+    vkey = keyc2vkey[event->detail];
+    scan = keyc2scan[event->detail];
+
+    flags = 0;
+    if ( event->evtype == XI_RawKeyRelease ) flags |= KEYEVENTF_KEYUP;
+    if ( vkey & 0x100 ) flags |= KEYEVENTF_EXTENDEDKEY;
+
+    TRACE_(key)( "vkey=%04x scan=%04x flags=%04x\n", vkey, scan, flags );
+
+    input.type             = INPUT_KEYBOARD;
+    input.u.ki.wVk         = vkey & 0xff;
+    input.u.ki.wScan       = scan & 0xff;
+    input.u.ki.dwFlags     = flags;
+    input.u.ki.time        = EVENT_x11_time_to_win32_time(event->time);
+    input.u.ki.dwExtraInfo = 0;
+
+    __wine_send_input( 0, &input, SEND_HWMSG_RAWINPUT );
+
+    return TRUE;
+}
+#endif
+
 
 static WCHAR translate_keysym( Display *display, KeySym keysym )
 {
@@ -2110,7 +2150,7 @@ SHORT CDECL X11DRV_VkKeyScanEx(WCHAR wChar, HKL hkl)
  */
 UINT CDECL X11DRV_MapVirtualKeyEx(UINT wCode, UINT wMapType, HKL hkl)
 {
-    UINT ret = 0;
+    UINT ret = 0, prefix = 0;
     int keyc;
     Display *display = thread_init_display();
 
@@ -2140,6 +2180,13 @@ UINT CDECL X11DRV_MapVirtualKeyEx(UINT wCode, UINT wMapType, HKL hkl)
                     break;
                 }
             }
+
+            /* set scan code prefix */
+            if (wCode == VK_RCONTROL || wCode == VK_RMENU)
+                prefix = 0xE0;
+
+            if (wMapType == MAPVK_VK_TO_VSC_EX)
+                ret |= ((prefix << 8) & 0xFF00);
             break;
 
         case MAPVK_VSC_TO_VK: /* scan-code to vkey-code */
