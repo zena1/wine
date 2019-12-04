@@ -710,6 +710,8 @@ NTSTATUS key_asymmetric_generate( struct key *key )
         bitlen = key->u.a.bitlen;
         break;
 
+    case ALG_ID_ECDSA_P256:
+        FIXME( "ALG_ID_ECDSA_P256: experimental!\n" );
     case ALG_ID_ECDH_P256:
         pk_alg = GNUTLS_PK_ECC; /* compatible with ECDSA and ECDH */
         bitlen = GNUTLS_CURVE_TO_BITS( GNUTLS_ECC_CURVE_SECP256R1 );
@@ -824,6 +826,8 @@ NTSTATUS key_import_ecc( struct key *key, UCHAR *buf, ULONG len )
 
     switch (key->alg_id)
     {
+    case ALG_ID_ECDSA_P256:
+        FIXME( "ALG_ID_ECDSA_P256: experimental!\n" );
     case ALG_ID_ECDH_P256:
         curve = GNUTLS_ECC_CURVE_SECP256R1;
         break;
@@ -1114,20 +1118,33 @@ NTSTATUS key_asymmetric_sign( struct key *key, void *padding, UCHAR *input, ULON
     gnutls_datum_t hash, signature;
     int ret;
 
-    if (key->alg_id != ALG_ID_RSA && key->alg_id != ALG_ID_RSA_SIGN)
+    if (key->alg_id == ALG_ID_ECDSA_P256)
     {
-        FIXME( "algorithm %u not supported\n", key->alg_id );
-        return STATUS_NOT_IMPLEMENTED;
+        FIXME( "ALG_ID_ECDSA_P256: experimental!\n" );
+        FIXME( "input len: %u\n", input_len );
+        FIXME( "output len: %u\n", output_len );
+        FIXME( "flags: %u\n", flags );
+        if (pad && pad->pszAlgId)
+            FIXME( "padding: %s\n", pad->pszAlgId );
+
     }
-    if (flags != BCRYPT_PAD_PKCS1)
+    else
     {
-        FIXME( "flags %08x not implemented\n", flags );
-        return STATUS_NOT_IMPLEMENTED;
-    }
-    if (!pad || !pad->pszAlgId || lstrcmpiW(pad->pszAlgId, BCRYPT_SHA1_ALGORITHM))
-    {
-        FIXME( "%s padding not implemented\n", debugstr_w(pad ? pad->pszAlgId : NULL) );
-        return STATUS_NOT_IMPLEMENTED;
+        if (key->alg_id != ALG_ID_RSA && key->alg_id != ALG_ID_RSA_SIGN)
+        {
+            FIXME( "algorithm %u not supported\n", key->alg_id );
+            return STATUS_NOT_IMPLEMENTED;
+        }
+        if (flags != BCRYPT_PAD_PKCS1)
+        {
+            FIXME( "flags %08x not implemented\n", flags );
+            return STATUS_NOT_IMPLEMENTED;
+        }
+        if (!pad || !pad->pszAlgId || lstrcmpiW(pad->pszAlgId, BCRYPT_SHA1_ALGORITHM))
+        {
+            FIXME( "%s padding not implemented\n", debugstr_w(pad ? pad->pszAlgId : NULL) );
+            return STATUS_NOT_IMPLEMENTED;
+        }
     }
 
     if (!input)
@@ -1143,14 +1160,49 @@ NTSTATUS key_asymmetric_sign( struct key *key, void *padding, UCHAR *input, ULON
     signature.data = NULL;
     signature.size = 0;
 
-    if ((ret = pgnutls_privkey_sign_hash( key->u.a.handle, GNUTLS_DIG_SHA1, 0, &hash, &signature )))
+    if (key->alg_id == ALG_ID_ECDSA_P256)
     {
-        pgnutls_perror( ret );
-        return STATUS_INTERNAL_ERROR;
+        FIXME( "ALG_ID_ECDSA_P256: experimental!\n" );
+
+        //IEEE_P1363 format required
+
+        if ((ret = pgnutls_privkey_sign_hash( key->u.a.handle, GNUTLS_DIG_SHA1, 0, &hash, &signature )))
+        {
+            FIXME( "ALG_ID_ECDSA_P256: signing error %d!\n", ret );
+            pgnutls_perror( ret );
+            return STATUS_INTERNAL_ERROR;
+        }
+
+        FIXME( "ALG_ID_ECDSA_P256: signature size: %d\n", signature.size );
+
+        if (output_len >= 64)
+        {
+            if (signature.size >= 64)
+            {
+                memcpy( output, signature.data+(signature.size+1)/2-32, 32 );
+                memcpy( output+32, signature.data+signature.size-32, 32 );
+            }
+            else
+            {
+                memset(output, 0, 64);
+                memcpy( output, signature.data, (signature.size+1)/2 );
+                memcpy( output+32, signature.data+(signature.size+1)/2, signature.size/2 );
+            }
+        }
+        *ret_len = 64;
+    }
+    else
+    {
+        if ((ret = pgnutls_privkey_sign_hash( key->u.a.handle, GNUTLS_DIG_SHA1, 0, &hash, &signature )))
+        {
+            pgnutls_perror( ret );
+            return STATUS_INTERNAL_ERROR;
+        }
+
+        if (output_len >= signature.size) memcpy( output, signature.data, signature.size );
+        *ret_len = signature.size;
     }
 
-    if (output_len >= signature.size) memcpy( output, signature.data, signature.size );
-    *ret_len = signature.size;
 
     free( signature.data );
     return STATUS_SUCCESS;
