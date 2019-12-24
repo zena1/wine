@@ -216,8 +216,8 @@ static void test_mismatched_status_ioctl(void)
 
     res = DeviceIoControl(device, IOCTL_WINETEST_MISMATCHED_STATUS, NULL, 0, buf,
                           sizeof(buf), &written, NULL);
-    todo_wine ok(res, "DeviceIoControl failed: %u\n", GetLastError());
-    todo_wine ok(!strcmp(buf, teststr), "got '%s'\n", buf);
+    ok(res, "DeviceIoControl failed: %u\n", GetLastError());
+    ok(!strcmp(buf, teststr), "got '%s'\n", buf);
 }
 
 static void test_overlapped(void)
