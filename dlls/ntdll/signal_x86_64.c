@@ -59,6 +59,10 @@
 # include <mach/mach.h>
 #endif
 
+#include <linux/filter.h>
+#include <linux/seccomp.h>
+#include <sys/prctl.h>
+
 #define NONAMELESSUNION
 #define NONAMELESSSTRUCT
 #include "ntstatus.h"
@@ -355,7 +359,7 @@ static inline void set_sigcontext( const CONTEXT *context, ucontext_t *sigcontex
 #endif
 }
 
-extern void DECLSPEC_NORETURN __wine_syscall_dispatcher( void );
+void DECLSPEC_NORETURN __wine_syscall_dispatcher( void );
 
 /***********************************************************************
  * Definitions for Win32 unwind tables
@@ -2433,12 +2437,21 @@ static NTSTATUS call_stack_handlers( EXCEPTION_RECORD *rec, CONTEXT *orig_contex
     UNWIND_HISTORY_TABLE table;
     DISPATCHER_CONTEXT dispatch;
     CONTEXT context;
+    MEMORY_BASIC_INFORMATION wine_frame_stack_info, current_stack_info;
+    int is_teb_frame_in_current_stack = 1;
     NTSTATUS status;
 
     context = *orig_context;
     dispatch.TargetIp      = 0;
     dispatch.ContextRecord = &context;
     dispatch.HistoryTable  = &table;
+
+    if ( !(NtQueryVirtualMemory(NtCurrentProcess(), teb_frame, MemoryBasicInformation, &wine_frame_stack_info, sizeof(MEMORY_BASIC_INFORMATION), NULL)) &&
+         !(NtQueryVirtualMemory(NtCurrentProcess(), (PVOID)context.Rsp, MemoryBasicInformation, &current_stack_info, sizeof(MEMORY_BASIC_INFORMATION), NULL)))
+    {
+        is_teb_frame_in_current_stack = wine_frame_stack_info.AllocationBase == current_stack_info.AllocationBase;
+    }
+
     for (;;)
     {
         status = virtual_unwind( UNW_FLAG_EHANDLER, &dispatch, &context );
@@ -2484,7 +2497,7 @@ static NTSTATUS call_stack_handlers( EXCEPTION_RECORD *rec, CONTEXT *orig_contex
             }
         }
         /* hack: call wine handlers registered in the tib list */
-        else while ((ULONG64)teb_frame < context.Rsp)
+        else if (is_teb_frame_in_current_stack) while ((ULONG64)teb_frame < context.Rsp)
         {
             TRACE( "found wine frame %p rsp %lx handler %p\n",
                     teb_frame, context.Rsp, teb_frame->Handler );
@@ -3097,6 +3110,38 @@ static void usr1_handler( int signal, siginfo_t *siginfo, void *ucontext )
     restore_context( &context, ucontext );
 }
 
+extern unsigned int __wine_nb_syscalls;
+
+extern void __wine_syscall_dispatcher();
+
+static void sigsys_handler( int signal, siginfo_t *siginfo, void *sigcontext )
+{
+    unsigned int thunk_ret_offset;
+    ucontext_t *ctx = sigcontext;
+    unsigned int syscall_nr;
+    void ***rsp;
+
+    WARN("SIGSYS, rax %#llx.\n", ctx->uc_mcontext.gregs[REG_RAX]);
+
+    syscall_nr = ctx->uc_mcontext.gregs[REG_RAX] - 0xf000;
+    if (syscall_nr >= __wine_nb_syscalls)
+    {
+        ERR("Syscall %u is undefined.\n", syscall_nr);
+        return;
+    }
+
+    rsp = (void ***)&ctx->uc_mcontext.gregs[REG_RSP];
+    *rsp -= 1;
+
+#ifdef __APPLE__
+    thunk_ret_offset = 0xb;
+#else
+    thunk_ret_offset = 0xc;
+#endif
+
+    **rsp = (void *)(ctx->uc_mcontext.gregs[REG_RIP] + thunk_ret_offset);
+    ctx->uc_mcontext.gregs[REG_RIP] = (ULONG64)__wine_syscall_dispatcher;
+}
 
 /***********************************************************************
  *           __wine_set_signal_handler   (NTDLL.@)
@@ -3267,6 +3312,38 @@ void signal_init_thread( TEB *teb )
 #endif
 }
 
+static void install_bpf(struct sigaction *sig_act)
+{
+    static struct sock_filter filter[] =
+    {
+       BPF_STMT(BPF_LD | BPF_W | BPF_ABS,
+                (offsetof(struct seccomp_data, nr))),
+       BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 0xf00, 0, 1),
+       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+    };
+    struct sock_fprog prog;
+
+    memset(&prog, 0, sizeof(prog));
+    prog.len = ARRAY_SIZE(filter);
+    prog.filter = filter;
+
+    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0))
+    {
+        perror("prctl(PR_SET_NO_NEW_PRIVS, ...)");
+        exit(1);
+    }
+
+    if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog, 0, 0))
+    {
+        perror("prctl(PR_SET_SECCOMP, ...)");
+        exit(1);
+    }
+
+    sig_act->sa_sigaction = sigsys_handler;
+    sigaction(SIGSYS, sig_act, NULL);
+}
+
 /**********************************************************************
  *		signal_init_process
  */
@@ -3299,6 +3376,9 @@ void signal_init_process(void)
     sig_act.sa_sigaction = trap_handler;
     if (sigaction( SIGTRAP, &sig_act, NULL ) == -1) goto error;
 #endif
+
+    install_bpf(&sig_act);
+
     return;
 
  error:
