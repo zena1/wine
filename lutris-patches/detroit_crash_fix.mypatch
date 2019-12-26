@@ -1,5 +1,4 @@
-See https://bugs.winehq.org/show_bug.cgi?id=48291#c22
-
+See https://bugs.winehq.org/show_bug.cgi?id=48291#c25
 ---
  dlls/ntdll/nt.c            | 35 ++++++++++--------
  dlls/ntdll/signal_x86_64.c | 73 +++++++++++++++++++++++++++++++++++++-

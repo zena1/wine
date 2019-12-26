@@ -2288,7 +2288,8 @@ BOOLEAN WINAPI RtlTryAcquireSRWLockShared( RTL_SRWLOCK *lock )
     return TRUE;
 }
 
-#ifdef __linux__
+/*#ifdef __linux__*/
+#if 0
 static NTSTATUS fast_wait_cv( RTL_CONDITION_VARIABLE *variable, int val, const LARGE_INTEGER *timeout )
 {
     struct timespec timespec;

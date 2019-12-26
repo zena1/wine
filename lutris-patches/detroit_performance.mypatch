@@ -1,0 +1,17 @@
+@@ -, +, @@ 
+---
+ dlls/ntdll/sync.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+--- a/dlls/ntdll/sync.c	
++++ a/dlls/ntdll/sync.c	
+@@ -2235,7 +2235,8 @@ BOOLEAN WINAPI RtlTryAcquireSRWLockShared( RTL_SRWLOCK *lock )
+     return TRUE;
+ }
+ 
+-#ifdef __linux__
++/*#ifdef __linux__*/
++#if 0
+ static NTSTATUS fast_wait_cv( RTL_CONDITION_VARIABLE *variable, int val, const LARGE_INTEGER *timeout )
+ {
+     struct timespec timespec;
+-- 
