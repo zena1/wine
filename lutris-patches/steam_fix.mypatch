@@ -1,0 +1,16 @@
+See https://bugs.winehq.org/show_bug.cgi?id=48349
+---
+ dlls/winhttp/session.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+--- a/dlls/winhttp/session.c	
++++ a/dlls/winhttp/session.c	
+@@ -1427,7 +1427,7 @@ static WCHAR *build_wpad_url( const char *hostname, const struct addrinfo *ai )
+ static WCHAR *detect_autoproxyconfig_url_dns(void)
+ {
+     char *fqdn, *domain, *p;
+-    WCHAR *ret;
++    WCHAR *ret = NULL;
+ 
+     if (!(fqdn = get_computer_name( ComputerNamePhysicalDnsFullyQualified ))) return NULL;
+     if (!(domain = get_computer_name( ComputerNamePhysicalDnsDomain )))
+-- 

@@ -101,7 +101,7 @@ static inline int futex_wake_bitset( const int *addr, int val, int mask )
     return syscall( __NR_futex, addr, FUTEX_WAKE_BITSET | futex_private, val, NULL, 0, mask );
 }
 
-static inline int use_futexes(void)
+static inline int use_futexes(const void *addr)
 {
     static int supported = -1;
 
@@ -115,7 +115,7 @@ static inline int use_futexes(void)
         }
         supported = (errno != ENOSYS);
     }
-    return supported;
+    return supported && !((ULONG_PTR)addr & 0x3);
 }
 
 static void timespec_from_timeout( struct timespec *timespec, const LARGE_INTEGER *timeout )
@@ -1801,7 +1801,7 @@ static NTSTATUS fast_try_acquire_srw_exclusive( RTL_SRWLOCK *lock )
     int old, new;
     NTSTATUS ret;
 
-    if (!use_futexes()) return STATUS_NOT_IMPLEMENTED;
+    if (!use_futexes(lock)) return STATUS_NOT_IMPLEMENTED;
 
     do
     {
@@ -1829,7 +1829,7 @@ static NTSTATUS fast_acquire_srw_exclusive( RTL_SRWLOCK *lock )
     int old, new;
     BOOLEAN wait;
 
-    if (!use_futexes()) return STATUS_NOT_IMPLEMENTED;
+    if (!use_futexes(lock)) return STATUS_NOT_IMPLEMENTED;
 
     /* Atomically increment the exclusive waiter count. */
     do
@@ -1875,7 +1875,7 @@ static NTSTATUS fast_try_acquire_srw_shared( RTL_SRWLOCK *lock )
     int new, old;
     NTSTATUS ret;
 
-    if (!use_futexes()) return STATUS_NOT_IMPLEMENTED;
+    if (!use_futexes(lock)) return STATUS_NOT_IMPLEMENTED;
 
     do
     {
@@ -1905,7 +1905,7 @@ static NTSTATUS fast_acquire_srw_shared( RTL_SRWLOCK *lock )
     int old, new;
     BOOLEAN wait;
 
-    if (!use_futexes()) return STATUS_NOT_IMPLEMENTED;
+    if (!use_futexes(lock)) return STATUS_NOT_IMPLEMENTED;
 
     for (;;)
     {
@@ -1942,7 +1942,7 @@ static NTSTATUS fast_release_srw_exclusive( RTL_SRWLOCK *lock )
 {
     int old, new;
 
-    if (!use_futexes()) return STATUS_NOT_IMPLEMENTED;
+    if (!use_futexes(lock)) return STATUS_NOT_IMPLEMENTED;
 
     do
     {
@@ -1972,7 +1972,7 @@ static NTSTATUS fast_release_srw_shared( RTL_SRWLOCK *lock )
 {
     int old, new;
 
-    if (!use_futexes()) return STATUS_NOT_IMPLEMENTED;
+    if (!use_futexes(lock)) return STATUS_NOT_IMPLEMENTED;
 
     do
     {
@@ -2288,14 +2288,13 @@ BOOLEAN WINAPI RtlTryAcquireSRWLockShared( RTL_SRWLOCK *lock )
     return TRUE;
 }
 
-/*#ifdef __linux__*/
-#if 0
+#ifdef __linux__
 static NTSTATUS fast_wait_cv( RTL_CONDITION_VARIABLE *variable, int val, const LARGE_INTEGER *timeout )
 {
     struct timespec timespec;
     int ret;
 
-    if (!use_futexes())
+    if (!use_futexes(&variable->Ptr))
         return STATUS_NOT_IMPLEMENTED;
 
     if (timeout && timeout->QuadPart != TIMEOUT_INFINITE)
@@ -2313,7 +2312,7 @@ static NTSTATUS fast_wait_cv( RTL_CONDITION_VARIABLE *variable, int val, const L
 
 static NTSTATUS fast_wake_cv( RTL_CONDITION_VARIABLE *variable, int count )
 {
-    if (!use_futexes()) return STATUS_NOT_IMPLEMENTED;
+    if (!use_futexes(&variable->Ptr)) return STATUS_NOT_IMPLEMENTED;
 
     futex_wake( (int *)&variable->Ptr, count );
     return STATUS_SUCCESS;
@@ -2500,7 +2499,7 @@ static inline NTSTATUS fast_wait_addr( const void *addr, const void *cmp, SIZE_T
     struct timespec timespec;
     int ret;
 
-    if (!use_futexes())
+    if (!use_futexes(addr))
         return STATUS_NOT_IMPLEMENTED;
 
     futex = hash_addr( addr );
@@ -2531,7 +2530,7 @@ static inline NTSTATUS fast_wake_addr( const void *addr )
 {
     int *futex;
 
-    if (!use_futexes())
+    if (!use_futexes(addr))
         return STATUS_NOT_IMPLEMENTED;
 
     futex = hash_addr( addr );
