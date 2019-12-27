@@ -60,8 +60,6 @@ static CRITICAL_SECTION_DEBUG hid_devices_cs_debug =
 };
 static CRITICAL_SECTION hid_devices_cs = { &hid_devices_cs_debug, -1, 0, 0, 0, 0 };
 
-extern DWORD WINAPI GetFinalPathNameByHandleW(HANDLE file, LPWSTR path, DWORD charcount, DWORD flags);
-
 static BOOL array_reserve(void **elements, unsigned int *capacity, unsigned int count, unsigned int size)
 {
     unsigned int new_capacity, max_capacity;
@@ -146,7 +144,10 @@ static struct hid_device *add_device(HDEVINFO set, SP_DEVICE_INTERFACE_DATA *ifa
     return device;
 }
 
-HANDLE rawinput_handle_from_device_handle(HANDLE device)
+extern DWORD WINAPI GetFinalPathNameByHandleW(HANDLE file, LPWSTR path, DWORD charcount, DWORD flags);
+static void find_hid_devices(BOOL);
+
+HANDLE rawinput_handle_from_device_handle(HANDLE device, BOOL rescan)
 {
     WCHAR buffer[sizeof(OBJECT_NAME_INFORMATION) + MAX_PATH + 1];
     OBJECT_NAME_INFORMATION *info = (OBJECT_NAME_INFORMATION*)&buffer;
@@ -175,40 +176,26 @@ HANDLE rawinput_handle_from_device_handle(HANDLE device)
         }
     }
 
-    return NULL;
+    if (!rescan)
+        return NULL;
+
+    find_hid_devices(TRUE);
+
+    return rawinput_handle_from_device_handle(device, FALSE);
 }
 
-static void find_hid_devices(void)
+static void find_hid_devices_by_guid(const GUID *guid)
 {
-    static ULONGLONG last_check;
-
     SP_DEVICE_INTERFACE_DATA iface = { sizeof(iface) };
     struct hid_device *device;
     HIDD_ATTRIBUTES attr;
     HIDP_CAPS caps;
-    GUID hid_guid;
     HDEVINFO set;
     DWORD idx;
 
-    if (GetTickCount64() - last_check < 2000)
-        return;
-    last_check = GetTickCount64();
+    set = SetupDiGetClassDevsW(guid, NULL, NULL, DIGCF_DEVICEINTERFACE | DIGCF_PRESENT);
 
-    HidD_GetHidGuid(&hid_guid);
-
-    set = SetupDiGetClassDevsW(&hid_guid, NULL, NULL, DIGCF_DEVICEINTERFACE | DIGCF_PRESENT);
-
-    EnterCriticalSection(&hid_devices_cs);
-
-    /* destroy previous list */
-    for (idx = 0; idx < hid_devices_count; ++idx)
-    {
-        CloseHandle(hid_devices[idx].file);
-        heap_free(hid_devices[idx].path);
-    }
-
-    hid_devices_count = 0;
-    for (idx = 0; SetupDiEnumDeviceInterfaces(set, NULL, &hid_guid, idx, &iface); ++idx)
+    for (idx = 0; SetupDiEnumDeviceInterfaces(set, NULL, guid, idx, &iface); ++idx)
     {
         if (!(device = add_device(set, &iface)))
             continue;
@@ -230,8 +217,47 @@ static void find_hid_devices(void)
         device->info.usUsage = caps.Usage;
     }
 
-    LeaveCriticalSection(&hid_devices_cs);
     SetupDiDestroyDeviceInfoList(set);
+}
+
+static void find_hid_devices(BOOL force)
+{
+    static ULONGLONG last_check;
+
+    DWORD idx;
+    GUID hid_guid;
+
+    if (!force && GetTickCount64() - last_check < 2000)
+        return;
+
+    HidD_GetHidGuid(&hid_guid);
+
+    EnterCriticalSection(&hid_devices_cs);
+
+    if (!force && GetTickCount64() - last_check < 2000)
+    {
+        LeaveCriticalSection(&hid_devices_cs);
+        return;
+    }
+
+    last_check = GetTickCount64();
+
+    /* destroy previous list */
+    for (idx = 0; idx < hid_devices_count; ++idx)
+    {
+        CloseHandle(hid_devices[idx].file);
+        heap_free(hid_devices[idx].path);
+    }
+
+    hid_devices_count = 0;
+
+    find_hid_devices_by_guid(&hid_guid);
+
+    /* HACK: also look up the xinput-specific devices */
+    hid_guid.Data4[7]++;
+    find_hid_devices_by_guid(&hid_guid);
+
+    LeaveCriticalSection(&hid_devices_cs);
 }
 
 /***********************************************************************
@@ -255,7 +281,7 @@ UINT WINAPI GetRawInputDeviceList(RAWINPUTDEVICELIST *devices, UINT *device_coun
         return ~0U;
     }
 
-    find_hid_devices();
+    find_hid_devices(FALSE);
 
     if (!devices)
     {
@@ -304,13 +330,6 @@ BOOL WINAPI DECLSPEC_HOTPATCH RegisterRawInputDevices(RAWINPUTDEVICE *devices, U
 
     for (i = 0; i < device_count; ++i)
     {
-        if ((devices[i].dwFlags & RIDEV_INPUTSINK) &&
-            (devices[i].hwndTarget == NULL))
-        {
-            SetLastError(ERROR_INVALID_PARAMETER);
-            return FALSE;
-        }
-
         if ((devices[i].dwFlags & RIDEV_REMOVE) &&
             (devices[i].hwndTarget != NULL))
         {
@@ -326,7 +345,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH RegisterRawInputDevices(RAWINPUTDEVICE *devices, U
         TRACE("device %u: page %#x, usage %#x, flags %#x, target %p.\n",
                 i, devices[i].usUsagePage, devices[i].usUsage,
                 devices[i].dwFlags, devices[i].hwndTarget);
-        if (devices[i].dwFlags & ~(RIDEV_REMOVE|RIDEV_NOLEGACY|RIDEV_INPUTSINK))
+        if (devices[i].dwFlags & ~(RIDEV_REMOVE|RIDEV_NOLEGACY))
             FIXME("Unhandled flags %#x for device %u.\n", devices[i].dwFlags, i);
 
         d[i].usage_page = devices[i].usUsagePage;

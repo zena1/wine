@@ -1940,6 +1940,7 @@ static int alloc_virtual_heap( void *base, size_t size, void *arg )
 void virtual_init(void)
 {
     const char *preload;
+    const char *wine_low_user_space_limit = getenv("WINE_LOW_USER_SPACE_LIMIT");
     struct alloc_virtual_heap alloc_views;
     size_t size;
 
@@ -1968,6 +1969,10 @@ void virtual_init(void)
             if (preload_reserve_start)
                 address_space_start = min( address_space_start, preload_reserve_start );
         }
+    }
+
+    if (wine_low_user_space_limit) {
+        user_space_limit    = (void *)0x7ffffff0000;
     }
 
     /* try to find space in a reserved area for the views and pages protection table */
@@ -2685,11 +2690,13 @@ void virtual_release_address_space(void)
  *
  * Enable use of a large address space when allowed by the application.
  */
-void virtual_set_large_address_space(void)
+void virtual_set_large_address_space(BOOL force_large_address)
 {
     IMAGE_NT_HEADERS *nt = RtlImageNtHeader( NtCurrentTeb()->Peb->ImageBaseAddress );
 
-    if (!(nt->FileHeader.Characteristics & IMAGE_FILE_LARGE_ADDRESS_AWARE)) return;
+    if (is_win64) return;
+    if (!(nt->FileHeader.Characteristics & IMAGE_FILE_LARGE_ADDRESS_AWARE) && !force_large_address) return;
+
     /* no large address space on win9x */
     if (NtCurrentTeb()->Peb->OSPlatformId != VER_PLATFORM_WIN32_NT) return;
 

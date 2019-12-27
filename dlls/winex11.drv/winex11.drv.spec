@@ -20,7 +20,9 @@
 @ cdecl SetCursorPos(long long) X11DRV_SetCursorPos
 @ cdecl ClipCursor(ptr) X11DRV_ClipCursor
 @ cdecl ChangeDisplaySettingsEx(ptr ptr long long long) X11DRV_ChangeDisplaySettingsEx
+@ cdecl EnumDisplayMonitors(long ptr ptr long) X11DRV_EnumDisplayMonitors
 @ cdecl EnumDisplaySettingsEx(ptr long ptr long) X11DRV_EnumDisplaySettingsEx
+@ cdecl GetMonitorInfo(long ptr) X11DRV_GetMonitorInfo
 @ cdecl CreateDesktopWindow(long) X11DRV_CreateDesktopWindow
 @ cdecl CreateWindow(long) X11DRV_CreateWindow
 @ cdecl DestroyWindow(long) X11DRV_DestroyWindow
@@ -29,7 +31,6 @@
 @ cdecl MsgWaitForMultipleObjectsEx(long ptr long long long) X11DRV_MsgWaitForMultipleObjectsEx
 @ cdecl ReleaseDC(long long) X11DRV_ReleaseDC
 @ cdecl ScrollDC(long long long long) X11DRV_ScrollDC
-@ cdecl SetActiveWindow(long) X11DRV_SetActiveWindow
 @ cdecl SetCapture(long long) X11DRV_SetCapture
 @ cdecl SetFocus(long) X11DRV_SetFocus
 @ cdecl SetLayeredWindowAttributes(long long long long) X11DRV_SetLayeredWindowAttributes
