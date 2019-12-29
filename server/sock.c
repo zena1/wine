@@ -147,6 +147,7 @@ static const struct object_ops sock_ops =
     remove_queue,                 /* remove_queue */
     sock_signaled,                /* signaled */
     NULL,                         /* get_esync_fd */
+    NULL,                         /* get_fsync_idx */
     no_satisfied,                 /* satisfied */
     no_signal,                    /* signal */
     sock_get_fd,                  /* get_fd */
@@ -998,6 +999,7 @@ static const struct object_ops ifchange_ops =
     NULL,                    /* remove_queue */
     NULL,                    /* signaled */
     NULL,                    /* get_esync_fd */
+    NULL,                    /* get_fsync_idx */
     no_satisfied,            /* satisfied */
     no_signal,               /* signal */
     ifchange_get_fd,         /* get_fd */
@@ -1279,7 +1281,7 @@ DECL_HANDLER(set_socket_event)
                                                 FILE_WRITE_ATTRIBUTES, &sock_ops))) return;
     old_event = sock->event;
     sock->mask    = req->mask;
-    sock->hmask   &= (FD_WRITE | ~req->mask); /* re-enable held events */
+    sock->hmask   &= ~req->mask; /* re-enable held events */
     sock->event   = NULL;
     sock->window  = req->window;
     sock->message = req->msg;
