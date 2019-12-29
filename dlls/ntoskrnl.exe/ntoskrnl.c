@@ -424,15 +424,47 @@ static void WINAPI cancel_completed_irp( DEVICE_OBJECT *device, IRP *irp )
     IoCompleteRequest(irp, IO_NO_INCREMENT);
 }
 
+static ULONG get_irp_out_size( IRP *irp, BOOLEAN *need_copy )
+{
+    IO_STACK_LOCATION *irpsp = IoGetNextIrpStackLocation(irp);
+    switch (irpsp->MajorFunction)
+    {
+    case IRP_MJ_FILE_SYSTEM_CONTROL:
+    case IRP_MJ_DEVICE_CONTROL:
+    case IRP_MJ_INTERNAL_DEVICE_CONTROL:
+        /* For an ioctl not using METHOD_BUFFERED, the driver is supposed to have
+         * direct access to userland's output buffer, either via an MDL (as in METHOD_OUT_DIRECT)
+         * or with the raw user VA (as in METHOD_NEITHER). In these cases, we need
+         * to copy the entire buffer back to the caller, whether or not Information
+         * is non-zero and whether or not the call succeeded. */
+        switch (irpsp->Parameters.DeviceIoControl.IoControlCode & 3)
+        {
+        case METHOD_BUFFERED:
+            break;
+        default:
+            *need_copy = TRUE;
+            return irpsp->Parameters.DeviceIoControl.OutputBufferLength;
+        }
+        break;
+    default:
+        break;
+    }
+    return irp->IoStatus.Information;
+}
+
 /* transfer result of IRP back to wineserver */
 static NTSTATUS WINAPI dispatch_irp_completion( DEVICE_OBJECT *device, IRP *irp, void *context )
 {
     HANDLE irp_handle = context;
     void *out_buff = irp->UserBuffer;
     NTSTATUS status;
+    ULONG out_size;
+    BOOLEAN need_copy = FALSE;
 
     if (irp->Flags & IRP_WRITE_OPERATION)
         out_buff = NULL;  /* do not transfer back input buffer */
+
+    out_size = get_irp_out_size( irp, &need_copy );
 
     EnterCriticalSection( &irp_completion_cs );
 
@@ -441,9 +473,9 @@ static NTSTATUS WINAPI dispatch_irp_completion( DEVICE_OBJECT *device, IRP *irp,
         req->handle   = wine_server_obj_handle( irp_handle );
         req->status   = irp->IoStatus.u.Status;
         req->size     = irp->IoStatus.Information;
-        if (!NT_ERROR(irp->IoStatus.u.Status))
+        if (!NT_ERROR(irp->IoStatus.u.Status) || need_copy)
         {
-            if (out_buff) wine_server_add_data( req, out_buff, irp->IoStatus.Information );
+            if (out_buff) wine_server_add_data( req, out_buff, out_size );
         }
         status = wine_server_call( req );
     }
@@ -479,9 +511,10 @@ struct dispatch_context
     void  *in_buff;
 };
 
-static void dispatch_irp( DEVICE_OBJECT *device, IRP *irp, struct dispatch_context *context )
+static NTSTATUS dispatch_irp( DEVICE_OBJECT *device, IRP *irp, struct dispatch_context *context )
 {
     LARGE_INTEGER count;
+    NTSTATUS status;
 
     IoSetCompletionRoutine( irp, dispatch_irp_completion, context->handle, TRUE, TRUE, TRUE );
     context->handle = 0;
@@ -491,9 +524,10 @@ static void dispatch_irp( DEVICE_OBJECT *device, IRP *irp, struct dispatch_conte
     context->irp = irp;
     device->CurrentIrp = irp;
     KeEnterCriticalRegion();
-    IoCallDriver( device, irp );
+    status = IoCallDriver( device, irp );
     KeLeaveCriticalRegion();
     device->CurrentIrp = NULL;
+    return status;
 }
 
 /* process a create request for a given file */
@@ -536,9 +570,7 @@ static NTSTATUS dispatch_create( struct dispatch_context *context )
     irp->UserEvent = NULL;
 
     irp->Flags |= IRP_CREATE_OPERATION;
-    dispatch_irp( device, irp, context );
-
-    return STATUS_SUCCESS;
+    return dispatch_irp( device, irp, context );
 }
 
 /* process a close request for a given file */
@@ -574,9 +606,7 @@ static NTSTATUS dispatch_close( struct dispatch_context *context )
     irp->UserEvent = NULL;
 
     irp->Flags |= IRP_CLOSE_OPERATION;
-    dispatch_irp( device, irp, context );
-
-    return STATUS_SUCCESS;
+    return dispatch_irp( device, irp, context );
 }
 
 /* process a read request for a given device */
@@ -616,9 +646,7 @@ static NTSTATUS dispatch_read( struct dispatch_context *context )
 
     irp->Flags |= IRP_READ_OPERATION;
     irp->Flags |= IRP_DEALLOCATE_BUFFER;  /* deallocate out_buff */
-    dispatch_irp( device, irp, context );
-
-    return STATUS_SUCCESS;
+    return dispatch_irp( device, irp, context );
 }
 
 /* process a write request for a given device */
@@ -652,9 +680,7 @@ static NTSTATUS dispatch_write( struct dispatch_context *context )
 
     irp->Flags |= IRP_WRITE_OPERATION;
     irp->Flags |= IRP_DEALLOCATE_BUFFER;  /* deallocate in_buff */
-    dispatch_irp( device, irp, context );
-
-    return STATUS_SUCCESS;
+    return dispatch_irp( device, irp, context );
 }
 
 /* process a flush request for a given device */
@@ -681,9 +707,7 @@ static NTSTATUS dispatch_flush( struct dispatch_context *context )
     irpsp = IoGetNextIrpStackLocation( irp );
     irpsp->FileObject = file;
 
-    dispatch_irp( device, irp, context );
-
-    return STATUS_SUCCESS;
+    return dispatch_irp( device, irp, context );
 }
 
 /* process an ioctl request for a given device */
@@ -696,6 +720,7 @@ static NTSTATUS dispatch_ioctl( struct dispatch_context *context )
     DEVICE_OBJECT *device;
     FILE_OBJECT *file = wine_server_get_ptr( context->params.ioctl.file );
     ULONG out_size = context->params.ioctl.out_size;
+    NTSTATUS status;
 
     if (!file) return STATUS_INVALID_HANDLE;
 
@@ -744,10 +769,10 @@ static NTSTATUS dispatch_ioctl( struct dispatch_context *context )
     context->in_buff = NULL;
 
     irp->Flags |= IRP_DEALLOCATE_BUFFER;  /* deallocate in_buff */
-    dispatch_irp( device, irp, context );
+    status = dispatch_irp( device, irp, context );
 
     HeapFree( GetProcessHeap(), 0, to_free );
-    return STATUS_SUCCESS;
+    return status;
 }
 
 static NTSTATUS dispatch_free( struct dispatch_context *context )
@@ -1631,6 +1656,16 @@ NTSTATUS WINAPI IoDeleteSymbolicLink( UNICODE_STRING *name )
     }
     return status;
 }
+
+/***********************************************************************
+ *           IoGetDeviceAttachmentBaseRef   (NTOSKRNL.EXE.@)
+ */
+PDEVICE_OBJECT WINAPI IoGetDeviceAttachmentBaseRef( PDEVICE_OBJECT device )
+{
+    FIXME( "(%p): stub\n", device );
+    return NULL;
+}
+
 
 /***********************************************************************
  *           IoGetDeviceInterfaces   (NTOSKRNL.EXE.@)
@@ -2600,6 +2635,16 @@ VOID WINAPI MmLockPagableSectionByHandle(PVOID ImageSectionHandle)
 {
     FIXME("stub %p\n", ImageSectionHandle);
 }
+
+ /***********************************************************************
+ *           MmMapLockedPages   (NTOSKRNL.EXE.@)
+ */
+PVOID WINAPI MmMapLockedPages(PMDL MemoryDescriptorList, KPROCESSOR_MODE AccessMode)
+{
+    TRACE("%p %d\n", MemoryDescriptorList, AccessMode);
+    return MemoryDescriptorList->MappedSystemVa;
+}
+
 
 /***********************************************************************
  *           MmMapLockedPagesSpecifyCache  (NTOSKRNL.EXE.@)
