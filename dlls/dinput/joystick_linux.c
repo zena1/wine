@@ -501,6 +501,10 @@ static HRESULT alloc_device(REFGUID rguid, IDirectInputImpl *dinput,
     newDevice->generic.base.ref = 1;
     newDevice->generic.base.dinput = dinput;
     newDevice->generic.base.guid = *rguid;
+    newDevice->generic.base.buffersize = 20;
+    newDevice->generic.base.queue_len = 20;
+    newDevice->generic.base.data_queue = HeapAlloc(GetProcessHeap(), 0,
+                newDevice->generic.base.queue_len * sizeof(DIDEVICEOBJECTDATA));
     InitializeCriticalSection(&newDevice->generic.base.crit);
     newDevice->generic.base.crit.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": JoystickImpl*->generic.base.crit");
 
@@ -873,10 +877,13 @@ static void joy_polldev(LPDIRECTINPUTDEVICE8A iface)
               jse.type,jse.number,jse.value);
         if (jse.type & JS_EVENT_BUTTON)
         {
+            int button;
             if (jse.number >= This->generic.devcaps.dwButtons) return;
 
-            inst_id = DIDFT_MAKEINSTANCE(jse.number) | DIDFT_PSHBUTTON;
-            This->generic.js.rgbButtons[jse.number] = value = jse.value ? 0x80 : 0x00;
+            button = This->generic.button_map[jse.number];
+
+            inst_id = DIDFT_MAKEINSTANCE(button) | DIDFT_PSHBUTTON;
+            This->generic.js.rgbButtons[button] = value = jse.value ? 0x80 : 0x00;
         }
         else if (jse.type & JS_EVENT_AXIS)
         {

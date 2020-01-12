@@ -106,8 +106,22 @@ static void test_object_info(IDirectInputDeviceA *device, HWND hwnd)
     dp.diph.dwHeaderSize = sizeof(DIPROPHEADER);
     dp.diph.dwHow = DIPH_DEVICE;
     dp.diph.dwObj = 0;
-    dp.dwData = 0;
+    dp.dwData = -1;
 
+    hr = IDirectInputDevice_GetProperty(device, DIPROP_BUFFERSIZE, &dp.diph);
+    ok(hr == DI_OK, "Failed: %08x\n", hr);
+    ok(dp.dwData == 20, "got %d\n", dp.dwData);
+
+    dp.dwData = -1;
+    hr = IDirectInputDevice_SetProperty(device, DIPROP_BUFFERSIZE, (LPCDIPROPHEADER)&dp.diph);
+    ok(hr == DI_OK, "SetProperty() failed: %08x\n", hr);
+
+    dp.dwData = 0;
+    hr = IDirectInputDevice_GetProperty(device, DIPROP_BUFFERSIZE, &dp.diph);
+    ok(hr == DI_OK, "Failed: %08x\n", hr);
+    ok(dp.dwData == -1, "got %d\n", dp.dwData);
+
+    dp.dwData = 0;
     hr = IDirectInputDevice_SetProperty(device, DIPROP_BUFFERSIZE, (LPCDIPROPHEADER)&dp.diph);
     ok(hr == DI_OK, "SetProperty() failed: %08x\n", hr);
     cnt = 5;

@@ -819,6 +819,8 @@ static void poll_osx_device_state(LPDIRECTINPUTDEVICE8A iface)
                         TRACE("valueRef %s val %d oldVal %d newVal %d\n", debugstr_cf(valueRef), val, oldVal, newVal);
                         if (oldVal != newVal)
                         {
+                            button_idx = device->generic.button_map[button_idx];
+
                             inst_id = DIDFT_MAKEINSTANCE(button_idx) | DIDFT_PSHBUTTON;
                             queue_event(iface,inst_id,newVal,GetCurrentTime(),device->generic.base.dinput->evsequence++);
                         }
@@ -1168,6 +1170,10 @@ static HRESULT alloc_device(REFGUID rguid, IDirectInputImpl *dinput,
     newDevice->generic.base.ref = 1;
     newDevice->generic.base.dinput = dinput;
     newDevice->generic.base.guid = *rguid;
+    newDevice->generic.base.buffersize = 20;
+    newDevice->generic.base.queue_len = 20;
+    newDevice->generic.base.data_queue = HeapAlloc(GetProcessHeap(), 0,
+                newDevice->generic.base.queue_len * sizeof(DIDEVICEOBJECTDATA));
     InitializeCriticalSection(&newDevice->generic.base.crit);
     newDevice->generic.base.crit.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": JoystickImpl*->generic.base.crit");
 
