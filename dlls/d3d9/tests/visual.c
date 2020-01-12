@@ -3793,6 +3793,34 @@ static void fill_surface(IDirect3DSurface9 *surface, DWORD color, DWORD flags)
     ok(hr == D3D_OK, "IDirect3DSurface9_UnlockRect failed with %08x\n", hr);
 }
 
+static void fill_surface_16(IDirect3DSurface9 *surface, DWORD color, DWORD flags)
+{
+    D3DSURFACE_DESC desc;
+    D3DLOCKED_RECT l;
+    HRESULT hr;
+    unsigned int x, y;
+    WORD *mem;
+
+    memset(&desc, 0, sizeof(desc));
+    memset(&l, 0, sizeof(l));
+    hr = IDirect3DSurface9_GetDesc(surface, &desc);
+    ok(hr == D3D_OK, "IDirect3DSurface9_GetDesc failed with %08x\n", hr);
+    hr = IDirect3DSurface9_LockRect(surface, &l, NULL, flags);
+    ok(hr == D3D_OK, "IDirect3DSurface9_LockRect failed with %08x\n", hr);
+    if(FAILED(hr)) return;
+
+    for(y = 0; y < desc.Height; y++)
+    {
+        mem = (WORD *) ((BYTE *) l.pBits + y * l.Pitch);
+        for(x = 0; x < l.Pitch / sizeof(*mem); x++)
+        {
+            mem[x] = color;
+        }
+    }
+    hr = IDirect3DSurface9_UnlockRect(surface);
+    ok(hr == D3D_OK, "IDirect3DSurface9_UnlockRect failed with %08x\n", hr);
+}
+
 static void stretchrect_test(void)
 {
     IDirect3DSurface9 *surf_tex_rt32, *surf_tex_rt64, *surf_tex_rt_dest64, *surf_tex_rt_dest640_480;
@@ -8988,22 +9016,22 @@ static void srgbtexture_test(void)
     }
 
     if (IDirect3D9_CheckDeviceFormat(d3d, 0, D3DDEVTYPE_HAL,
-            D3DFMT_X8R8G8B8, D3DUSAGE_QUERY_SRGBREAD, D3DRTYPE_TEXTURE, D3DFMT_A8R8G8B8) != D3D_OK)
+            D3DFMT_X8R8G8B8, D3DUSAGE_QUERY_SRGBREAD, D3DRTYPE_TEXTURE, D3DFMT_R5G6B5) != D3D_OK)
     {
         skip("D3DFMT_A8R8G8B8 textures with SRGBREAD not supported.\n");
         IDirect3DDevice9_Release(device);
         goto done;
     }
 
-    hr = IDirect3DDevice9_CreateTexture(device, 16, 16, 2, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &texture, NULL);
+    hr = IDirect3DDevice9_CreateTexture(device, 16, 16, 2, 0, D3DFMT_R5G6B5, D3DPOOL_MANAGED, &texture, NULL);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     hr = IDirect3DTexture9_GetSurfaceLevel(texture, 0, &surface);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
-    fill_surface(surface, 0xff7f7f7f, 0);
+    fill_surface_16(surface, /*0xff7f7f7f*/0x7800 | 0x03e0 | 0x000f, 0);
     IDirect3DSurface9_Release(surface);
     hr = IDirect3DTexture9_GetSurfaceLevel(texture, 1, &surface);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
-    fill_surface(surface, 0xff3f3f3f, 0);
+    fill_surface_16(surface, /*0xff3f3f3f*/0x3d00 | 0x01f7 | 0x0007, 0);
     IDirect3DSurface9_Release(surface);
 
     hr = IDirect3DDevice9_SetRenderState(device, D3DRS_LIGHTING, FALSE);
@@ -9029,7 +9057,7 @@ static void srgbtexture_test(void)
     hr = IDirect3DDevice9_EndScene(device);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     color = getPixelColor(device, 320, 240);
-    ok(color_match(color, 0x007f7f7f, 1) || broken(color_match(color, 0x00363636, 1)),
+    ok(color_match(color, 0x007b7d7b, 1) || broken(color_match(color, 0x00363636, 1)),
             "Got unexpected color 0x%08x.\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
@@ -9046,7 +9074,7 @@ static void srgbtexture_test(void)
     hr = IDirect3DDevice9_EndScene(device);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     color = getPixelColor(device, 320, 240);
-    ok(color_match(color, 0x007f7f7f, 1) || broken(color_match(color, 0x00363636, 1)),
+    ok(color_match(color, 0x007b7d7b, 1) || broken(color_match(color, 0x00333433, 1)),
             "Got unexpected color 0x%08x.\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
@@ -9063,7 +9091,7 @@ static void srgbtexture_test(void)
     hr = IDirect3DDevice9_EndScene(device);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     color = getPixelColor(device, 320, 240);
-    ok(color_match(color, 0x007f7f7f, 1) || broken(color_match(color, 0x00363636, 1)),
+    ok(color_match(color, 0x007b7d7b, 1) || broken(color_match(color, 0x00333433, 1)),
             "Got unexpected color 0x%08x.\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
@@ -9080,7 +9108,7 @@ static void srgbtexture_test(void)
     hr = IDirect3DDevice9_EndScene(device);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     color = getPixelColor(device, 320, 240);
-    ok(color_match(color, 0x007f7f7f, 1) || color_match(color, 0x00363636, 1),
+    ok(color_match(color, 0x007b7d7b, 1) || color_match(color, 0x00333433, 1),
             "Got unexpected color 0x%08x.\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
@@ -9097,7 +9125,7 @@ static void srgbtexture_test(void)
     hr = IDirect3DDevice9_EndScene(device);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     color = getPixelColor(device, 320, 240);
-    ok(color_match(color, 0x00363636, 1), "Got unexpected color 0x%08x.\n", color);
+    ok(color_match(color, 0x00333433, 1), "Got unexpected color 0x%08x.\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
 
@@ -9120,7 +9148,7 @@ static void srgbtexture_test(void)
     hr = IDirect3DDevice9_EndScene(device);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     color = getPixelColor(device, 320, 240);
-    ok(color_match(color, 0x000d0d0d, 1) || color_match(color, 0x003f3f3f, 1),
+    ok(color_match(color, 0x000a8381, 1) || color_match(color, 0x0039bebd, 1),
             "Got unexpected color 0x%08x.\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
@@ -9137,7 +9165,7 @@ static void srgbtexture_test(void)
     hr = IDirect3DDevice9_EndScene(device);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     color = getPixelColor(device, 320, 240);
-    ok(color_match(color, 0x003f3f3f, 1), "Got unexpected color 0x%08x.\n", color);
+    ok(color_match(color, 0x0039bebd, 1), "Got unexpected color 0x%08x.\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
 
@@ -9155,7 +9183,7 @@ static void srgbtexture_test(void)
     hr = IDirect3DDevice9_EndScene(device);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     color = getPixelColor(device, 320, 240);
-    ok(color_match(color, 0x003f3f3f, 1) || broken(color_match(color, 0x000d0d0d, 1)),
+    ok(color_match(color, 0x0039bebd, 1) || broken(color_match(color, 0x000a8381, 1)),
             "Got unexpected color 0x%08x.\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
