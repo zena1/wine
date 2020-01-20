@@ -308,7 +308,7 @@ int X11DRV_PALETTE_Init(void)
 	    {
 	        X11DRV_PALETTE_PaletteFlags |= X11DRV_PALETTE_PRIVATE;
 
-	        if (is_virtual_desktop())
+	        if( root_window != DefaultRootWindow(gdi_display) )
 	        {
 		    win_attr.colormap = default_colormap;
 		    XChangeWindowAttributes( gdi_display, root_window, CWColormap, &win_attr );
@@ -571,7 +571,6 @@ static BOOL X11DRV_PALETTE_BuildSharedMap( const PALETTEENTRY *sys_pal_template 
         palette_size = c_min + NB_RESERVED_COLORS;
 
 	XUngrabServer(gdi_display);
-	XFlush(gdi_display);
 
 	TRACE("adjusted size %i colorcells\n", palette_size);
      }

@@ -27,7 +27,6 @@
 /* avoid conflict with field names in included win32 headers */
 #undef Status
 #include "wine/debug.h"
-#include "wine/heap.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(x11drv);
 
@@ -37,8 +36,6 @@ static unsigned int dd_mode_count;
 
 static unsigned int max_width;
 static unsigned int max_height;
-static unsigned int desktop_width;
-static unsigned int desktop_height;
 
 static struct screen_size {
     unsigned int width;
@@ -79,12 +76,6 @@ static struct screen_size {
 
 #define _NET_WM_STATE_REMOVE 0
 #define _NET_WM_STATE_ADD 1
-
-/* Return TRUE if Wine is currently in virtual desktop mode */
-BOOL is_virtual_desktop(void)
-{
-    return root_window != DefaultRootWindow( gdi_display );
-}
 
 /* create the mode structures */
 static void make_modes(void)
@@ -149,88 +140,6 @@ static LONG X11DRV_desktop_SetCurrentMode(int mode)
     return DISP_CHANGE_SUCCESSFUL;
 }
 
-static void query_desktop_work_area( RECT *rc_work )
-{
-    static const WCHAR trayW[] = {'S','h','e','l','l','_','T','r','a','y','W','n','d',0};
-    RECT rect;
-    HWND hwnd = FindWindowW( trayW, NULL );
-
-    if (!hwnd || !IsWindowVisible( hwnd )) return;
-    if (!GetWindowRect( hwnd, &rect )) return;
-    if (rect.top) rc_work->bottom = rect.top;
-    else rc_work->top = rect.bottom;
-    TRACE( "found tray %p %s work area %s\n", hwnd, wine_dbgstr_rect( &rect ), wine_dbgstr_rect( rc_work ) );
-}
-
-static BOOL X11DRV_desktop_get_gpus( struct x11drv_gpu **new_gpus, int *count )
-{
-    static const WCHAR wine_adapterW[] = {'W','i','n','e',' ','A','d','a','p','t','e','r',0};
-    struct x11drv_gpu *gpu;
-
-    gpu = heap_calloc( 1, sizeof(*gpu) );
-    if (!gpu) return FALSE;
-
-    lstrcpyW( gpu->name, wine_adapterW );
-    *new_gpus = gpu;
-    *count = 1;
-    return TRUE;
-}
-
-static void X11DRV_desktop_free_gpus( struct x11drv_gpu *gpus )
-{
-    heap_free( gpus );
-}
-
-/* TODO: Support multi-head virtual desktop */
-static BOOL X11DRV_desktop_get_adapters( ULONG_PTR gpu_id, struct x11drv_adapter **new_adapters, int *count )
-{
-    struct x11drv_adapter *adapter;
-
-    adapter = heap_calloc( 1, sizeof(*adapter) );
-    if (!adapter) return FALSE;
-
-    adapter->state_flags = DISPLAY_DEVICE_PRIMARY_DEVICE;
-    if (desktop_width && desktop_height)
-        adapter->state_flags |= DISPLAY_DEVICE_ATTACHED_TO_DESKTOP;
-
-    *new_adapters = adapter;
-    *count = 1;
-    return TRUE;
-}
-
-static void X11DRV_desktop_free_adapters( struct x11drv_adapter *adapters )
-{
-    heap_free( adapters );
-}
-
-static BOOL X11DRV_desktop_get_monitors( ULONG_PTR adapter_id, struct x11drv_monitor **new_monitors, int *count )
-{
-    static const WCHAR generic_nonpnp_monitorW[] = {
-        'G','e','n','e','r','i','c',' ',
-        'N','o','n','-','P','n','P',' ','M','o','n','i','t','o','r',0};
-    struct x11drv_monitor *monitor;
-
-    monitor = heap_calloc( 1, sizeof(*monitor) );
-    if (!monitor) return FALSE;
-
-    lstrcpyW( monitor->name, generic_nonpnp_monitorW );
-    SetRect( &monitor->rc_monitor, 0, 0, desktop_width, desktop_height );
-    SetRect( &monitor->rc_work, 0, 0, desktop_width, desktop_height );
-    query_desktop_work_area( &monitor->rc_work );
-    monitor->state_flags = DISPLAY_DEVICE_ATTACHED;
-    if (desktop_width && desktop_height)
-        monitor->state_flags |= DISPLAY_DEVICE_ACTIVE;
-
-    *new_monitors = monitor;
-    *count = 1;
-    return TRUE;
-}
-
-static void X11DRV_desktop_free_monitors( struct x11drv_monitor *monitors )
-{
-    heap_free( monitors );
-}
-
 /***********************************************************************
  *		X11DRV_init_desktop
  *
@@ -238,25 +147,13 @@ static void X11DRV_desktop_free_monitors( struct x11drv_monitor *monitors )
  */
 void X11DRV_init_desktop( Window win, unsigned int width, unsigned int height )
 {
-    RECT primary_rect = get_host_primary_monitor_rect();
+    RECT primary_rect = get_primary_monitor_rect();
 
     root_window = win;
     managed_mode = FALSE;  /* no managed windows in desktop mode */
-    desktop_width = width;
-    desktop_height = height;
-    max_width = primary_rect.right;
-    max_height = primary_rect.bottom;
-
-    /* Initialize virtual desktop mode display device handler */
-    desktop_handler.name = "Virtual Desktop";
-    desktop_handler.get_gpus = X11DRV_desktop_get_gpus;
-    desktop_handler.get_adapters = X11DRV_desktop_get_adapters;
-    desktop_handler.get_monitors = X11DRV_desktop_get_monitors;
-    desktop_handler.free_gpus = X11DRV_desktop_free_gpus;
-    desktop_handler.free_adapters = X11DRV_desktop_free_adapters;
-    desktop_handler.free_monitors = X11DRV_desktop_free_monitors;
-    desktop_handler.register_event_handlers = NULL;
-    TRACE("Display device functions are now handled by: Virtual Desktop\n");
+    max_width = primary_rect.right - primary_rect.left;
+    max_height = primary_rect.bottom - primary_rect.top;
+    xinerama_init( width, height );
     X11DRV_DisplayDevices_Init( TRUE );
 
     /* initialize the available resolutions */
@@ -281,6 +178,7 @@ BOOL CDECL X11DRV_create_desktop( UINT width, UINT height )
     XSetWindowAttributes win_attr;
     Window win;
     Display *display = thread_init_display();
+    RECT rect;
     WCHAR name[MAX_PATH];
 
     if (!GetUserObjectInformationW( GetThreadDesktop( GetCurrentThreadId() ),
@@ -307,17 +205,18 @@ BOOL CDECL X11DRV_create_desktop( UINT width, UINT height )
                          0, 0, width, height, 0, default_visual.depth, InputOutput, default_visual.visual,
                          CWEventMask | CWCursor | CWColormap, &win_attr );
     if (!win) return FALSE;
-    if (!create_desktop_win_data( win )) return FALSE;
 
-    X11DRV_init_desktop( win, width, height );
-    if (is_desktop_fullscreen())
+    SetRect( &rect, 0, 0, width, height );
+    if (is_window_rect_fullscreen( &rect ))
     {
         TRACE("setting desktop to fullscreen\n");
         XChangeProperty( display, win, x11drv_atom(_NET_WM_STATE), XA_ATOM, 32,
             PropModeReplace, (unsigned char*)&x11drv_atom(_NET_WM_STATE_FULLSCREEN),
             1);
     }
+    if (!create_desktop_win_data( win )) return FALSE;
     XFlush( display );
+    X11DRV_init_desktop( win, width, height );
     return TRUE;
 }
 
@@ -336,18 +235,52 @@ static BOOL CALLBACK update_windows_on_desktop_resize( HWND hwnd, LPARAM lparam 
 
     if (!(data = get_win_data( hwnd ))) return TRUE;
 
-    /* update the full screen state */
-    update_net_wm_states( data );
+    if (fs_hack_enabled() &&
+            fs_hack_matches_current_mode(
+                data->whole_rect.right - data->whole_rect.left,
+                data->whole_rect.bottom - data->whole_rect.top)){
+        if(!data->fs_hack){
+            POINT p = fs_hack_real_mode();
+            POINT tl = virtual_screen_to_root(0, 0);
+            TRACE("Enabling fs hack, resizing window %p to (%u,%u)-(%u,%u)\n", hwnd, tl.x, tl.y, p.x, p.y);
+            data->fs_hack = TRUE;
+            set_wm_hints( data );
+            XMoveResizeWindow(data->display, data->whole_window, tl.x, tl.y, p.x, p.y);
+            if(data->client_window)
+                XMoveResizeWindow(data->display, data->client_window, 0, 0, p.x, p.y);
+            sync_gl_drawable(hwnd, FALSE);
+            update_net_wm_states( data );
+        }
+    }else {
 
-    if (resize_data->old_virtual_rect.left != resize_data->new_virtual_rect.left) mask |= CWX;
-    if (resize_data->old_virtual_rect.top != resize_data->new_virtual_rect.top) mask |= CWY;
-    if (mask && data->whole_window)
-    {
-        POINT pos = virtual_screen_to_root( data->whole_rect.left, data->whole_rect.top );
-        XWindowChanges changes;
-        changes.x = pos.x;
-        changes.y = pos.y;
-        XReconfigureWMWindow( data->display, data->whole_window, data->vis.screen, mask, &changes );
+        /* update the full screen state */
+        update_net_wm_states( data );
+
+        if (resize_data->old_virtual_rect.left != resize_data->new_virtual_rect.left || data->fs_hack) mask |= CWX;
+        if (resize_data->old_virtual_rect.top != resize_data->new_virtual_rect.top || data->fs_hack) mask |= CWY;
+        if (mask && data->whole_window)
+        {
+            POINT pos = virtual_screen_to_root( data->whole_rect.left, data->whole_rect.top );
+            XWindowChanges changes;
+            changes.x = pos.x;
+            changes.y = pos.y;
+            XReconfigureWMWindow( data->display, data->whole_window, data->vis.screen, mask, &changes );
+        }
+
+        if(data->fs_hack &&
+            !fs_hack_matches_current_mode(
+                data->whole_rect.right - data->whole_rect.left,
+                data->whole_rect.bottom - data->whole_rect.top)){
+            TRACE("Disabling fs hack\n");
+            data->fs_hack = FALSE;
+            if(data->client_window){
+                XMoveResizeWindow(data->display, data->client_window,
+                        data->client_rect.left, data->client_rect.top,
+                        data->client_rect.right - data->client_rect.left,
+                        data->client_rect.bottom - data->client_rect.top);
+            }
+            sync_gl_drawable(hwnd, FALSE);
+        }
     }
     release_win_data( data );
     if (hwnd == GetForegroundWindow()) clip_fullscreen_window( hwnd, TRUE );
@@ -366,7 +299,7 @@ static void update_desktop_fullscreen( unsigned int width, unsigned int height)
     Display *display = thread_display();
     XEvent xev;
 
-    if (!display || !is_virtual_desktop()) return;
+    if (!display || root_window == DefaultRootWindow( display )) return;
 
     xev.xclient.type = ClientMessage;
     xev.xclient.window = root_window;
@@ -403,9 +336,8 @@ void X11DRV_resize_desktop( unsigned int width, unsigned int height )
     struct desktop_resize_data resize_data;
 
     resize_data.old_virtual_rect = get_virtual_screen_rect();
-    desktop_width = width;
-    desktop_height = height;
-    X11DRV_DisplayDevices_Init( TRUE );
+
+    xinerama_init( width, height );
     resize_data.new_virtual_rect = get_virtual_screen_rect();
 
     if (GetWindowThreadProcessId( hwnd, NULL ) != GetCurrentThreadId())
