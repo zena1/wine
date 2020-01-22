@@ -1,0 +1,32 @@
+# Last wine-tkg-staging-fsync-git configuration - Ср янв 22 04:26:11 MSK 2020 :
+
+Wine (plain) version: 5.0.r0.gda816802e0
+Using wine-staging patchset (version 5.0.r0.g3ac1519f)
+Disabled the local Esync patchset to use Staging impl instead.
+
+Applied clock_monotonic patch
+Applied clock_monotonic addon patch for 13e11d3
+Applied Fullscreen compositor bypass patch
+Applied child window for vk patch
+Applied steam crossover hack
+Applied CSMT toggle logic patch
+Staging overrides, if any: 
+Applied Final Fantasy XIV Launcher fix
+Applied Mortal Kombat 11 fix
+Applied fsync, an experimental replacement for esync (staging)
+Added no_alloc_handle object method to fsync
+Applied large address aware override support
+Applied your own patch /home/alex/git_projects/build-preparation/PKGBUILDS/wine-tkg-git/Add-some-semi-stubs-in-user32.mypatch
+Applied your own patch /home/alex/git_projects/build-preparation/PKGBUILDS/wine-tkg-git/battle.net_win10.mypatch
+Applied your own patch /home/alex/git_projects/build-preparation/PKGBUILDS/wine-tkg-git/bcrypt.mypatch
+Applied your own patch /home/alex/git_projects/build-preparation/PKGBUILDS/wine-tkg-git/detroit_performance.mypatch
+Applied your own patch /home/alex/git_projects/build-preparation/PKGBUILDS/wine-tkg-git/faudio-ffmpeg.mypatch
+Applied your own patch /home/alex/git_projects/build-preparation/PKGBUILDS/wine-tkg-git/GalaxyFix-AddSetEnvironmentStringsW-stub.mypatch
+Applied your own patch /home/alex/git_projects/build-preparation/PKGBUILDS/wine-tkg-git/legoisland_168726.mypatch
+Applied your own patch /home/alex/git_projects/build-preparation/PKGBUILDS/wine-tkg-git/origin_downloads_e4ca5dbe_revert.mypatch
+Applied your own patch /home/alex/git_projects/build-preparation/PKGBUILDS/wine-tkg-git/overwatch_alttab.mypatch
+Applied your own patch /home/alex/git_projects/build-preparation/PKGBUILDS/wine-tkg-git/rockstar_installer_fix_heap.mypatch
+Applied your own patch /home/alex/git_projects/build-preparation/PKGBUILDS/wine-tkg-git/rockstarlauncher_downloads.mypatch
+Applied your own patch /home/alex/git_projects/build-preparation/PKGBUILDS/wine-tkg-git/wined3d-Support-SRGB-read-for-B5G6R5-textures.mypatch
+
+Please don't report bugs about this wine build on winehq.org and use https://github.com/Tk-Glitch/PKGBUILDS/issues instead.
