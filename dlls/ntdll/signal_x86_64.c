@@ -2124,13 +2124,13 @@ NTSTATUS WINAPI NtSetContextThread( HANDLE handle, const CONTEXT *context )
     BOOL self = (handle == GetCurrentThread());
 
     /* debug registers require a server call */
-    if (self && (context->ContextFlags & (CONTEXT_DEBUG_REGISTERS & ~CONTEXT_AMD64)))
+    /*if (self && (context->ContextFlags & (CONTEXT_DEBUG_REGISTERS & ~CONTEXT_AMD64)))
         self = (amd64_thread_data()->dr0 == context->Dr0 &&
                 amd64_thread_data()->dr1 == context->Dr1 &&
                 amd64_thread_data()->dr2 == context->Dr2 &&
                 amd64_thread_data()->dr3 == context->Dr3 &&
                 amd64_thread_data()->dr6 == context->Dr6 &&
-                amd64_thread_data()->dr7 == context->Dr7);
+                amd64_thread_data()->dr7 == context->Dr7);*/
 
     if (!self)
     {
@@ -2158,7 +2158,15 @@ NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
     needed_flags = context->ContextFlags;
 
     /* debug registers require a server call */
-    if (context->ContextFlags & (CONTEXT_DEBUG_REGISTERS & ~CONTEXT_AMD64)) self = FALSE;
+    if (context->ContextFlags & (CONTEXT_DEBUG_REGISTERS & ~CONTEXT_AMD64)) //self = FALSE;
+    {
+        context->Dr0 = amd64_thread_data()->dr0;
+        context->Dr1 = amd64_thread_data()->dr1;
+        context->Dr2 = amd64_thread_data()->dr2;
+        context->Dr3 = amd64_thread_data()->dr3;
+        context->Dr6 = amd64_thread_data()->dr6;
+        context->Dr7 = amd64_thread_data()->dr7;
+    }
 
     if (!self)
     {
@@ -2440,12 +2448,21 @@ static NTSTATUS call_stack_handlers( EXCEPTION_RECORD *rec, CONTEXT *orig_contex
     UNWIND_HISTORY_TABLE table;
     DISPATCHER_CONTEXT dispatch;
     CONTEXT context;
+    MEMORY_BASIC_INFORMATION wine_frame_stack_info, current_stack_info;
+    int is_teb_frame_in_current_stack = 1;
     NTSTATUS status;
 
     context = *orig_context;
     dispatch.TargetIp      = 0;
     dispatch.ContextRecord = &context;
     dispatch.HistoryTable  = &table;
+
+    if ( !(NtQueryVirtualMemory(NtCurrentProcess(), teb_frame, MemoryBasicInformation, &wine_frame_stack_info, sizeof(MEMORY_BASIC_INFORMATION), NULL)) &&
+         !(NtQueryVirtualMemory(NtCurrentProcess(), (PVOID)context.Rsp, MemoryBasicInformation, &current_stack_info, sizeof(MEMORY_BASIC_INFORMATION), NULL)))
+    {
+        is_teb_frame_in_current_stack = wine_frame_stack_info.AllocationBase == current_stack_info.AllocationBase;
+    }
+
     for (;;)
     {
         status = virtual_unwind( UNW_FLAG_EHANDLER, &dispatch, &context );
@@ -2491,7 +2508,7 @@ static NTSTATUS call_stack_handlers( EXCEPTION_RECORD *rec, CONTEXT *orig_contex
             }
         }
         /* hack: call wine handlers registered in the tib list */
-        else while ((ULONG64)teb_frame < context.Rsp)
+        else if (is_teb_frame_in_current_stack) while ((ULONG64)teb_frame < context.Rsp)
         {
             TRACE( "found wine frame %p rsp %lx handler %p\n",
                     teb_frame, context.Rsp, teb_frame->Handler );
