@@ -201,6 +201,7 @@ __DEFINE_SET_SEG(fs)
 __DEFINE_SET_SEG(gs)
 #undef __DEFINE_GET_SEG
 #undef __DEFINE_SET_SEG
+extern void wine_set_cs(unsigned int);
 
 #endif  /* __i386__ */
 
