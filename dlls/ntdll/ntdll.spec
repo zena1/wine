@@ -1568,6 +1568,7 @@
 
 # Virtual memory
 @ cdecl __wine_locked_recvmsg(long ptr long)
+@ cdecl __wine_needs_override_large_address_aware()
 
 # Token
 @ cdecl __wine_create_default_token(long)
@@ -1590,3 +1591,5 @@
 
 # User shared data
 @ cdecl __wine_user_shared_data()
+
+@ cdecl IsTransgaming()
