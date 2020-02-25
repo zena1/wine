@@ -1194,7 +1194,7 @@ static void create_stub_exports_text_x86( DLLSPEC *spec )
         if (odp)
         {
             const char *name = (odp->flags & FLAG_SYSCALL) ? odp->link_name : get_stub_name( odp, spec );
-            put_dword( label_rva( name ) );
+            put_dword( odp->real_rva ? odp->real_rva : label_rva( name ) );
         }
         else
             put_dword( 0 );
@@ -1310,7 +1310,7 @@ static void create_stub_exports_text_x64( DLLSPEC *spec )
         if (odp)
         {
             const char *name = (odp->flags & FLAG_SYSCALL) ? odp->link_name : get_stub_name( odp, spec );
-            put_dword( label_rva( name ) );
+            put_dword( odp->real_rva ? odp->real_rva : label_rva( name ) );
         }
         else
             put_dword( 0 );

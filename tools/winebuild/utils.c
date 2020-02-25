@@ -805,7 +805,7 @@ void dump_bytes( const void *buffer, unsigned int size )
  *
  * Open a file in the given srcdir and set the input_file_name global variable.
  */
-FILE *open_input_file( const char *srcdir, const char *name )
+FILE *open_input_file( const char *srcdir, const char *name, int required )
 {
     char *fullname;
     FILE *file = fopen( name, "r" );
@@ -817,7 +817,16 @@ FILE *open_input_file( const char *srcdir, const char *name )
     }
     else fullname = xstrdup( name );
 
-    if (!file) fatal_error( "Cannot open file '%s'\n", fullname );
+    if (!file)
+    {
+        if (required)
+            fatal_error( "Cannot open file '%s'\n", fullname );
+        else
+        {
+            free(fullname);
+            return NULL;
+        }
+    }
     input_file_name = fullname;
     current_line = 1;
     return file;

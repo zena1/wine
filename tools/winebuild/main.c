@@ -615,7 +615,7 @@ static void load_import_libs( char *argv[] )
 
 static int parse_input_file( DLLSPEC *spec )
 {
-    FILE *input_file = open_input_file( NULL, spec_file_name );
+    FILE *input_file = open_input_file( NULL, spec_file_name, 1 );
     char *extension = strrchr( spec_file_name, '.' );
     int result;
 
@@ -626,6 +626,16 @@ static int parse_input_file( DLLSPEC *spec )
         result = parse_spec_file( input_file, spec );
     close_input_file( input_file );
     return result;
+}
+
+static void parse_map_file( DLLSPEC *spec )
+{
+    FILE *input_file = open_input_file( NULL, "linked.map", 0 );
+    if (!input_file) return;
+
+    parse_mappings( input_file, spec );
+
+    close_input_file(input_file);
 }
 
 
@@ -658,6 +668,7 @@ int main(int argc, char **argv)
 
         if (fake_module)
         {
+            parse_map_file( spec );
             if (spec->type == SPEC_WIN16) output_fake_module16( spec );
             else output_fake_module( spec );
             break;

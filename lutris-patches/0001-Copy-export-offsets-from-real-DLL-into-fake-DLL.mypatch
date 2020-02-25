@@ -1,0 +1,265 @@
+From 35ed5c87158402b1e97036f0826a3f676d008d46 Mon Sep 17 00:00:00 2001
+From: Derek Lesho <dlesho@codeweavers.com>
+Date: Tue, 25 Feb 2020 15:12:28 -0600
+Subject: [PATCH] Copy export offsets from real DLL into fake DLL.
+
+Signed-off-by: Derek Lesho <dlesho@codeweavers.com>
+---
+ dlls/kernel32/Makefile.in |  2 +-
+ tools/winebuild/build.h   |  4 +-
+ tools/winebuild/import.c  |  2 +-
+ tools/winebuild/main.c    | 13 +++++-
+ tools/winebuild/parser.c  | 92 +++++++++++++++++++++++++++++++++++++++
+ tools/winebuild/spec32.c  |  4 +-
+ tools/winebuild/utils.c   | 13 +++++-
+ 7 files changed, 122 insertions(+), 8 deletions(-)
+
+diff --git a/dlls/kernel32/Makefile.in b/dlls/kernel32/Makefile.in
+index 8cf9ecbded..284a4dabe0 100644
+--- a/dlls/kernel32/Makefile.in
++++ b/dlls/kernel32/Makefile.in
+@@ -3,7 +3,7 @@ MODULE    = kernel32.dll
+ IMPORTLIB = kernel32
+ IMPORTS   = winecrt0 kernelbase ntdll
+ EXTRALIBS = $(COREFOUNDATION_LIBS) $(POLL_LIBS) $(RT_LIBS)
+-EXTRADLLFLAGS = -nodefaultlibs -Wb,-F,KERNEL32.dll -Wl,--image-base,0x7b400000
++EXTRADLLFLAGS = -nodefaultlibs -Wb,-F,KERNEL32.dll -Wl,--image-base,0x7b400000,-Map,linked.map
+ 
+ C_SRCS = \
+ 	actctx.c \
+diff --git a/tools/winebuild/build.h b/tools/winebuild/build.h
+index 09a654de16..99b9427ca5 100644
+--- a/tools/winebuild/build.h
++++ b/tools/winebuild/build.h
+@@ -103,6 +103,7 @@ typedef struct
+     int         hint;
+     int         lineno;
+     int         flags;
++    int         real_rva;
+     char       *name;         /* public name of this function */
+     char       *link_name;    /* name of the C symbol to link to */
+     char       *impl_name;    /* name of the C symbol of the real implementation (thunks only) */
+@@ -267,7 +268,7 @@ extern const char *get_nm_command(void);
+ extern void cleanup_tmp_files(void);
+ extern char *get_temp_file_name( const char *prefix, const char *suffix );
+ extern void output_standard_file_header(void);
+-extern FILE *open_input_file( const char *srcdir, const char *name );
++extern FILE *open_input_file( const char *srcdir, const char *name, int required );
+ extern void close_input_file( FILE *file );
+ extern void open_output_file(void);
+ extern void close_output_file(void);
+@@ -330,6 +331,7 @@ extern void make_builtin_files( char *argv[] );
+ extern void add_16bit_exports( DLLSPEC *spec32, DLLSPEC *spec16 );
+ extern int parse_spec_file( FILE *file, DLLSPEC *spec );
+ extern int parse_def_file( FILE *file, DLLSPEC *spec );
++extern void parse_mappings( FILE *file, DLLSPEC *spec );
+ 
+ extern int sort_func_list( ORDDEF **list, int count, int (*compare)(const void *, const void *) );
+ 
+diff --git a/tools/winebuild/import.c b/tools/winebuild/import.c
+index 4fb979cecd..2ba2053ab2 100644
+--- a/tools/winebuild/import.c
++++ b/tools/winebuild/import.c
+@@ -299,7 +299,7 @@ static DLLSPEC *read_import_lib( struct import *imp )
+     struct import *prev_imp;
+     DLLSPEC *spec = alloc_dll_spec();
+ 
+-    f = open_input_file( NULL, imp->full_name );
++    f = open_input_file( NULL, imp->full_name, 1 );
+     fstat( fileno(f), &stat );
+     imp->dev = stat.st_dev;
+     imp->ino = stat.st_ino;
+diff --git a/tools/winebuild/main.c b/tools/winebuild/main.c
+index ca8f8af03a..9fa783a38a 100644
+--- a/tools/winebuild/main.c
++++ b/tools/winebuild/main.c
+@@ -615,7 +615,7 @@ static void load_import_libs( char *argv[] )
+ 
+ static int parse_input_file( DLLSPEC *spec )
+ {
+-    FILE *input_file = open_input_file( NULL, spec_file_name );
++    FILE *input_file = open_input_file( NULL, spec_file_name, 1 );
+     char *extension = strrchr( spec_file_name, '.' );
+     int result;
+ 
+@@ -628,6 +628,16 @@ static int parse_input_file( DLLSPEC *spec )
+     return result;
+ }
+ 
++static void parse_map_file( DLLSPEC *spec )
++{
++    FILE *input_file = open_input_file( NULL, "linked.map", 0 );
++    if (!input_file) return;
++
++    parse_mappings( input_file, spec );
++
++    close_input_file(input_file);
++}
++
+ 
+ /*******************************************************************
+  *         main
+@@ -658,6 +668,7 @@ int main(int argc, char **argv)
+ 
+         if (fake_module)
+         {
++            parse_map_file( spec );
+             if (spec->type == SPEC_WIN16) output_fake_module16( spec );
+             else output_fake_module( spec );
+             break;
+diff --git a/tools/winebuild/parser.c b/tools/winebuild/parser.c
+index 40946409c5..b8d1112ebc 100644
+--- a/tools/winebuild/parser.c
++++ b/tools/winebuild/parser.c
+@@ -1220,3 +1220,95 @@ int parse_def_file( FILE *file, DLLSPEC *spec )
+     assign_ordinals( spec );
+     return !nb_errors;
+ }
++
++char *next_value(char **cursor)
++{
++    char *begin, *result;
++    int counter = 0;
++
++    while(isspace(**cursor))
++    {
++        (*cursor)++;
++        continue;
++    }
++
++    begin = *cursor;
++
++    while (!isspace(**cursor) && **cursor != '\n' && **cursor != '\0')
++    {
++        (*cursor)++;
++        counter++;
++    }
++
++    if (!counter) return NULL;
++
++    result = xmalloc(counter + 1);
++    memcpy(result, begin, counter);
++    result[counter] = 0;
++
++    return result;
++}
++
++void parse_mappings( FILE *file, DLLSPEC *spec )
++{
++    input_file = file;
++    int text_section = 0;
++    long unsigned int base_address = 0;
++
++    while (get_next_line())
++    {
++        if (!text_section)
++        {
++            if (!(strncmp(ParseNext, ".text", 5)))
++            {
++                text_section = 1;
++            }
++        }
++        else
++        {
++            if (strlen(ParseNext) == 0)
++                text_section = 0;
++        }
++
++        if (!base_address)
++        {
++            if (!(strncmp(ParseNext, "Address of section .text-segment set to ", 40)))
++            {
++                base_address = strtol(ParseNext + 40, NULL, 0) + 0x20000;
++            }
++        }
++
++        if (text_section)
++        {
++            char *address_hex, *name, *cursor = ParseNext;
++            long unsigned int address = 0;
++            unsigned int rva;
++
++            if (!base_address)
++                fatal_error("Didn't find base address before exports.\n");
++
++            if (!(address_hex = next_value(&cursor)))
++                continue;
++            if (!(name = next_value(&cursor)))
++                continue;
++            if (!!(next_value(&cursor)))
++                continue;
++
++            address = strtol(address_hex, NULL, 0);
++            if (!(address))
++                continue;
++
++            rva = address - base_address;
++
++            for (unsigned int i = 0; i < spec->nb_entry_points; i++)
++            {
++                ORDDEF *odp = &spec->entry_points[i];
++                if (!(odp->link_name)) continue;
++                if (!(strcmp(odp->link_name, name)))
++                {
++                    odp->real_rva = rva;
++                }
++            }
++        }
++    }
++}
+diff --git a/tools/winebuild/spec32.c b/tools/winebuild/spec32.c
+index 5093f7fc28..c1b95cf41d 100644
+--- a/tools/winebuild/spec32.c
++++ b/tools/winebuild/spec32.c
+@@ -1194,7 +1194,7 @@ static void create_stub_exports_text_x86( DLLSPEC *spec )
+         if (odp)
+         {
+             const char *name = (odp->flags & FLAG_SYSCALL) ? odp->link_name : get_stub_name( odp, spec );
+-            put_dword( label_rva( name ) );
++            put_dword( odp->real_rva ? odp->real_rva : label_rva( name ) );
+         }
+         else
+             put_dword( 0 );
+@@ -1310,7 +1310,7 @@ static void create_stub_exports_text_x64( DLLSPEC *spec )
+         if (odp)
+         {
+             const char *name = (odp->flags & FLAG_SYSCALL) ? odp->link_name : get_stub_name( odp, spec );
+-            put_dword( label_rva( name ) );
++            put_dword( odp->real_rva ? odp->real_rva : label_rva( name ) );
+         }
+         else
+             put_dword( 0 );
+diff --git a/tools/winebuild/utils.c b/tools/winebuild/utils.c
+index 0f4642d43a..8286018811 100644
+--- a/tools/winebuild/utils.c
++++ b/tools/winebuild/utils.c
+@@ -805,7 +805,7 @@ void dump_bytes( const void *buffer, unsigned int size )
+  *
+  * Open a file in the given srcdir and set the input_file_name global variable.
+  */
+-FILE *open_input_file( const char *srcdir, const char *name )
++FILE *open_input_file( const char *srcdir, const char *name, int required )
+ {
+     char *fullname;
+     FILE *file = fopen( name, "r" );
+@@ -817,7 +817,16 @@ FILE *open_input_file( const char *srcdir, const char *name )
+     }
+     else fullname = xstrdup( name );
+ 
+-    if (!file) fatal_error( "Cannot open file '%s'\n", fullname );
++    if (!file)
++    {
++        if (required)
++            fatal_error( "Cannot open file '%s'\n", fullname );
++        else
++        {
++            free(fullname);
++            return NULL;
++        }
++    }
+     input_file_name = fullname;
+     current_line = 1;
+     return file;
+-- 
+2.25.1
+

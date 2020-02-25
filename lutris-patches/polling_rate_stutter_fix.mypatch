@@ -1,0 +1,34 @@
+From 386f43d1a47712696e673c2c450fd988d9a83b3c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?R=C3=A9mi=20Bernon?= <rbernon@codeweavers.com>
+Date: Fri, 14 Feb 2020 11:01:39 +0100
+Subject: [PATCH] dinput: Increase device buffer size to 1024.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The buffer size was previously limited to 20 in:
+
+  8d052561724f9c8d9e7770964bfaebdd01e98e60
+
+Testing shows that it is somewhere around 1024 on Windows, and using a
+smaller buffer causes some input data to be lost with high polling rate
+mouses. It can be spotted in Wolfenstein II: New Colossus menus.
+
+Signed-off-by: Rémi Bernon <rbernon@codeweavers.com>
+---
+ dlls/dinput/device.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/dlls/dinput/device.c b/dlls/dinput/device.c
+index b778f6b3ea9..8c5aa318837 100644
+--- a/dlls/dinput/device.c
++++ b/dlls/dinput/device.c
+@@ -1398,7 +1398,7 @@ HRESULT WINAPI IDirectInputDevice2WImpl_SetProperty(
+             EnterCriticalSection(&This->crit);
+ 
+             This->buffersize  = pd->dwData;
+-            This->queue_len = min(This->buffersize, 20);
++            This->queue_len = min(This->buffersize, 1024);
+             HeapFree(GetProcessHeap(), 0, This->data_queue);
+ 
+             This->data_queue = !This->queue_len ? NULL : HeapAlloc(GetProcessHeap(), 0,
