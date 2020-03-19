@@ -299,7 +299,7 @@ static DLLSPEC *read_import_lib( struct import *imp )
     struct import *prev_imp;
     DLLSPEC *spec = alloc_dll_spec();
 
-    f = open_input_file( NULL, imp->full_name );
+    f = open_input_file( NULL, imp->full_name, 1 );
     fstat( fileno(f), &stat );
     imp->dev = stat.st_dev;
     imp->ino = stat.st_ino;

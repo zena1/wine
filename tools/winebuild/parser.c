@@ -1220,3 +1220,99 @@ int parse_def_file( FILE *file, DLLSPEC *spec )
     assign_ordinals( spec );
     return !nb_errors;
 }
+
+char *next_value(char **cursor)
+{
+    char *begin, *result;
+    int counter = 0;
+
+    while(isspace(**cursor))
+    {
+        (*cursor)++;
+        continue;
+    }
+
+    begin = *cursor;
+
+    while (!isspace(**cursor) && **cursor != '\n' && **cursor != '\0')
+    {
+        (*cursor)++;
+        counter++;
+    }
+
+    if (!counter) return NULL;
+
+    result = xmalloc(counter + 1);
+    memcpy(result, begin, counter);
+    result[counter] = 0;
+
+    return result;
+}
+
+void parse_mappings( FILE *file, DLLSPEC *spec )
+{
+    input_file = file;
+    int text_section = 0;
+    long unsigned int base_address = 0;
+
+    while (get_next_line())
+    {
+        if (!text_section)
+        {
+            if (!(strncmp(ParseNext, ".text", 5)))
+            {
+                //fprintf(stderr, "Enterting .text mode with %s", ParseNext);
+                text_section = 1;
+            }
+        }
+        else
+        {
+            if (strlen(ParseNext) == 0)
+                text_section = 0;
+        }
+
+        if (!base_address)
+        {
+            if (!(strncmp(ParseNext, "Address of section .text-segment set to ", 40)))
+            {
+                base_address = strtol(ParseNext + 40, NULL, 0) + 0x20000;
+                //fprintf(stderr, "Base Address = %lx\n", base_address);
+            }
+        }
+
+        if (text_section)
+        {
+            char *address_hex, *name, *cursor = ParseNext;
+            long unsigned int address = 0;
+            unsigned int rva;
+
+            if (!base_address)
+                fatal_error("Didn't find base address before exports.\n");
+
+            if (!(address_hex = next_value(&cursor)))
+                continue;
+            if (!(name = next_value(&cursor)))
+                continue;
+            if (!!(next_value(&cursor)))
+                continue;
+
+            address = strtol(address_hex, NULL, 0);
+            if (!(address))
+                continue;
+
+            rva = address - base_address;
+
+            fprintf(stderr, "RVA = %x, Name = %s\n", rva, name);
+
+            for (unsigned int i = 0; i < spec->nb_entry_points; i++)
+            {
+                ORDDEF *odp = &spec->entry_points[i];
+                if (!(odp->link_name)) continue;
+                if (!(strcmp(odp->link_name, name)))
+                {
+                    odp->real_rva = rva;
+                }
+            }
+        }
+    }
+}

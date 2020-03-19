@@ -103,6 +103,7 @@ typedef struct
     int         hint;
     int         lineno;
     int         flags;
+    int         real_rva;
     char       *name;         /* public name of this function */
     char       *link_name;    /* name of the C symbol to link to */
     char       *impl_name;    /* name of the C symbol of the real implementation (thunks only) */
@@ -267,7 +268,7 @@ extern const char *get_nm_command(void);
 extern void cleanup_tmp_files(void);
 extern char *get_temp_file_name( const char *prefix, const char *suffix );
 extern void output_standard_file_header(void);
-extern FILE *open_input_file( const char *srcdir, const char *name );
+extern FILE *open_input_file( const char *srcdir, const char *name, int required );
 extern void close_input_file( FILE *file );
 extern void open_output_file(void);
 extern void close_output_file(void);
@@ -330,6 +331,7 @@ extern void make_builtin_files( char *argv[] );
 extern void add_16bit_exports( DLLSPEC *spec32, DLLSPEC *spec16 );
 extern int parse_spec_file( FILE *file, DLLSPEC *spec );
 extern int parse_def_file( FILE *file, DLLSPEC *spec );
+extern void parse_mappings( FILE *file, DLLSPEC *spec );
 
 extern int sort_func_list( ORDDEF **list, int count, int (*compare)(const void *, const void *) );
 
